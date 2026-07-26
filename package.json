@@ -1,0 +1,50 @@
+{
+  "name": "aurelian-lite",
+  "version": "0.1.0",
+  "description": "Aurelian Lite - structured, offline cyber risk analysis (EBIOS RM) in a single portable HTML file",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://aurelian-risk.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aurelian-risk/aurelian-lite.git"
+  },
+  "keywords": [
+    "ebios-rm",
+    "risk-analysis",
+    "cybersecurity",
+    "threat-modeling",
+    "mitre-attack",
+    "offline",
+    "single-file",
+    "privacy",
+    "react",
+    "vite"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test:e2e": "node scripts/e2e.mjs",
+    "shots": "node scripts/shots.mjs"
+  },
+  "dependencies": {
+    "d3-force": "^3.0.0",
+    "js-yaml": "^4.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/d3-force": "^3.0.10",
+    "@types/js-yaml": "^4.0.9",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "playwright": "^1.61.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vite-plugin-singlefile": "^2.1.0"
+  }
+}

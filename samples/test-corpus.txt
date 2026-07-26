@@ -1,0 +1,31 @@
+Musterstadt Hospital — Information Security Assessment (test corpus)
+
+1. Scope and business assets
+The hospital depends on several business values. Patient records are the core information asset holding the electronic health records of all treated patients. Emergency care is the critical process of admitting and treating emergency patients. Billing is the function that invoices services to insurers and patients. Laboratory diagnostics is a clinical process that supports treatment decisions. Medical imaging is an information asset used across wards.
+
+2. Supporting assets
+The Hospital Information System (HIS) database server is the central software component that runs the patient database. The clinical network is the network segment connecting wards and networked medical devices. Nursing staff is the personnel that operates emergency and ward care. The backup NAS is a media component holding nightly backups of the patient database. The radiology workstation is a hardware component in the imaging department.
+
+3. Feared events
+Disclosure of patient data would be a breach of confidentiality, leaking health data to unauthorized parties. An outage of the emergency care systems would be a loss of availability that disrupts emergency treatment. Manipulation of billing data would be a breach of integrity causing financial loss. Loss of laboratory results would affect availability and traceability of clinical decisions.
+
+4. Risk sources
+Organized ransomware groups are financially motivated cybercriminals seeking extortion through encryption and data theft. A disgruntled insider is an employee with legitimate access and a grievance who may steal or sabotage data. State-sponsored actors are advanced persistent threats targeting critical healthcare infrastructure. Opportunistic attackers exploit exposed services without a specific target.
+
+5. Target objectives
+Extort a ransom by encrypting the clinical systems and demanding payment. Steal and sell patient data on illicit markets. Disrupt hospital operations to cause reputational and safety impact.
+
+6. Ecosystem stakeholders
+The external IT maintenance provider is a third party with remote maintenance access to the core systems. The medical device supplier is a vendor servicing networked medical devices. The regional health authority is a regulator with oversight of data protection. A cloud backup service provider stores encrypted off-site backups.
+
+7. Strategic scenarios
+Ransomware via the maintenance access: an attacker compromises the maintenance provider and pivots into the clinical network, causing an outage of emergency care. Insider data exfiltration: an insider copies patient records to external media. APT via the imaging supplier: a state actor uses the device supplier as an entry vector to reach the clinical network.
+
+8. Operational scenarios and kill-chain
+The ransomware operational scenario is an end-to-end kill-chain from phishing to encryption of the HIS. Reconnaissance identifies the maintenance provider staff. Initial access is gained through a spear-phishing email delivering a loader. Credential access harvests cached admin credentials on the maintenance host. Lateral movement pivots via remote services into the clinical network. Impact deploys ransomware to encrypt the HIS database. Exfiltration copies sensitive records before encryption.
+
+9. Security measures
+Enforce phishing-resistant multi-factor authentication on all remote maintenance access. Deploy endpoint detection and response on clinical endpoints to detect credential dumping and ransomware. Maintain offline, immutable backups tested for restore. Network segmentation isolates medical devices from the clinical core. Provide phishing-awareness training for staff. Apply least-privilege access for third-party maintenance accounts.
+
+10. Risk treatment notes
+Coverage analysis shows that lateral movement and impact are the least covered tactics. Residual risk remains high for the ransomware scenario until immutable backups and MFA are fully implemented.
