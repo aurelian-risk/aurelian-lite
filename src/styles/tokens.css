@@ -1,0 +1,98 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Design tokens — oklch. Dark-first, "security-intelligence" aesthetic:
+   deep slate base, glass panels with light edges, teal accent.
+   ═══════════════════════════════════════════════════════════════════ */
+:root {
+  /* Brand accents */
+  --teal-bright: oklch(0.74 0.13 195);
+  --teal-base: oklch(0.55 0.14 200);
+  --violet: oklch(0.66 0.15 295);
+
+  /* Workshop accents */
+  --color-workshop-1: oklch(0.7 0.14 240);
+  --color-workshop-2: oklch(0.76 0.14 68);
+  --color-workshop-3: oklch(0.68 0.15 300);
+  --color-workshop-4: oklch(0.66 0.17 25);
+  --color-workshop-5: oklch(0.7 0.14 158);
+
+  /* Semantic states */
+  --color-state-success: oklch(0.72 0.14 160);
+  --color-state-warning: oklch(0.8 0.13 78);
+  --color-state-error: oklch(0.68 0.18 22);
+  --color-state-info: oklch(0.72 0.1 235);
+
+  --radius: 14px;
+  --radius-sm: 9px;
+  --radius-lg: 20px;
+  --font-sans: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --font-mono: "Cascadia Code", "Cascadia Mono", "SF Mono", ui-monospace, Consolas, monospace;
+
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* ── Dark (Standard) ─────────────────────────────────────────────── */
+:root,
+.dark {
+  --bg-0: oklch(0.16 0.02 265);
+  --bg-1: oklch(0.185 0.021 265);
+  --app-glow-a: oklch(0.55 0.14 210 / 0.16);
+  --app-glow-b: oklch(0.5 0.16 300 / 0.13);
+
+  --bg: transparent; /* echter Grund kommt vom body-Gradient */
+  --bg-raised: oklch(0.2 0.02 265 / 0.72);
+  --bg-panel: oklch(0.22 0.02 265 / 0.55);
+  --bg-input: oklch(0.14 0.018 265 / 0.65);
+  --bg-hover: oklch(1 0 0 / 0.06);
+  --bg-active: oklch(1 0 0 / 0.09);
+
+  --border: oklch(1 0 0 / 0.08);
+  --border-strong: oklch(1 0 0 / 0.16);
+  --hairline: oklch(1 0 0 / 0.06);
+
+  --fg: oklch(0.97 0.005 265);
+  --fg-muted: oklch(0.74 0.012 265);
+  --fg-subtle: oklch(0.56 0.014 265);
+
+  --primary: var(--teal-bright);
+  --primary-fg: oklch(0.16 0.02 250);
+  --primary-glow: oklch(0.74 0.13 195 / 0.35);
+
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.3);
+  --shadow-md: 0 8px 24px -8px oklch(0 0 0 / 0.5);
+  --shadow-lg: 0 24px 60px -16px oklch(0 0 0 / 0.6);
+  --edge-top: inset 0 1px 0 oklch(1 0 0 / 0.06);
+  color-scheme: dark;
+}
+
+/* ── Light ───────────────────────────────────────────────────────── */
+.light {
+  --bg-0: oklch(0.97 0.006 265);
+  --bg-1: oklch(0.94 0.008 265);
+  --app-glow-a: oklch(0.7 0.1 210 / 0.12);
+  --app-glow-b: oklch(0.7 0.12 300 / 0.1);
+
+  --bg: transparent;
+  --bg-raised: oklch(1 0 0 / 0.75);
+  --bg-panel: oklch(1 0 0 / 0.7);
+  --bg-input: oklch(1 0 0 / 0.9);
+  --bg-hover: oklch(0.2 0.02 265 / 0.05);
+  --bg-active: oklch(0.2 0.02 265 / 0.08);
+
+  --border: oklch(0.2 0.02 265 / 0.1);
+  --border-strong: oklch(0.2 0.02 265 / 0.2);
+  --hairline: oklch(0.2 0.02 265 / 0.07);
+
+  --fg: oklch(0.24 0.02 265);
+  --fg-muted: oklch(0.44 0.02 265);
+  --fg-subtle: oklch(0.58 0.02 265);
+
+  --primary: var(--teal-base);
+  --primary-fg: oklch(1 0 0);
+  --primary-glow: oklch(0.55 0.14 200 / 0.28);
+
+  --shadow-sm: 0 1px 2px oklch(0.2 0.03 265 / 0.08);
+  --shadow-md: 0 10px 30px -12px oklch(0.2 0.03 265 / 0.18);
+  --shadow-lg: 0 24px 60px -18px oklch(0.2 0.03 265 / 0.22);
+  --edge-top: inset 0 1px 0 oklch(1 0 0 / 0.6);
+  color-scheme: light;
+}

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 32 32" fill="none" role="img" aria-label="Aurelian">
+  <g fill="none" stroke="#4d535e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8.5 24.8 L16 19.8 L23.5 24.8" opacity="0.55"/>
+    <path d="M8.5 17.5 L16 12.5 L23.5 17.5"/>
+  </g>
+  <path d="M8.5 12.0 L16 7.0 L23.5 12.0" fill="none" stroke="#eb9e41" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
