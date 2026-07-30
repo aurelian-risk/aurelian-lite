@@ -19,6 +19,7 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
   const lanesRef = useRef<HTMLDivElement>(null);
   const ribbonSvgRef = useRef<SVGSVGElement>(null);
   const warmedRef = useRef(false);
+  const wasSelectingRef = useRef(false);
 
   const byId = useMemo(() => new Map(study.entities.map((e) => [e.id, e])), [study.entities]);
   const groupColor = (typeKey: string | undefined) => tax.groups.find((g) => g.key === getType(tax, typeKey ?? "")?.group)?.color ?? "var(--border-strong)";
@@ -135,10 +136,14 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
     const headers = Array.from(el.querySelectorAll<HTMLElement>(".lane-header[data-lane]"));
     const reset = (c: HTMLElement) => { c.style.transform = ""; c.style.animationDelay = ""; c.classList.remove("ef-floating"); };
     const resetHeader = (h: HTMLElement) => { h.style.transform = ""; h.classList.remove("ef-lane-flown"); };
-    if (!availableSet || selected.size === 0) { cards.forEach(reset); headers.forEach(resetHeader); return; }
+    if (!availableSet || selected.size === 0) { cards.forEach(reset); headers.forEach(resetHeader); wasSelectingRef.current = false; return; }
     headers.forEach(resetHeader);
+    // Reset the horizontal scroll to reveal the centred tree only when FIRST
+    // entering highlight mode - not on every refining click, which otherwise
+    // yanks the view back to the left while the user is scrolling around.
     const scroller = el.parentElement;
-    if (scroller) scroller.scrollLeft = 0;
+    if (scroller && !wasSelectingRef.current) scroller.scrollLeft = 0;
+    wasSelectingRef.current = true;
     const byLane = new Map<number, HTMLElement[]>();
     cards.forEach((c) => {
       const nk = c.dataset.nk || "";
@@ -229,6 +234,8 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
           {tax.entityTypes.map((type) => {
             const items = study.entities.filter((e) => e.type === type.key);
             if (items.length === 0) return null;
+            // In highlight mode, drop whole columns that hold no available data.
+            if (availableSet && !items.some((e) => availableSet.has(e.id))) return null;
             const color = groupColor(type.key);
             const badge = badgeOf(type.label);
             return (

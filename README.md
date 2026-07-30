@@ -123,6 +123,33 @@ at **[aurelian-risk.com](https://aurelian-risk.com)**.
 
 [MIT](LICENSE) © Aurelian-Risk
 
+The MIT License covers the Aurelian Lite source code. Bundled reference datasets
+and the open-source libraries inlined into the build remain under their own
+licenses - see below.
+
+## Acknowledgements & attributions
+
+Full details are in [`NOTICE`](NOTICE) (data sources and trademarks) and
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) (software licenses).
+
+- **MITRE ATT&CK®** - a curated subset of ATT&CK tactic and technique identifiers
+  and names powers the offline kill-chain typeahead (labelled "TTP" in the UI).
+  ATT&CK® content is © The MITRE Corporation, used under the
+  [ATT&CK Terms of Use](https://attack.mitre.org/resources/legal-and-branding/terms-of-use/).
+  MITRE ATT&CK® is a registered trademark of The MITRE Corporation.
+- **NIS2** requirement titles derive from Directive (EU) 2022/2555, Art. 21(2) -
+  © European Union, [EUR-Lex](https://eur-lex.europa.eu), reused under Commission
+  Decision 2011/833/EU.
+- **NIST CSF 2.0** and **NIST SP 800-53 Rev. 5** identifiers are works of the
+  U.S. Government (NIST) and are in the public domain.
+- **On-device embedding models** (`all-MiniLM-L6-v2`, Apache-2.0;
+  `bge-small-en-v1.5`, MIT) download from the Hugging Face Hub at runtime and are
+  not bundled with the app.
+
+ISO/IEC 27001/27002, CIS Controls and BSI IT-Grundschutz are **not** bundled -
+import your own licensed copy to use them. None of the organisations named above
+endorse or are affiliated with this project.
+
 ## Disclaimer
 
 Aurelian Lite is provided "as is" and "as available", without warranties or conditions of any
@@ -168,5 +195,7 @@ applicable law.
   <br><br>
   <sub>Aurelian Lite is <strong>inspired by</strong> the EBIOS Risk Manager methodology (published by
   ANSSI) and ISO/IEC 27005. It is an independent tool and is <strong>not certified by or affiliated
-  with</strong> ANSSI or ISO. MITRE ATT&CK® is a trademark of The MITRE Corporation.</sub>
+  with</strong> ANSSI, ISO, NIST, the EU or MITRE. MITRE ATT&CK® is a trademark of The MITRE
+  Corporation. Contains public-sector reference material from the EU (NIS2, EUR-Lex) and NIST;
+  see <a href="NOTICE">NOTICE</a> and <a href="THIRD-PARTY-NOTICES.md">THIRD-PARTY-NOTICES.md</a>.</sub>
 </div>

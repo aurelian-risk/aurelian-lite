@@ -23,10 +23,16 @@ export interface FieldDef {
   type: FieldType;
   required?: boolean;
   help?: string;
+  /** text: id of a bundled suggestion dataset for a typeahead (e.g. "mitre_technique"). */
+  suggest?: string;
   /** enum: allowed values (extensible). */
   options?: string[];
   /** scale: labels per step; length = max value. Value stored as 1..N. */
   scaleLabels?: string[];
+  /** scale: is a HIGH value good or bad? Drives the colour ramp direction.
+   *  "negative" (default) = high is bad → red at the top (likelihood, gravity, …).
+   *  "positive" = high is good → green at the top (implementation, resistance, …). */
+  polarity?: "positive" | "negative";
   /** ref/multiref: key of the target entity type. */
   refType?: string;
   /** ref/multiref: relationship label used on graph edges (defaults to `label`). */

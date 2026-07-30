@@ -1,13 +1,53 @@
 import { useState } from "react";
+import type { Study, Taxonomy } from "../domain/types";
 import { useActiveStudy, useStore } from "../domain/store";
-import { workshopMarkdown, copyText } from "../domain/clipboard";
+import { workshopMarkdown, reportMarkdown, reportHtml, openReportHtml, downloadText, copyText } from "../domain/clipboard";
 import { EntitySection } from "./EntitySection";
 import { RiskMatrix } from "./RiskMatrix";
 import { KillChainLane } from "./KillChainLane";
+import { KillChainMitigation } from "./KillChainMitigation";
+import { CoverageMatrix } from "./CoverageMatrix";
+import { MitigationCharts } from "./MitigationCharts";
+import { FrameworkRadar } from "./FrameworkRadar";
+import { ThreatActorRadar } from "./ThreatActorRadar";
+import { AssetHeatmap } from "./AssetHeatmap";
+import { RequirementAdd } from "./RequirementAdd";
 import { GraphView } from "./GraphView";
 import { CanvasView } from "./CanvasView";
 import { DataMenu } from "./DataMenu";
 import { Icon } from "./ui";
+
+const reportSlug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "study";
+
+// One "Report" button with two output choices: a rendered, print-ready HTML page
+// (new tab) or a Markdown file.
+function ReportMenu({ tax, study }: { tax: Taxonomy; study: Study }) {
+  const [open, setOpen] = useState(false);
+  const slug = reportSlug(study.name);
+  return (
+    <div style={{ position: "relative" }}>
+      <button className="btn sm" title="Generate a report of this study" onClick={() => setOpen((o) => !o)}>
+        <Icon.doc /> Report
+      </button>
+      {open && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={() => setOpen(false)} />
+          <div className="menu-pop">
+            <div className="menu-label">Report</div>
+            <button className="menu-item stacked" onClick={() => { setOpen(false); openReportHtml(reportHtml(tax, study), `${slug}-report.html`); }}>
+              <Icon.doc />
+              <span className="mi-text"><span>Open in browser (HTML)</span><span className="menu-hint">rendered · print-ready · new tab</span></span>
+            </button>
+            <button className="menu-item stacked" onClick={() => { setOpen(false); downloadText(`${slug}-report.md`, reportMarkdown(tax, study)); }}>
+              <Icon.download />
+              <span className="mi-text"><span>Download Markdown</span><span className="menu-hint">.md file</span></span>
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function CopyButton({ getText }: { getText: () => string }) {
   const [done, setDone] = useState(false);
@@ -42,6 +82,7 @@ export function StudyView({ onBack }: { onBack: () => void }) {
           <div className="sub">{study.organization || "no organization"}</div>
         </div>
         <span className="spacer" />
+        <ReportMenu tax={tax} study={study} />
         <DataMenu studyScope={study} label="Export / Import" />
       </div>
 
@@ -92,11 +133,53 @@ export function StudyView({ onBack }: { onBack: () => void }) {
               // draggable onto the tactic tiles.
               const stepT = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
               const opKey = stepT?.fields.find((f) => f.type === "ref" && f.refType)?.refType;
-              return tax.entityTypes.filter((t) => t.group === activeGroup.key).map((t) => (
-                <EntitySection key={t.key} type={t} study={study} tax={tax} color={activeGroup.color}
-                  draggableRows={t.key === stepT?.key}
-                  renderDetailExtra={t.key === opKey ? (r) => <KillChainLane tax={tax} study={study} op={r} color={activeGroup.color} /> : undefined} />
-              ));
+              return tax.entityTypes.filter((t) => t.group === activeGroup.key).map((t) => {
+                const isReq = t.fields.some((f) => f.key === "framework");
+                return (
+                  <EntitySection key={t.key} type={t} study={study} tax={tax} color={activeGroup.color}
+                    draggableRows={t.key === stepT?.key}
+                    hideAdd={isReq}
+                    headerExtra={isReq ? <RequirementAdd tax={tax} study={study} reqType={t} /> : undefined}
+                    renderDetailExtra={t.key === opKey ? (r) => <KillChainLane tax={tax} study={study} op={r} color={activeGroup.color} /> : undefined} />
+                );
+              });
+            })()}
+            {(() => {
+              // WS1: asset-criticality heatmap. The "business" asset type has a scale
+              // and is referenced by a sibling's multiref (its supporting assets).
+              const gts = tax.entityTypes.filter((t) => t.group === activeGroup.key);
+              const biz = gts.find((t) => t.fields.some((f) => f.type === "scale") && gts.some((o) => o.fields.some((f) => f.type === "multiref" && f.refType === t.key)));
+              if (!biz) return null;
+              const supp = gts.find((t) => t.fields.some((f) => f.type === "multiref" && f.refType === biz.key)) ?? null;
+              return <AssetHeatmap tax={tax} study={study} businessType={biz} supportingType={supp} color={activeGroup.color} />;
+            })()}
+            {(() => {
+              // WS2: threat-landscape radar over the risk-source actors.
+              const actorT = tax.entityTypes.find((t) => t.group === activeGroup.key && t.fields.some((f) => f.type === "scale" && f.key === "capability"));
+              return actorT ? <ThreatActorRadar study={study} actorType={actorT} color={activeGroup.color} /> : null;
+            })()}
+            {(() => {
+              // WS5: coverage overview (ring + tactic heatmap) ABOVE the per-step
+              // mitigation assignment.
+              const stepT = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
+              const hasMeasure = tax.entityTypes.some((t) => t.group === activeGroup.key && t.fields.some((f) => f.type === "multiref" && f.refType === stepT?.key));
+              return hasMeasure ? <MitigationCharts tax={tax} study={study} color={activeGroup.color} /> : null;
+            })()}
+            {(() => {
+              // Kill-chain mitigation — rendered BELOW the security-measures table (WS5).
+              const stepT = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
+              const hasMeasure = tax.entityTypes.some((t) => t.group === activeGroup.key && t.fields.some((f) => f.type === "multiref" && f.refType === stepT?.key));
+              return hasMeasure ? <KillChainMitigation tax={tax} study={study} color={activeGroup.color} /> : null;
+            })()}
+            {(() => {
+              // Compliance: framework-coverage radar ABOVE the traceability matrix.
+              const reqType = tax.entityTypes.find((t) => t.group === activeGroup.key && t.fields.some((f) => f.key === "framework"));
+              return reqType ? <FrameworkRadar tax={tax} study={study} reqType={reqType} color={activeGroup.color} /> : null;
+            })()}
+            {(() => {
+              // Compliance: coverage / traceability matrix, rendered BELOW the requirements table.
+              const reqType = tax.entityTypes.find((t) => t.group === activeGroup.key && t.fields.some((f) => f.key === "framework"));
+              return reqType ? <CoverageMatrix tax={tax} study={study} reqType={reqType} color={activeGroup.color} /> : null;
             })()}
           </>
         ) : null}

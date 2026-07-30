@@ -1,0 +1,59 @@
+Aurelian Lite - NOTICE
+=======================
+
+Aurelian Lite is licensed under the MIT License (see LICENSE),
+Copyright (c) Aurelian-Risk. The MIT License covers the Aurelian Lite source
+code only.
+
+This product includes, references or interoperates with third-party material
+that remains the property of its respective owners and is subject to its own
+terms. Open-source software dependency licenses are listed separately in
+THIRD-PARTY-NOTICES.md.
+
+
+Reference frameworks & datasets bundled with the application
+------------------------------------------------------------
+
+MITRE ATT&CK(R)
+  A curated subset of ATT&CK tactic and technique identifiers and names is
+  bundled to power an offline typeahead while describing kill-chain steps.
+  ATT&CK(R) and related content are (C) The MITRE Corporation and are used under
+  the MITRE ATT&CK Terms of Use:
+  https://attack.mitre.org/resources/legal-and-branding/terms-of-use/
+  MITRE ATT&CK(R) is a registered trademark of The MITRE Corporation. This
+  project is independent and is not affiliated with, endorsed or sponsored by
+  The MITRE Corporation. (In the user interface these are labelled generically
+  as "TTP" - tactics, techniques and procedures.)
+
+NIS2 - Directive (EU) 2022/2555
+  The bundled NIS2 requirement titles are derived from Article 21(2) of
+  Directive (EU) 2022/2555 (NIS2). (C) European Union,
+  https://eur-lex.europa.eu - reused in accordance with Commission Decision
+  2011/833/EU on the reuse of Commission documents. The European Union does not
+  endorse this project. Only the official published texts on EUR-Lex are
+  authentic.
+
+NIST Cybersecurity Framework (CSF) 2.0 and NIST SP 800-53 Rev. 5
+  The bundled CSF function/category identifiers and the SP 800-53 control-family
+  identifiers are works of the U.S. Government (NIST) and are in the public
+  domain (17 U.S.C. 105). NIST does not endorse this project and no affiliation
+  or endorsement is implied.
+
+Not bundled: ISO/IEC 27001/27002, CIS Controls and BSI IT-Grundschutz catalogs
+are NOT distributed with Aurelian Lite. They can only be added by importing your
+own licensed copy of the respective catalog.
+
+
+On-device machine-learning models (downloaded at runtime, not bundled)
+----------------------------------------------------------------------
+
+Assisted extraction is optional. When enabled it downloads an embedding model on
+first use directly from the Hugging Face Hub into your browser; no model is
+distributed with Aurelian Lite. The built-in default models and their licenses:
+
+  Xenova/all-MiniLM-L6-v2   Apache-2.0  (port of
+                            sentence-transformers/all-MiniLM-L6-v2)
+  Xenova/bge-small-en-v1.5  MIT         (port of BAAI/bge-small-en-v1.5)
+
+Each model remains subject to its own license and to the Hugging Face Hub terms.
+Any additional model you add yourself is your responsibility.

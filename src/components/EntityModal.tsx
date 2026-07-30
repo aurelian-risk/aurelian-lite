@@ -16,6 +16,7 @@ export function EntityModal({ type, tax, study, record, onClose, initialValues }
   const { addEntity, updateEntity, deleteEntity } = useStore();
   const [draft, setDraft] = useState<Record<string, FieldValue>>(() => record ? { ...record.values } : { ...emptyValues(type), ...(initialValues ?? {}) });
   const [error, setError] = useState<string | null>(null);
+  const [refRec, setRefRec] = useState<EntityRecord | null>(null);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -27,6 +28,33 @@ export function EntityModal({ type, tax, study, record, onClose, initialValues }
     study.entities.filter((e) => e.type === typeKey && e.id !== record?.id)
       .map((e) => ({ id: e.id, label: recordTitle(getType(tax, e.type)!, e) }));
 
+  // Soft, non-restricting suggestions for a ref field: entities of the field's
+  // target type reachable through this record's OTHER relationships (e.g. a
+  // kill-chain step's target asset → via its operational scenario → strategic
+  // scenario → stakeholder access). Surfaced first; everything stays selectable.
+  const refIds = (vals: Record<string, FieldValue>, f: { type: string; key: string }): string[] => {
+    const v = vals[f.key];
+    return f.type === "multiref" ? (Array.isArray(v) ? (v as string[]) : []) : (typeof v === "string" && v ? [v] : []);
+  };
+  const suggestedFor = (field: { type: string; key: string; refType?: string }): Set<string> => {
+    const out = new Set<string>();
+    if (field.type !== "ref" || !field.refType) return out;
+    const seen = new Set<string>();
+    const queue: { id: string; d: number }[] = [];
+    for (const f of type.fields) if ((f.type === "ref" || f.type === "multiref") && f.key !== field.key)
+      for (const id of refIds(draft, f)) queue.push({ id, d: 1 });
+    while (queue.length) {
+      const { id, d } = queue.shift()!;
+      if (seen.has(id) || d > 5) continue; seen.add(id);
+      const e = study.entities.find((x) => x.id === id); if (!e) continue;
+      if (e.type === field.refType) out.add(e.id);
+      const et = getType(tax, e.type); if (!et) continue;
+      for (const f of et.fields) if (f.type === "ref" || f.type === "multiref")
+        for (const nid of refIds(e.values, f)) queue.push({ id: nid, d: d + 1 });
+    }
+    return out;
+  };
+
   const save = () => {
     const err = validateRecord(type, draft);
     if (err) { setError(err); return; }
@@ -36,7 +64,7 @@ export function EntityModal({ type, tax, study, record, onClose, initialValues }
   };
   const remove = () => { if (record) { deleteEntity(record.id); onClose(); } };
 
-  const incoming: { rel: string; from: string }[] = [];
+  const incoming: { rel: string; from: EntityRecord }[] = [];
   if (record) {
     for (const e of study.entities) {
       const et = getType(tax, e.type);
@@ -44,14 +72,15 @@ export function EntityModal({ type, tax, study, record, onClose, initialValues }
       for (const f of refFields(et)) {
         const v = e.values[f.key];
         const ids = f.type === "multiref" ? (Array.isArray(v) ? (v as string[]) : []) : v ? [v as string] : [];
-        if (ids.includes(record.id)) incoming.push({ rel: f.relation ?? f.label, from: recordTitle(et, e) });
+        if (ids.includes(record.id)) incoming.push({ rel: f.relation ?? f.label, from: e });
       }
     }
   }
 
   const patch = (key: string, v: FieldValue) => setDraft((d) => ({ ...d, [key]: v }));
 
-  return createPortal(
+  return (<>
+    {createPortal(
     <div className="overlay" onMouseDown={onClose}>
       <div className="modal-lg" onMouseDown={(e) => e.stopPropagation()}>
         <header className="modal-lg-head">
@@ -67,7 +96,7 @@ export function EntityModal({ type, tax, study, record, onClose, initialValues }
             {type.fields.map((f) => (
               <div className={"field" + (f.type === "textarea" || f.type === "multiref" ? " span2" : "")} key={f.key}>
                 <label>{f.label}{f.required && <span style={{ color: "var(--color-state-error)" }}> *</span>}</label>
-                <FieldInput field={f} value={draft[f.key] ?? null} onChange={(v) => patch(f.key, v)} refOptions={refOptions} />
+                <FieldInput field={f} value={draft[f.key] ?? null} onChange={(v) => patch(f.key, v)} refOptions={refOptions} siblings={draft} suggested={f.type === "ref" ? suggestedFor(f) : undefined} />
                 {f.help && <span className="hint">{f.help}</span>}
               </div>
             ))}
@@ -77,7 +106,14 @@ export function EntityModal({ type, tax, study, record, onClose, initialValues }
             <div className="detail-rels" style={{ marginTop: 8 }}>
               <span className="d-sub">Referenced by</span>
               <div className="multi">
-                {incoming.map((r, i) => <span className="chip" key={i}><span className="gi-rel-lbl">{r.rel}</span> {r.from}</span>)}
+                {incoming.map((r, i) => (
+                  <span className="chip clickable" key={i} role="button" tabIndex={0} title="Open"
+                    onClick={() => setRefRec(r.from)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRefRec(r.from); } }}>
+                    <span className="chip-lbl">{recordTitle(getType(tax, r.from.type)!, r.from)}</span>
+                    <span className="gi-rel-lbl">{r.rel} →</span>
+                  </span>
+                ))}
               </div>
             </div>
           )}
@@ -94,5 +130,7 @@ export function EntityModal({ type, tax, study, record, onClose, initialValues }
       </div>
     </div>,
     document.body,
-  );
+    )}
+    {refRec && <EntityModal type={getType(tax, refRec.type)!} tax={tax} study={study} record={refRec} onClose={() => setRefRec(null)} />}
+  </>);
 }
