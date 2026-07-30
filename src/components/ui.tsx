@@ -73,11 +73,15 @@ export function Dialog({
   );
 }
 
-function sevColor(value: number, max: number): string {
+// Colour a scale value on a good→bad ramp (green → amber → orange → red), the
+// same ramp as the kill-chain implementation bar. `positive` flips the direction:
+// for positive properties (implementation, resistance, …) a HIGH value is good.
+function sevColor(value: number, max: number, positive = false): string {
   const r = (value - 1) / Math.max(1, max - 1);
-  if (r < 0.34) return "var(--color-state-success)";
-  if (r < 0.67) return "var(--color-state-info)";
-  if (r < 0.9) return "var(--color-state-warning)";
+  const bad = positive ? 1 - r : r; // 0 = good, 1 = bad
+  if (bad < 0.25) return "var(--color-state-success)";
+  if (bad < 0.5) return "var(--color-state-warning)";
+  if (bad < 0.75) return "color-mix(in oklch, var(--color-state-warning) 45%, var(--color-state-error))";
   return "var(--color-state-error)";
 }
 
@@ -95,8 +99,8 @@ export function ScaleInput({
   );
 }
 
-export function ScaleBadge({ value, max, label }: { value: number; max: number; label: string }) {
-  const color = sevColor(value, max);
+export function ScaleBadge({ value, max, label, positive }: { value: number; max: number; label: string; positive?: boolean }) {
+  const color = sevColor(value, max, positive);
   return (
     <span className="badge" title={label}>
       <span className="scale">
@@ -109,23 +113,46 @@ export function ScaleBadge({ value, max, label }: { value: number; max: number; 
   );
 }
 
+// Horizontal track-and-fill bar for a scale value (the "treatment roadmap" format
+// from the viz demo): length encodes the value, colour follows the polarity ramp.
+// Used in the expanded detail view so the same indicator isn't shown twice as the
+// row's horizontal badge.
+export function ScaleBars({ value, max, label, positive }: { value: number; max: number; label: string; positive?: boolean }) {
+  const color = sevColor(value, max, positive);
+  return (
+    <span className="scalebars-wrap" title={label}>
+      <span className="hbar"><span className="hbar-fill" style={{ width: `${(value / max) * 100}%`, background: color }} /></span>
+      <span className="scalebars-lbl">{label}</span>
+    </span>
+  );
+}
+
 export function MultiSelect({
-  options, selected, onChange, placeholder = "add …", emptyHint,
+  options, selected, onChange, placeholder = "add …", emptyHint, onClickChip, renderChipExtra,
 }: {
   options: { id: string; label: string }[];
   selected: string[];
   onChange: (ids: string[]) => void;
   placeholder?: string;
   emptyHint?: string;
+  /** When set, the chip label becomes a button that opens the referenced entity. */
+  onClickChip?: (id: string) => void;
+  /** Optional extra content rendered inside each chip (e.g. a status mini-bar). */
+  renderChipExtra?: (id: string) => import("react").ReactNode;
 }) {
   const avail = options.filter((o) => !selected.includes(o.id));
-  const labelOf = (id: string) => options.find((o) => o.id === id)?.label ?? "—";
+  const labelOf = (id: string) => options.find((o) => o.id === id)?.label ?? "(?)";
   return (
     <div className="multi">
       {selected.map((id) => (
-        <span className="chip" key={id}>
-          {labelOf(id)}
-          <button type="button" onClick={() => onChange(selected.filter((x) => x !== id))} aria-label="remove">×</button>
+        <span className={"chip" + (onClickChip ? " clickable" : "")} key={id}
+          role={onClickChip ? "button" : undefined} tabIndex={onClickChip ? 0 : undefined}
+          title={onClickChip ? "Open" : undefined}
+          onClick={onClickChip ? () => onClickChip(id) : undefined}
+          onKeyDown={onClickChip ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClickChip(id); } } : undefined}>
+          <span className="chip-lbl">{labelOf(id)}</span>
+          {renderChipExtra?.(id)}
+          <button type="button" onClick={(e) => { e.stopPropagation(); onChange(selected.filter((x) => x !== id)); }} aria-label="remove">×</button>
         </span>
       ))}
       {options.length === 0 ? (

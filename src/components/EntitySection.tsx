@@ -3,35 +3,38 @@ import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue, Study, Taxonomy
 import { columnFields, getType, recordTitle, refFields, scaleLabel, scaleMax, titleField } from "../domain/taxonomy";
 import { useStore } from "../domain/store";
 import { EntityModal } from "./EntityModal";
-import { Icon, ScaleBadge } from "./ui";
+import { Icon, ScaleBadge, ScaleBars } from "./ui";
 
 const clip = (s: string, n = 90) => (s.length > n ? s.slice(0, n) + "…" : s);
 
-const NAME_COL = 300;
-const VALUE_COL = 190;
+const NAME_COL = 210;
+const VALUE_COL = 150;
 
-function FieldValueView({ field, value, tax, study }:
-  { field: FieldDef; value: FieldValue; tax: Taxonomy; study: Study }) {
+function FieldValueView({ field, value, tax, study, onOpen }:
+  { field: FieldDef; value: FieldValue; tax: Taxonomy; study: Study; onOpen?: (id: string) => void }) {
   const nameOf = (id: string) => {
     const r = study.entities.find((e) => e.id === id);
     const t = r && getType(tax, r.type);
     return r && t ? recordTitle(t, r) : "—";
   };
+  const chip = (id: string) => onOpen
+    ? <button className="chip link" key={id} title="Open" onClick={(e) => { e.stopPropagation(); onOpen(id); }}>{nameOf(id)}</button>
+    : <span className="chip" key={id}>{nameOf(id)}</span>;
   switch (field.type) {
     case "enum":
       return value ? <span className="badge">{String(value)}</span> : <span className="hint">—</span>;
     case "scale": {
       const v = typeof value === "number" ? value : 1;
-      return <ScaleBadge value={v} max={scaleMax(field)} label={scaleLabel(field, v)} />;
+      return <ScaleBadge value={v} max={scaleMax(field)} label={scaleLabel(field, v)} positive={field.polarity === "positive"} />;
     }
     case "boolean":
       return <span className="badge">{value ? "yes" : "no"}</span>;
     case "ref":
-      return typeof value === "string" && value ? <span className="chip">{nameOf(value)}</span> : <span className="hint">—</span>;
+      return typeof value === "string" && value ? chip(value) : <span className="hint">—</span>;
     case "multiref": {
       const ids = Array.isArray(value) ? (value as string[]) : [];
       return ids.length
-        ? <div className="multi">{ids.map((id) => <span className="chip" key={id}>{nameOf(id)}</span>)}</div>
+        ? <div className="multi">{ids.map(chip)}</div>
         : <span className="hint">—</span>;
     }
     default:
@@ -39,9 +42,9 @@ function FieldValueView({ field, value, tax, study }:
   }
 }
 
-export function EntitySection({ type, study, tax, color, draggableRows, renderDetailExtra }:
+export function EntitySection({ type, study, tax, color, draggableRows, renderDetailExtra, headerExtra, hideAdd }:
   { type: EntityTypeDef; study: Study; tax: Taxonomy; color: string;
-    draggableRows?: boolean; renderDetailExtra?: (r: EntityRecord) => ReactNode }) {
+    draggableRows?: boolean; renderDetailExtra?: (r: EntityRecord) => ReactNode; headerExtra?: ReactNode; hideAdd?: boolean }) {
   const deleteEntity = useStore((s) => s.deleteEntity);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [modal, setModal] = useState<{ typeKey: string; record: EntityRecord | null } | null>(null);
@@ -64,10 +67,13 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
         <h3>{type.labelPlural}</h3>
         <span className="badge">{items.length}</span>
         <span className="spacer" />
-        <button className="btn sm primary" disabled={!!addBlocked} title={addBlocked ?? undefined}
-          onClick={() => setModal({ typeKey: type.key, record: null })}>
-          <Icon.plus /> {type.label}
-        </button>
+        {headerExtra}
+        {!hideAdd && (
+          <button className="btn sm primary" disabled={!!addBlocked} title={addBlocked ?? undefined}
+            onClick={() => setModal({ typeKey: type.key, record: null })}>
+            <Icon.plus /> {type.label}
+          </button>
+        )}
       </div>
 
       {addBlocked && <div style={{ padding: "12px 16px 0" }}><div className="guide warn">{addBlocked}</div></div>}
@@ -76,7 +82,7 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
         {items.length === 0 ? (
           <div className="empty" style={{ padding: "28px 16px" }}>No {type.labelPlural.toLowerCase()} yet.</div>
         ) : (
-          <table className="tbl">
+          <table className="tbl" style={{ minWidth: NAME_COL + cols.length * VALUE_COL + 56 }}>
             <colgroup>
               <col style={{ width: NAME_COL }} />
               {cols.map((c) => <col key={c.key} style={{ width: VALUE_COL }} />)}
@@ -107,7 +113,7 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
                           <div className="desc">{clip(r.values.description)}</div>
                         )}
                       </td>
-                      {cols.map((c) => <td key={c.key}><FieldValueView field={c} value={r.values[c.key] ?? null} tax={tax} study={study} /></td>)}
+                      {cols.map((c) => <td key={c.key}><FieldValueView field={c} value={r.values[c.key] ?? null} tax={tax} study={study} onOpen={openEntity} /></td>)}
                       <td />
                     </tr>
                     {isOpen && (
@@ -141,6 +147,8 @@ function EntityDetail({ type, record, tax, study, color, onEdit, onDelete, onOpe
 }) {
   const title = titleField(type);
   const scalarFields = type.fields.filter((f) => f.key !== title && f.type !== "textarea" && f.type !== "ref" && f.type !== "multiref");
+  const scaleFields = scalarFields.filter((f) => f.type === "scale");
+  const otherScalars = scalarFields.filter((f) => f.type !== "scale");
   const relFields = refFields(type);
   const descFields = type.fields.filter((f) => f.type === "textarea");
 
@@ -177,8 +185,21 @@ function EntityDetail({ type, record, tax, study, color, onEdit, onDelete, onOpe
         return typeof v === "string" && v.trim() ? <p className="d-desc" key={f.key}>{v}</p> : null;
       })}
       {extra && <div className="detail-extra">{extra}</div>}
+      {scaleFields.length > 0 && (
+        <div className="d-scales">
+          {scaleFields.map((f) => {
+            const v = typeof record.values[f.key] === "number" ? (record.values[f.key] as number) : 1;
+            return (
+              <div className="d-scale-row" key={f.key}>
+                <span className="d-k">{f.label}</span>
+                <ScaleBars value={v} max={scaleMax(f)} label={scaleLabel(f, v)} positive={f.polarity === "positive"} />
+              </div>
+            );
+          })}
+        </div>
+      )}
       <div className="detail-grid">
-        {scalarFields.map((f) => (
+        {otherScalars.map((f) => (
           <div className="d-item" key={f.key}>
             <span className="d-k">{f.label}</span>
             <div className="d-v"><FieldValueView field={f} value={record.values[f.key] ?? null} tax={tax} study={study} /></div>
@@ -200,7 +221,7 @@ function EntityDetail({ type, record, tax, study, color, onEdit, onDelete, onOpe
           <span className="d-sub">Referenced by</span>
           <div className="multi">
             {incoming.map((r, i) => (
-              <span className="link-rel" key={i}><span className="gi-rel-lbl">{r.rel}</span> {linkChip(r.from)}</span>
+              <span className="link-rel" key={i}>{linkChip(r.from)} <span className="gi-rel-lbl">{r.rel} →</span></span>
             ))}
           </div>
         </div>

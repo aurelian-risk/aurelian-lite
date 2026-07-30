@@ -1,31 +1,32 @@
-Musterstadt Hospital — Information Security Assessment (test corpus)
+Kingsbridge Regional Hospital - Information Security Assessment
+Prepared for the Information Security Steering Committee, internal working document
 
-1. Scope and business assets
-The hospital depends on several business values. Patient records are the core information asset holding the electronic health records of all treated patients. Emergency care is the critical process of admitting and treating emergency patients. Billing is the function that invoices services to insurers and patients. Laboratory diagnostics is a clinical process that supports treatment decisions. Medical imaging is an information asset used across wards.
+Scope and business context
+Kingsbridge is a 540-bed acute hospital serving the wider county, and the electronic patient record is the clinical history everything else leans on. Patient records are the core information asset, the electronic health record of every treated patient. Emergency care is the critical process of admitting and treating emergency arrivals. Laboratory diagnostics is the clinical process behind treatment decisions. Medical imaging is an information asset shared across the wards. Billing is the function that invoices insurers and patients and keeps the trust solvent.
 
-2. Supporting assets
-The Hospital Information System (HIS) database server is the central software component that runs the patient database. The clinical network is the network segment connecting wards and networked medical devices. Nursing staff is the personnel that operates emergency and ward care. The backup NAS is a media component holding nightly backups of the patient database. The radiology workstation is a hardware component in the imaging department.
+Supporting assets
+The record itself lives on the Hospital Information System (HIS) database server, a clustered software component in the main server room. It is reached over the clinical network, the segment that also connects the wards and the networked medical devices. The radiology workstation in the imaging department is a hardware component that stores and forwards studies. Nightly copies are written to a backup NAS in the basement. None of this runs without people: the nursing staff on the night shift are, in practice, the component that keeps emergency care working when something breaks.
 
-3. Feared events
-Disclosure of patient data would be a breach of confidentiality, leaking health data to unauthorized parties. An outage of the emergency care systems would be a loss of availability that disrupts emergency treatment. Manipulation of billing data would be a breach of integrity causing financial loss. Loss of laboratory results would affect availability and traceability of clinical decisions.
+Feared events
+Three outcomes worry the committee most. Disclosure of patient data - health information leaking to unauthorised parties - is a loss of confidentiality with regulatory and reputational weight. An outage of the emergency care systems is a loss of availability that pushes triage back to paper and delays treatment. Manipulation of billing data is an integrity breach that would surface, months late, as an auditor's query rather than an alert. Loss of laboratory results would degrade both the availability and the traceability of clinical decisions.
 
-4. Risk sources
-Organized ransomware groups are financially motivated cybercriminals seeking extortion through encryption and data theft. A disgruntled insider is an employee with legitimate access and a grievance who may steal or sabotage data. State-sponsored actors are advanced persistent threats targeting critical healthcare infrastructure. Opportunistic attackers exploit exposed services without a specific target.
+Risk sources
+The hospital is not short of plausible adversaries. Financially motivated ransomware groups treat hospitals as reliable payers and pursue extortion through encryption and data theft. A disgruntled insider - an employee with legitimate access and a grievance - is a quieter but real threat. State-sponsored actors are patient, well-resourced groups that would target healthcare infrastructure and sit undetected for months. Opportunistic attackers simply exploit whatever exposed service they find, with no particular target in mind.
 
-5. Target objectives
-Extort a ransom by encrypting the clinical systems and demanding payment. Steal and sell patient data on illicit markets. Disrupt hospital operations to cause reputational and safety impact.
+Target objectives
+In interviews, three objectives came up repeatedly: to extort a ransom by encrypting the clinical systems and demanding payment; to steal and resell patient records on illicit markets; and to disrupt hospital operations for reputational or ideological effect.
 
-6. Ecosystem stakeholders
-The external IT maintenance provider is a third party with remote maintenance access to the core systems. The medical device supplier is a vendor servicing networked medical devices. The regional health authority is a regulator with oversight of data protection. A cloud backup service provider stores encrypted off-site backups.
+Ecosystem and stakeholders
+Several third parties hold standing access. An external IT maintenance provider keeps a remote-maintenance route into the core systems. A medical device supplier services the networked imaging devices and reaches them over the clinical network. A cloud backup service provider stores encrypted off-site copies. Overseeing all of it, the regional health authority is the regulator that expects breach notifications within tight deadlines.
 
-7. Strategic scenarios
-Ransomware via the maintenance access: an attacker compromises the maintenance provider and pivots into the clinical network, causing an outage of emergency care. Insider data exfiltration: an insider copies patient records to external media. APT via the imaging supplier: a state actor uses the device supplier as an entry vector to reach the clinical network.
+Strategic scenarios
+The scenario that dominates tabletop exercises is ransomware via the maintenance access: an attacker compromises the maintenance provider and pivots into the clinical network, causing an outage of emergency care. A second is insider data exfiltration, in which someone with legitimate access copies patient records to removable media. A third, slower one is an APT reaching the clinical network through the imaging supplier as an entry vector.
 
-8. Operational scenarios and kill-chain
-The ransomware operational scenario is an end-to-end kill-chain from phishing to encryption of the HIS. Reconnaissance identifies the maintenance provider staff. Initial access is gained through a spear-phishing email delivering a loader. Credential access harvests cached admin credentials on the maintenance host. Lateral movement pivots via remote services into the clinical network. Impact deploys ransomware to encrypt the HIS database. Exfiltration copies sensitive records before encryption.
+Operational scenario and kill-chain
+Walked step by step, the ransomware path is unglamorous. It opens with reconnaissance against the maintenance provider's staff, gains initial access through a spear-phishing email that delivers a loader, and moves to credential access by dumping cached administrator credentials on the maintenance host. From there the attacker performs lateral movement through the remote-desktop services the vendor uses legitimately, quietly carries out exfiltration of the most sensitive records, and only then reaches the noisy final act of impact: deploying ransomware to encrypt the HIS database.
 
-9. Security measures
-Enforce phishing-resistant multi-factor authentication on all remote maintenance access. Deploy endpoint detection and response on clinical endpoints to detect credential dumping and ransomware. Maintain offline, immutable backups tested for restore. Network segmentation isolates medical devices from the clinical core. Provide phishing-awareness training for staff. Apply least-privilege access for third-party maintenance accounts.
+Security measures
+The near-term programme reflects where the gaps are. Phishing-resistant multi-factor authentication is being enforced on every remote-maintenance route. Endpoint detection and response is being rolled out to the clinical endpoints to catch credential dumping and ransomware behaviour. The network is being segmented so that a foothold in imaging cannot simply reach the records core. Third-party maintenance accounts are being cut back to least-privilege access, and staff receive regular phishing-awareness training. The decisive but unglamorous measure is a set of offline, immutable backups that are actually restore-tested rather than assumed.
 
-10. Risk treatment notes
-Coverage analysis shows that lateral movement and impact are the least covered tactics. Residual risk remains high for the ransomware scenario until immutable backups and MFA are fully implemented.
+Risk treatment notes
+Coverage analysis shows the middle of the chain - lateral movement and credential access - is the thinnest, while the first and last steps are comparatively well seen. Residual risk on the ransomware scenario stays high until the immutable backups and the MFA rollout are genuinely complete; the review team is unwilling to record it as anything lower until then.

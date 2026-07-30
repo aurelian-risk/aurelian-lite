@@ -44,6 +44,23 @@ function splitSentences(paragraph: string): string[] {
   return paragraph.split(/(?<=[.!?])\s+(?=[A-Z(“"'\d])/).map((s) => s.trim()).filter(Boolean);
 }
 
+// Enumerations inside one sentence ("A, B, C and D", often after a ":" or dash)
+// → one item each, so a list-style sentence extracts as well as one-item-per-
+// sentence prose. Pure text heuristic, no schema knowledge.
+function enumItems(sentence: string): string[] {
+  let s = sentence.trim();
+  const intro = s.match(/[:\-–—]\s+(.+)$/); // a list usually follows a ":" or dash
+  if (intro) s = intro[1];
+  const parts = s.split(/\s*,\s*|\s+and\s+|\s+or\s+/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 3) return [];
+  const items = parts
+    .map((p) => p.replace(/^(the|a|an)\s+/i, "").replace(/[.;:]+$/, "").trim())
+    .filter((p) => p.length >= 3 && p.length <= 40 && p.split(/\s+/).length <= 5 && /[a-z]/i.test(p));
+  // Only a list when nearly every fragment was a short, noun-ish item (otherwise
+  // it is prose that merely contains commas).
+  return items.length >= 3 && items.length >= parts.length - 1 ? items : [];
+}
+
 /** Parse into sentence segments, each carrying its section heading (title dropped). */
 export function parseSegments(text: string): Seg[] {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -148,18 +165,28 @@ export async function extractByEmbeddings(tax: Taxonomy, text: string, opts: Ext
   for (const r of raws) {
     const t = types[r.bi];
     const seg = segs[r.i];
-    const values: Record<string, FieldValue> = {};
-    values[t.titleField ?? "name"] = shortName(seg.text);
+    const uncertain = r.margin < SOFT_MARGIN;
     const descF = t.fields.find((f) => f.type === "textarea");
-    if (descF) values[descF.key] = seg.text; else values.description = seg.text;
+    // Enum-field guesses from the sentence embedding (shared by all its items).
+    const enumVals: Record<string, FieldValue> = {};
     for (const f of t.fields) if (f.type === "enum" && f.options?.length) {
       const options = optByField.get(t.key + "|" + f.key) ?? [];
       let best = "", bs = -1;
       for (const o of options) { const s = cosine(segVecs[r.i], o.vec); if (s > bs) { bs = s; best = o.option; } }
-      if (best && bs >= 0.16) values[f.key] = best;
+      if (best && bs >= 0.16) enumVals[f.key] = best;
     }
+    // Only a CONFIDENT sentence that is a clear enumeration is expanded into one
+    // candidate per list item (assigned its type); prose is never split — so a
+    // list of assets extracts each item without misreading a comma-heavy sentence.
+    const items = !uncertain && r.b1 >= threshold + 0.06 ? enumItems(seg.text) : [];
+    const names = items.length >= 3 ? items : [shortName(seg.text)];
     const arr = out.get(t.key) ?? [];
-    arr.push({ name: shortName(seg.text), snippet: seg.text, score: r.b1, uncertain: r.margin < SOFT_MARGIN, typeKey: t.key, values });
+    for (const nm of names) {
+      const values: Record<string, FieldValue> = { ...enumVals };
+      values[t.titleField ?? "name"] = nm;
+      if (descF) values[descF.key] = seg.text; else values.description = seg.text;
+      arr.push({ name: nm, snippet: seg.text, score: r.b1, uncertain, typeKey: t.key, values });
+    }
     out.set(t.key, arr);
   }
 
