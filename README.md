@@ -1,15 +1,15 @@
 <div align="center">
   <h1>Aurelian Lite</h1>
-  <p><strong>Structured cyber &amp; information security analysis - threat modelling and risk quantification, offline in a single file</strong></p>
+  <p><strong>Cyber risk analysis, offline in a single file — EBIOS RM threat modelling, MITRE ATT&amp;CK kill chains and Monte-Carlo risk quantification</strong></p>
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-14b8a6.svg" alt="License: MIT"></a>
     <img src="https://img.shields.io/badge/runs-100%25%20offline-1f9d55" alt="Runs 100% offline">
   </p>
 </div>
 
-Aurelian Lite is a browser-based tool for **structured cyber and information security
-analysis** - covering **threat modelling and risk quantification** - with an approach
-**inspired by EBIOS Risk Manager (EBIOS RM) and ISO/IEC 27005**. It helps analysts move from
+Aurelian Lite is a browser-based tool for **cyber risk analysis** - structured cyber and
+information security analysis covering **threat modelling and risk quantification** - with an
+approach **inspired by EBIOS Risk Manager (EBIOS RM) and ISO/IEC 27005**. It helps analysts move from
 organisational context to a set of prioritised, defensible risk scenarios - modelling assets,
 threats, attack paths and treatments as one connected picture of an organisation's exposure.
 
