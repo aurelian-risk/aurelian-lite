@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "../domain/store";
-import { importFromFile, parseBundle } from "../domain/persistence";
+import { pickTextFile, parseBundle } from "../domain/persistence";
+import { isEncrypted, decryptText } from "../domain/crypto";
 import { importDocs } from "../domain/documents";
 import { setModelId } from "../domain/embeddings";
 import type { Bundle } from "../domain/types";
@@ -41,18 +42,27 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
     setTimeout(onClose, 800);
   };
 
+  // Encrypted exports (.enc) prompt for the password before parsing.
+  const resolveText = async (raw: string): Promise<string> => {
+    if (!isEncrypted(raw)) return raw;
+    const pw = prompt("This export is encrypted. Enter the password:");
+    if (pw == null) throw new Error("cancelled");
+    try { return await decryptText(raw, pw); }
+    catch { throw new Error("wrong password or corrupt file"); }
+  };
+
   const fromFile = async () => {
     setBusy(true); setStatus("");
-    try { await apply(await importFromFile()); }
-    catch (e) { if (e instanceof Error && e.message !== "No file selected") setStatus("Import failed: " + e.message); }
+    try { await apply(parseBundle(await resolveText(await pickTextFile()))); }
+    catch (e) { if (e instanceof Error && e.message !== "No file selected" && e.message !== "cancelled") setStatus("Import failed: " + e.message); }
     setBusy(false);
   };
 
   const fromText = async () => {
     if (!text.trim()) { setStatus("Paste JSON or YAML text first, or choose a file."); return; }
     setBusy(true); setStatus("");
-    try { await apply(parseBundle(text)); }
-    catch (e) { setStatus("Could not parse: " + (e instanceof Error ? e.message : String(e))); }
+    try { await apply(parseBundle(await resolveText(text))); }
+    catch (e) { if (!(e instanceof Error && e.message === "cancelled")) setStatus("Could not parse: " + (e instanceof Error ? e.message : String(e))); }
     setBusy(false);
   };
 

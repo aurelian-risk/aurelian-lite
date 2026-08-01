@@ -2,14 +2,14 @@
 // workshop/event-flow.tsx): rich per-scenario chains, availableSet AND-filter
 // with click-lockout, Sankey ribbons between highlighted cards (rAF-tracked),
 // and the FLIP flight that centres the connected cards into a column tree.
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { EntityRecord, Study, Taxonomy } from "../domain/types";
 import { getType, recordTitle, refFields } from "../domain/taxonomy";
 import { EntityInfoPanel } from "./EntityInfoPanel";
 import { EntityModal } from "./EntityModal";
 import { Icon } from "./ui";
 
-const EBIOS = ["strategic_scenario", "operational_scenario", "kill_chain_step", "business_asset", "supporting_asset", "feared_event", "risk_origin", "target_objective", "stakeholder", "security_measure", "fair_assessment"];
+const EBIOS = ["strategic_scenario", "operational_scenario", "kill_chain_step", "business_asset", "supporting_asset", "feared_event", "risk_origin", "target_objective", "stakeholder", "security_measure"];
 const badgeOf = (label: string) => label.split(/[\s-]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
 
 export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
@@ -20,6 +20,9 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
   const ribbonSvgRef = useRef<SVGSVGElement>(null);
   const warmedRef = useRef(false);
   const wasSelectingRef = useRef(false);
+  const centerRafRef = useRef(0);
+  const roRef = useRef<ResizeObserver | null>(null);
+  const scrollLeftRef = useRef(0);   // user's horizontal scroll, captured on click to survive the refine re-render
 
   const byId = useMemo(() => new Map(study.entities.map((e) => [e.id, e])), [study.entities]);
   const groupColor = (typeKey: string | undefined) => tax.groups.find((g) => g.key === getType(tax, typeKey ?? "")?.group)?.color ?? "var(--border-strong)";
@@ -58,7 +61,6 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
         for (const os of of("operational_scenario").filter((o) => o.values.strategic_scenario === ss.id)) {
           c.add(os.id);
           for (const st of of("kill_chain_step").filter((k) => k.values.operational_scenario === os.id)) { c.add(st.id); for (const sm of of("security_measure")) if ((sm.values.covers as string[] | undefined ?? []).includes(st.id)) c.add(sm.id); }
-          for (const fa of of("fair_assessment")) if (fa.values.operational_scenario === os.id) c.add(fa.id);
         }
         chains.push(c);
       }
@@ -132,17 +134,19 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
   useLayoutEffect(() => {
     const el = lanesRef.current;
     if (!el) return;
+    roRef.current?.disconnect(); roRef.current = null; cancelAnimationFrame(centerRafRef.current);
     const cards = Array.from(el.querySelectorAll<HTMLElement>("[data-nk]"));
     const headers = Array.from(el.querySelectorAll<HTMLElement>(".lane-header[data-lane]"));
     const reset = (c: HTMLElement) => { c.style.transform = ""; c.style.animationDelay = ""; c.classList.remove("ef-floating"); };
     const resetHeader = (h: HTMLElement) => { h.style.transform = ""; h.classList.remove("ef-lane-flown"); };
     if (!availableSet || selected.size === 0) { cards.forEach(reset); headers.forEach(resetHeader); wasSelectingRef.current = false; return; }
     headers.forEach(resetHeader);
-    // Reset the horizontal scroll to reveal the centred tree only when FIRST
-    // entering highlight mode - not on every refining click, which otherwise
-    // yanks the view back to the left while the user is scrolling around.
+    // Horizontal scroll: reveal the centred tree from its start only when FIRST
+    // entering highlight mode. On a refining click the React commit resets the
+    // scroller to the left, which yanks the view while the user is scrolling
+    // around - so restore the position captured at click time instead.
     const scroller = el.parentElement;
-    if (scroller && !wasSelectingRef.current) scroller.scrollLeft = 0;
+    if (scroller) scroller.scrollLeft = wasSelectingRef.current ? scrollLeftRef.current : 0;
     wasSelectingRef.current = true;
     const byLane = new Map<number, HTMLElement[]>();
     cards.forEach((c) => {
@@ -154,15 +158,31 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
     });
     const lanesSorted = [...byLane.keys()].sort((a, b) => a - b);
     if (!lanesSorted.length) return;
-    const connCards: HTMLElement[] = []; byLane.forEach((g) => g.forEach((c) => connCards.push(c)));
     const viewW = scroller ? scroller.clientWidth : el.clientWidth;
+    const viewH = scroller ? scroller.clientHeight : el.clientHeight;
     const vGap = 44, colW = 200, colGap = 58;
     const colHeight = (g: HTMLElement[]) => g.reduce((s, c) => s + c.offsetHeight + vGap, -vGap);
-    const naturalTop = Math.min(...connCards.map((c) => c.offsetTop));
-    const maxColH = Math.max(...lanesSorted.map((li) => colHeight(byLane.get(li)!)));
-    const centerY = naturalTop + maxColH / 2;
+    // Build the flown tree centred on the CURRENT viewport, and - when a node is
+    // focused - shift it vertically so that node lands on the viewport's vertical
+    // centre. The scroller only scrolls horizontally, so a tree placed at the
+    // cards' natural top can fly off-screen with no way to scroll to it; anchoring
+    // it to the viewport centre here keeps the clicked node (and its tree) in view.
+    // viewMidY is the viewport centre expressed in the cards' offsetTop space
+    // (offsetParent = .flow-lanes), i.e. corrected by the lane container's offset.
+    const laneOffset = scroller ? el.getBoundingClientRect().top - scroller.getBoundingClientRect().top : 0;
+    const viewMidY = viewH / 2 - laneOffset;
+    let centerY = viewMidY;
+    if (focused && availableSet.has(focused)) {
+      const fgroup = byLane.get(laneIndexOf(focused));
+      const fidx = fgroup ? fgroup.findIndex((c) => c.dataset.nk === focused) : -1;
+      if (fgroup && fidx >= 0) {
+        let prefix = 0; for (let j = 0; j < fidx; j++) prefix += fgroup[j].offsetHeight + vGap;
+        centerY = viewMidY + colHeight(fgroup) / 2 - prefix - fgroup[fidx].offsetHeight / 2;
+      }
+    }
     const totalW = lanesSorted.length * colW + (lanesSorted.length - 1) * colGap;
     const startX = Math.max(8, (viewW - totalW) / 2);
+    const flown: { c: HTMLElement; dx: number; dy: number }[] = [];
     lanesSorted.forEach((li, idx) => {
       const group = byLane.get(li)!;
       const colX = startX + idx * (colW + colGap);
@@ -180,11 +200,37 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
         c.style.transform = `translate(${dx}px, ${dy}px) scale(1.05)`;
         c.style.animationDelay = `${((c.offsetTop % 700) / 700).toFixed(2)}s`;
         c.classList.add("ef-floating");
+        flown.push({ c, dx, dy });
         cy += c.offsetHeight + vGap;
       }
     });
+    // The detail dock opens on the same click and GROWS over ~0.32s, shrinking the
+    // scroller after this layout pass. Re-centre the clicked node whenever the
+    // scroller's size settles (a ResizeObserver covers the whole dock animation and
+    // any window resize): shift every flown card so the node lands on the viewport's
+    // vertical centre, keeping it and its tree from flying off-screen. The shift is
+    // geometric - a card whose flown top is `cy` in .flow-lanes space renders at
+    // viewportY = laneTop + cy, so the clicked card is centred when
+    // cy = viewH/2 - laneOffset - h/2 - and measures only stable elements, so the
+    // running fly transition never corrupts the result.
+    const fc = flown.find((x) => x.c.dataset.nk === focused);
+    if (scroller && fc) {
+      const recenter = () => {
+        if (!fc.c.isConnected || !scroller.isConnected) return;
+        const laneOffset = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+        const cyWanted = scroller.clientHeight / 2 - laneOffset - fc.c.offsetHeight / 2;
+        const delta = cyWanted - (fc.dy + fc.c.offsetTop);
+        for (const g of flown) g.c.style.transform = `translate(${g.dx}px, ${(g.dy + delta).toFixed(1)}px) scale(1.05)`;
+      };
+      const ro = new ResizeObserver(recenter);   // fires once immediately, then on every size change
+      ro.observe(scroller);
+      roRef.current = ro;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [availableSet, selected, study.entities]);
+
+  // Tear down the re-centre observer / frame on unmount.
+  useEffect(() => () => { roRef.current?.disconnect(); cancelAnimationFrame(centerRafRef.current); }, []);
 
   // Mount warm-up so the first flight doesn't stutter (parent port).
   useLayoutEffect(() => {
@@ -202,6 +248,10 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
 
   // Click: always show details below; toggle selection only on valid picks.
   const clickNode = (id: string) => {
+    // Remember the current horizontal scroll so a refining click can restore it
+    // (the re-render otherwise snaps the scroller back to the left).
+    const sc = lanesRef.current?.parentElement;
+    if (sc) scrollLeftRef.current = sc.scrollLeft;
     setFocused(id);
     setSelected((prev) => {
       const next = new Set(prev);
@@ -261,6 +311,9 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
                     return (
                       <button key={e.id} data-nk={e.id} className={cls}
                         style={{ borderColor: active ? "transparent" : `color-mix(in oklch, ${color} 26%, transparent)`, background: bg }}
+                        // Focus the card without the browser scrolling it into view - that
+                        // scroll is what yanked the swimlane horizontally back to the left.
+                        onMouseDown={(ev) => { ev.preventDefault(); ev.currentTarget.focus({ preventScroll: true }); }}
                         onClick={() => clickNode(e.id)}>
                         <span className="node-badge" style={{ background: color }}>{badge}</span>
                         <span className="node-name">{recordTitle(type, e)}</span>

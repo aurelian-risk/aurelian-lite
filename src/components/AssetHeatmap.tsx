@@ -37,9 +37,15 @@ export function AssetHeatmap({ tax, study, businessType, supportingType, color }
       <div className="panel-head">
         <h3>Asset criticality</h3>
         <span className="spacer" />
-        <span className="hint">business assets by criticality - click to expand dependencies</span>
+        <div className="ah-legend" aria-hidden>
+          {Array.from({ length: max }, (_, i) => {
+            const v = i + 1, ratio = (v - 1) / Math.max(1, max - 1);
+            return <span key={v} className="ah-legend-item"><i style={{ background: badColor(ratio) }} />{scaleLabel(critF, v)}</span>;
+          })}
+        </div>
       </div>
-      <div className="panel-body">
+      <div className="panel-body" style={{ padding: "6px 16px 14px" }}>
+        <p className="ah-intro">Your business assets ranked by criticality (most critical first). Click a tile to reveal the supporting assets it depends on - so you can focus protection where a compromise would hurt most.</p>
         <div className="asset-heat">
           {tiles.map(({ e, v, supporters }) => {
             const ratio = (v - 1) / Math.max(1, max - 1);

@@ -4,6 +4,7 @@
 // taxonomy-only / data-only.
 import yaml from "js-yaml";
 import type { AppState, Bundle, Study, Taxonomy } from "./types";
+import { encryptText } from "./crypto";
 
 const DB_NAME = "ebios_offline";
 const STORE_NAME = "state";
@@ -101,10 +102,10 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
 
 export type ExportWhat = "bundle" | "taxonomy" | "data";
 
-export function exportToFile(
+export async function exportToFile(
   state: AppState, what: ExportWhat, format: Format,
-  opts?: { studies?: Study[]; nameHint?: string; documents?: Bundle["documents"]; settings?: Bundle["settings"] },
-): void {
+  opts?: { studies?: Study[]; nameHint?: string; documents?: Bundle["documents"]; settings?: Bundle["settings"]; password?: string },
+): Promise<void> {
   let payload: Bundle;
   if (what === "taxonomy") {
     payload = { kind: "ebios-taxonomy", version: 2, taxonomy: state.taxonomy };
@@ -120,7 +121,13 @@ export function exportToFile(
     if (opts?.settings) payload.settings = opts.settings;
   }
   const base = opts?.nameHint ? slug(opts.nameHint) : what;
-  download(`ebios-${base}.${format}`, serialize(payload, format), format);
+  const text = serialize(payload, format);
+  if (opts?.password) {                                 // strong AES-256-GCM encryption
+    const envelope = await encryptText(text, opts.password);
+    download(`ebios-${base}.${format}.enc`, envelope, "json");
+  } else {
+    download(`ebios-${base}.${format}`, text, format);
+  }
 }
 
 /** Parse arbitrary JSON/YAML text into a normalized Bundle. */
@@ -145,19 +152,17 @@ export function parseBundle(text: string): Bundle {
   return { kind, version: 2, taxonomy, studies, documents, settings };
 }
 
-export function importFromFile(): Promise<Bundle> {
+/** Pick a file and return its raw text (may be an encrypted envelope). */
+export function pickTextFile(): Promise<string> {
   return new Promise((resolve, reject) => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".json,.yaml,.yml,application/json,text/yaml";
+    input.accept = ".json,.yaml,.yml,.enc,application/json,text/yaml";
     input.onchange = () => {
       const file = input.files?.[0];
       if (!file) return reject(new Error("No file selected"));
       const reader = new FileReader();
-      reader.onload = () => {
-        try { resolve(parseBundle(String(reader.result))); }
-        catch (e) { reject(e instanceof Error ? e : new Error("Parse error")); }
-      };
+      reader.onload = () => resolve(String(reader.result));
       reader.onerror = () => reject(reader.error);
       reader.readAsText(file);
     };

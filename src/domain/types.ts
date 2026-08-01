@@ -78,6 +78,9 @@ export interface EntityRecord {
   values: Record<string, FieldValue>;
   createdAt: string;
   updatedAt: string;
+  /** Provenance for extracted entities: where they came from (e.g. a document name
+   *  and chunk). Meta, not a taxonomy field - shown as a source badge. */
+  source?: string;
 }
 
 export interface Study {
@@ -90,6 +93,21 @@ export interface Study {
   entities: EntityRecord[];
   /** Persisted canvas positions per entity id (shared with the graph view). */
   layout?: Record<ID, { x: number; y: number }>;
+  /** Persisted quantification tunings per operational-scenario id. The factors
+   *  themselves derive parametrically from the study inputs; this only stores the
+   *  study-specific MANUAL overrides (dragged factor ranges + PERT shape) so they
+   *  survive a reload. */
+  quant?: Record<ID, QuantTuning>;
+  /** Operational-scenario ids the user has opted in to quantify. Quantification is
+   *  opt-in per scenario so a half-finished study doesn't show premature monetary
+   *  values. Undefined = none added yet. */
+  quantScenarios?: ID[];
+}
+
+/** One operational scenario's manual quantification tuning. */
+export interface QuantTuning {
+  /** Per-factor override ranges (min/mode/max + optional PERT lambda), keyed by factor. */
+  overrides?: Record<string, { min: number; mode: number; max: number; lambda?: number }>;
 }
 
 /** Complete, swappable application state (taxonomy + data). */

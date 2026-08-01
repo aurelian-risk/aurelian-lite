@@ -1,6 +1,8 @@
 // Reference-document library. We hold lightweight REFERENCES (name + metadata)
 // and, for text-like files, cache the extracted plain text locally (offline, in
 // IndexedDB) so extraction can read it instantly without re-picking the file.
+import { isExtractable, extractFileText } from "./docextract";
+
 export interface RefDoc {
   id: string;
   studyId: string;  // documents belong to a specific study
@@ -132,38 +134,48 @@ export async function deleteDoc(id: string): Promise<void> {
   });
 }
 
-/** Pick a file for the library: metadata always, plus cached text for text-like files. */
+const readText = (file: File) => new Promise<string>((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(String(r.result ?? ""));
+  r.onerror = () => reject(r.error);
+  r.readAsText(file);
+});
+
+/** Best plain text for a file: read text-like files directly, extract Word/PDF, else "". */
+async function textOf(file: File): Promise<string> {
+  if (isTextLike(file.name, file.type)) return readText(file);
+  if (isExtractable(file.name, file.type)) return extractFileText(file);
+  return "";
+}
+
+/** Pick a file for the library: metadata always, plus cached text (incl. Word/PDF). */
 export function pickFileForRef(): Promise<{ name: string; mime: string; size: number; text?: string } | null> {
   return new Promise((resolve, reject) => {
     const input = document.createElement("input");
     input.type = "file";
-    input.onchange = () => {
+    input.accept = ".txt,.md,.markdown,.csv,.json,.log,.yaml,.yml,.docx,.pdf,text/*,application/pdf";
+    input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) { resolve(null); return; }
       const meta = { name: file.name, mime: file.type, size: file.size };
-      if (!isTextLike(file.name, file.type)) { resolve(meta); return; }
-      const reader = new FileReader();
-      reader.onload = () => resolve({ ...meta, text: String(reader.result ?? "") });
-      reader.onerror = () => reject(reader.error);
-      reader.readAsText(file);
+      try { const text = await textOf(file); resolve(text ? { ...meta, text } : meta); }
+      catch (e) { reject(e); }
     };
     input.click();
   });
 }
 
-/** Open a text file transiently for viewing — content is returned, not stored. */
+/** Open a document transiently for viewing/extraction — content returned, not stored. */
 export function viewTextTransient(): Promise<{ name: string; text: string } | null> {
   return new Promise((resolve, reject) => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".txt,.md,.markdown,.csv,.json,.log,.yaml,.yml,text/*";
-    input.onchange = () => {
+    input.accept = ".txt,.md,.markdown,.csv,.json,.log,.yaml,.yml,.docx,.pdf,text/*,application/pdf";
+    input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) { resolve(null); return; }
-      const reader = new FileReader();
-      reader.onload = () => resolve({ name: file.name, text: String(reader.result ?? "") });
-      reader.onerror = () => reject(reader.error);
-      reader.readAsText(file);
+      try { resolve({ name: file.name, text: await textOf(file) }); }
+      catch (e) { reject(e); }
     };
     input.click();
   });

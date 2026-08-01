@@ -14,6 +14,11 @@ NIST, on-device models) are in the separate [`NOTICE`](NOTICE) file.
 | `zustand` | MIT | Copyright (c) 2019 Paul Henschel |
 | `js-yaml` | MIT | Copyright (C) 2011-2015 by Vitaly Puzrin |
 | `d3-force` | ISC | Copyright 2010-2021 Mike Bostock |
+| `pdfjs-dist` (PDF.js) | Apache-2.0 | Copyright Mozilla Foundation and contributors |
+
+`pdfjs-dist` (Mozilla's PDF.js) is bundled so that Word/PDF document import can
+extract text fully offline, on the local device, with no network or CDN access.
+It runs on the main thread (no web worker) so it works from a `file://` URL.
 
 ## Loaded at runtime from a public CDN (NOT bundled)
 
@@ -68,9 +73,10 @@ PERFORMANCE OF THIS SOFTWARE.
 
 ### Apache License 2.0 (summary reference)
 
-Transformers.js is licensed under the Apache License, Version 2.0 ("License");
-you may not use that component except in compliance with the License. A copy of
-the License is available at:
+PDF.js (`pdfjs-dist`, bundled) and Transformers.js (runtime CDN) are licensed
+under the Apache License, Version 2.0 ("License"); you may not use those
+components except in compliance with the License. A copy of the License is
+available at:
 
     https://www.apache.org/licenses/LICENSE-2.0
 

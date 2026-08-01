@@ -7,7 +7,11 @@ import { Icon, ScaleBadge, ScaleBars } from "./ui";
 
 const clip = (s: string, n = 90) => (s.length > n ? s.slice(0, n) + "…" : s);
 
-const NAME_COL = 210;
+// The name/description column is sized as a fixed FRACTION of the table (≈ window)
+// width so it grows with the viewport, rather than a fixed pixel width. NAME_MIN is
+// only a px floor feeding the table's horizontal-scroll min-width on narrow screens.
+const NAME_PCT = 44;
+const NAME_MIN = 320;
 const VALUE_COL = 150;
 
 function FieldValueView({ field, value, tax, study, onOpen }:
@@ -33,9 +37,14 @@ function FieldValueView({ field, value, tax, study, onOpen }:
       return typeof value === "string" && value ? chip(value) : <span className="hint">—</span>;
     case "multiref": {
       const ids = Array.isArray(value) ? (value as string[]) : [];
-      return ids.length
-        ? <div className="multi">{ids.map(chip)}</div>
-        : <span className="hint">—</span>;
+      if (!ids.length) return <span className="hint">—</span>;
+      // Compact in the table: first two, then a count - the full list is in the row detail.
+      return (
+        <div className="multi">
+          {ids.slice(0, 2).map(chip)}
+          {ids.length > 2 && <span className="chip more" title={ids.map(nameOf).join(", ")}>+{ids.length - 2}</span>}
+        </div>
+      );
     }
     default:
       return <span>{clip(String(value ?? ""), 60) || <span className="hint">—</span>}</span>;
@@ -82,9 +91,9 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
         {items.length === 0 ? (
           <div className="empty" style={{ padding: "28px 16px" }}>No {type.labelPlural.toLowerCase()} yet.</div>
         ) : (
-          <table className="tbl" style={{ minWidth: NAME_COL + cols.length * VALUE_COL + 56 }}>
+          <table className="tbl" style={{ minWidth: NAME_MIN + cols.length * VALUE_COL + 56 }}>
             <colgroup>
-              <col style={{ width: NAME_COL }} />
+              <col style={{ width: `${NAME_PCT}%` }} />
               {cols.map((c) => <col key={c.key} style={{ width: VALUE_COL }} />)}
               <col />
             </colgroup>
@@ -180,6 +189,7 @@ function EntityDetail({ type, record, tax, study, color, onEdit, onDelete, onOpe
         <button className="btn sm" style={{ background: `color-mix(in oklch, ${color} 20%, transparent)`, borderColor: `color-mix(in oklch, ${color} 45%, transparent)`, color: "var(--fg)" }} onClick={onEdit}><Icon.edit /> Edit</button>
         <button className="btn sm danger" onClick={onDelete}><Icon.trash /> Delete</button>
       </div>
+      {record.source && <div className="ent-source" style={{ marginBottom: 8 }} title="Extracted from this source"><Icon.doc /> {record.source}</div>}
       {descFields.map((f) => {
         const v = record.values[f.key];
         return typeof v === "string" && v.trim() ? <p className="d-desc" key={f.key}>{v}</p> : null;

@@ -62,8 +62,33 @@ control that mitigates it.
 
 - **MITRE ATT&CK® kill-chain builder** - arrange attack steps onto tactic lanes to describe how
   an operation unfolds.
+- **Monte-Carlo risk quantification** - an own, offline simulation engine turns the qualitative
+  model into an annual-loss distribution (loss-exceedance curve, percentiles), with every factor
+  derived parametrically from the study inputs and traceable back to them. Opt-in per scenario.
+
+<div align="center">
+<img src="docs/quant.png" alt="Aurelian Lite - Monte-Carlo annual-loss distribution, inherent vs residual" width="860">
+</div>
+
+- **Treatment & residual risk** - record an ISO-27005-style decision (reduce / accept / share /
+  avoid) per risk; the residual position on the matrix is derived from your kill-chain coverage,
+  not typed in twice.
+- **Defense-in-depth coverage** - kill-chain step coverage weighted by each measure's
+  implementation level *and* lifecycle status, with saturation, so two half-done controls don't
+  read as fully mitigated.
+
+<div align="center">
+<img src="docs/coverage.png" alt="Aurelian Lite - coverage overview: defense-in-depth status ring and per-tactic coverage tiles" width="860">
+</div>
+
+- **Quality checks** - a completeness linter that surfaces gaps: uncovered kill-chain steps,
+  untreated risks, and more.
+- **Word / PDF corpus import** - extract document text fully offline (PDF via a bundled PDF.js,
+  `.docx` via the browser's own decompression) to seed a study, with automatic source attribution
+  on every extracted entity.
 - **Portable, private data** - export and import a complete study as JSON or YAML to move it
-  between machines. It is the only way your data ever travels.
+  between machines, optionally under **strong AES-256 encryption**. It is the only way your data
+  ever travels.
 
 ## Assisted extraction - a model that runs on your machine
 
