@@ -545,6 +545,28 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
     L.push("");
   }
 
+  // Kill-chain steps are nested under their operational scenario (not listed as one
+  // flat block). Detect the step type (a ref to a parent + an order number) and
+  // render each op scenario's ordered steps as an inline, styled sequence.
+  const kcStepType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
+  const kcParentF = kcStepType?.fields.find((f) => f.type === "ref" && f.refType);
+  const kcOrderF = kcStepType?.fields.find((f) => f.type === "number");
+  const kcTacticF = kcStepType?.fields.find((f) => f.type === "enum");
+  const kcTechF = kcStepType?.fields.find((f) => f.type === "text" && f.key !== (kcStepType?.titleField ?? "name"));
+  const kcOpKey = kcParentF?.refType;
+  const kcStepsHtml = (op: EntityRecord): string => {
+    if (!kcStepType || !kcParentF || !kcOrderF) return "";
+    const steps = study.entities.filter((s) => s.type === kcStepType.key && s.values[kcParentF.key] === op.id)
+      .sort((a, b) => Number(a.values[kcOrderF.key] || 0) - Number(b.values[kcOrderF.key] || 0));
+    if (!steps.length) return "";
+    const rows = steps.map((s, i) => {
+      const tac = kcTacticF ? String(s.values[kcTacticF.key] ?? "") : "";
+      const tech = kcTechF ? String(s.values[kcTechF.key] ?? "") : "";
+      return `<li><span class="kc-n">${i + 1}</span><span class="kc-body"><span class="kc-name">${esc(recordTitle(kcStepType, s))}</span>${tac ? `<span class="kc-tac">${esc(tac)}</span>` : ""}</span>${tech ? `<span class="kc-tech">${esc(tech)}</span>` : ""}</li>`;
+    }).join("");
+    return `<div class="kc-wrap"><div class="kc-h">Kill chain · ${steps.length} step${steps.length === 1 ? "" : "s"}</div><ol class="kc">${rows}</ol></div>`;
+  };
+
   for (const g of tax.groups) {
     const types = tax.entityTypes.filter((t) => t.group === g.key);
     if (!types.some((t) => study.entities.some((e) => e.type === t.key))) continue;
@@ -552,6 +574,7 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
     L.push(`## ${g.label}`);
     if (g.description) L.push(`_${g.description}._\n`);
     for (const t of types) {
+      if (kcStepType && t.key === kcStepType.key) continue;   // nested under its op scenario instead
       const items = study.entities.filter((e) => e.type === t.key);
       if (!items.length) continue;
       const titleKey = t.titleField ?? "name";
@@ -564,10 +587,18 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
         const attrs: string[] = [];
         for (const f of t.fields) {
           if (f.key === titleKey || f.key === descF?.key) continue;
-          const val = valueMd(f, e.values[f.key] ?? null, tax, study);
-          if (val !== "—") attrs.push(`**${f.label}:** ${val}`);
+          const raw = e.values[f.key];
+          const val = valueMd(f, raw ?? null, tax, study);
+          if (val === "—") continue;
+          if (f.type === "scale" && typeof raw === "number") {
+            // Encode the level so the HTML report can draw a mini level bar: (n/m)
+            // for "higher = worse" scales, [n/m] for "higher = better" (positive).
+            const br = f.polarity === "positive" ? `[${raw}/${scaleMax(f)}]` : `(${raw}/${scaleMax(f)})`;
+            attrs.push(`**${f.label}:** ${val} ${br}`);
+          } else attrs.push(`**${f.label}:** ${val}`);
         }
         if (attrs.length) L.push(attrs.map((a) => `- ${a}`).join("\n"));
+        if (kcStepType && t.key === kcOpKey) { const kc = kcStepsHtml(e); if (kc) L.push(kc); }
         L.push("");
       }
     }
@@ -690,9 +721,28 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
  *  links, lists, ``` fences incl. mermaid, `<div>`/SVG passthrough, hr, breaks). */
 function mdToHtml(md: string): string {
   const inline = (s: string) => esc(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
     .replace(/_([^_\n]+)_/g, "<em>$1</em>");
+  // Inside an entity card, an attribute list item ("**Label:** value") is rendered
+  // as a field chip: an uppercase caption plus an elevated value. A trailing (n/m)
+  // or [n/m] level marker becomes a small severity bar (see reportMarkdown).
+  const fieldLi = (content: string): string => {
+    const fm = content.match(/^\*\*(.+?):\*\*\s*(.*)$/);
+    if (!fm) return `<li>${inline(content)}</li>`;
+    const label = fm[1]; let value = fm[2], bar = "";
+    const lm = value.match(/^(.*?)\s*([([])(\d+)\/(\d+)[)\]]\s*$/);
+    if (lm) {
+      value = lm[1];
+      const n = +lm[3], max = +lm[4], positive = lm[2] === "[";
+      const bad = positive ? 1 - (max ? n / max : 0) : (max ? n / max : 0);   // 0 = good … 1 = bad
+      const sev = bad >= 0.75 ? "sev-hi" : bad >= 0.5 ? "sev-md" : bad >= 0.28 ? "sev-lo" : "sev-ok";
+      const segs = Array.from({ length: max }, (_, k) => `<i${k < n ? ' class="on"' : ""}></i>`).join("");
+      bar = `<span class="lvl ${sev}">${segs}</span>`;
+    }
+    return `<li class="fld"><span class="ek">${inline(label)}</span><span class="ev">${inline(value)}${bar}</span></li>`;
+  };
   const lines = md.split("\n");
   const out: string[] = [];
   const listStack: number[] = [];
@@ -728,7 +778,7 @@ function mdToHtml(md: string): string {
       const indent = li[1].length;
       if (!listStack.length || indent > listStack[listStack.length - 1]) { out.push("<ul>"); listStack.push(indent); }
       else closeLists(indent);
-      out.push(`<li>${inline(li[2])}</li>`);
+      out.push(inEnt ? fieldLi(li[2]) : `<li>${inline(li[2])}</li>`);
       i++; continue;
     }
     closeLists();
@@ -756,14 +806,46 @@ body { margin: 0; background: #eef0f4; color: #1c2430;
 .report h3 { font-size: 15.5px; margin: 22px 0 10px; color: #364152; }
 .report p { margin: 8px 0; }
 /* Entity cards - the per-workshop detail, made scannable */
-.report .ent { border: 1px solid #e6e9ef; border-left: 3px solid #cbd2dc; border-radius: 8px;
-  background: #fbfcfd; padding: 11px 15px; margin: 9px 0; break-inside: avoid; }
-.report .ent h4 { margin: 0; font-size: 14px; font-weight: 650; color: #1c2430; }
-.report .ent > p { margin: 4px 0 0; color: #55606f; font-size: 12.5px; }
-.report .ent ul { list-style: none; margin: 9px 0 0; padding: 8px 0 0; border-top: 1px solid #eceef2;
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 3px 22px; }
-.report .ent li { margin: 0; font-size: 12.5px; color: #3a4552; }
-.report .ent li strong { color: #6b7480; font-weight: 600; }
+.report .ent { border: 1px solid #e6e9ef; border-left: 3px solid #b9c2cf; border-radius: 9px;
+  background: linear-gradient(180deg,#fff, #fafbfd); padding: 13px 16px; margin: 10px 0;
+  box-shadow: 0 1px 3px rgba(20,30,50,0.05); break-inside: avoid; }
+.report .ent h4 { margin: 0; font-size: 14.5px; font-weight: 650; color: #1c2430; letter-spacing: -0.005em; }
+.report .ent > p { margin: 5px 0 0; color: #55606f; font-size: 12.5px; }
+.report .ent > em { display: inline-block; margin-top: 5px; font-size: 11px; color: #8a93a0; }
+/* attribute grid: each item is an elevated "field chip" (caption + value) */
+.report .ent ul { list-style: none; margin: 11px 0 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 7px; }
+.report .ent li { margin: 0; }
+.report .ent li.fld { display: flex; flex-direction: column; gap: 2px;
+  background: #fff; border: 1px solid #e7eaf0; border-radius: 7px; padding: 6px 10px;
+  box-shadow: 0 1px 2px rgba(20,30,50,0.045); }
+.report .ent li.fld .ek { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: #97a0ac; font-weight: 650; }
+.report .ent li.fld .ev { font-size: 13px; color: #2a3441; font-weight: 550;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* mini level bar (n of m segments), coloured by severity */
+.report .lvl { display: inline-flex; gap: 2px; }
+.report .lvl i { width: 7px; height: 8px; border-radius: 2px; background: #e5e8ee; }
+.report .lvl.sev-hi i.on { background: #d1495b; }
+.report .lvl.sev-md i.on { background: #dd7a33; }
+.report .lvl.sev-lo i.on { background: #e0a13a; }
+.report .lvl.sev-ok i.on { background: #2fa36f; }
+/* kill-chain steps nested under an operational scenario */
+.report .kc-wrap { margin-top: 11px; border-top: 1px solid #eceef2; padding-top: 10px; }
+.report .kc-h { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; color: #97a0ac;
+  font-weight: 650; margin-bottom: 7px; }
+.report ol.kc { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.report ol.kc li { display: flex; align-items: center; gap: 10px; background: #fff;
+  border: 1px solid #e7eaf0; border-radius: 7px; padding: 6px 10px; box-shadow: 0 1px 2px rgba(20,30,50,0.04); }
+.report .kc-n { flex: none; width: 21px; height: 21px; border-radius: 6px; background: #eef1f6;
+  color: #55606f; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.report .kc-body { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.report .kc-name { font-size: 12.5px; font-weight: 600; color: #2a3441; }
+.report .kc-tac { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; color: #99a1ad; font-weight: 600; }
+.report .kc-tech { flex: none; font-family: ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace; font-size: 11px;
+  background: #edf5f6; color: #1f7a8c; border: 1px solid #cfe4e7; border-radius: 5px; padding: 2px 7px; }
+.report code { font-family: ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace; font-size: 0.88em;
+  background: #edf5f6; color: #1f7a8c; border: 1px solid #d5e5e7; border-radius: 4px; padding: 1px 5px; }
 .report a { color: #1f7a8c; }
 .report ul { margin: 8px 0; padding-left: 22px; }
 .report li { margin: 3px 0; }

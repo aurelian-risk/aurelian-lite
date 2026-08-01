@@ -1,6 +1,6 @@
 {
   "name": "aurelian-lite",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Aurelian Lite - structured, offline cyber risk analysis (EBIOS RM) in a single portable HTML file",
   "type": "module",
   "license": "MIT",
@@ -10,16 +10,19 @@
     "url": "https://github.com/aurelian-risk/aurelian-lite.git"
   },
   "keywords": [
-    "ebios-rm",
-    "risk-analysis",
-    "cybersecurity",
+    "cyber-risk-analysis",
+    "cyber-risk",
+    "risk-quantification",
+    "risk-management",
     "threat-modeling",
+    "threat-intelligence",
     "mitre-attack",
-    "offline",
-    "single-file",
-    "privacy",
-    "react",
-    "vite"
+    "ebios-rm",
+    "iso-27005",
+    "cybersecurity",
+    "information-security",
+    "kill-chain",
+    "monte-carlo"
   ],
   "scripts": {
     "dev": "vite",
