@@ -27,8 +27,14 @@ page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
 try {
   await page.goto(file);
   await page.waitForSelector("#root .app", { timeout: 10000 });
-  // Fresh profile → empty dashboard, no active study → Documents is study-scoped.
-  ok("documents nav disabled without a study", await page.locator(".sidebar .nav-item:disabled", { hasText: "Documents" }).count() > 0);
+  // Fresh profile → empty dashboard. Documents is reachable even without a study
+  // (importing a corpus bootstraps one); the nav must be enabled.
+  ok("documents nav enabled without a study", await page.locator(".sidebar .nav-item:not(:disabled)", { hasText: "Documents" }).count() > 0);
+  await page.locator(".sidebar .nav-item", { hasText: "Documents" }).click();
+  await page.waitForTimeout(150);
+  ok("documents import CTA without a study", (await page.locator(".empty", { hasText: "Import a document corpus" }).count()) > 0);
+  await page.locator(".sidebar .nav-item", { hasText: "Studies" }).click();
+  await page.waitForTimeout(150);
   await page.getByText("Load sample study").click();
   await page.waitForSelector(".ws-tabs", { timeout: 10000 });
 
@@ -41,7 +47,8 @@ try {
     ["Strategic Scenarios", "Ransomware via maintenance access"],
     ["Operational Scenarios", "Phishing the maintenance provider"],
     ["Treatment", "MFA on remote maintenance access"],
-    ["Risk Quantification", "clinical ransomware outage"],
+    ["Treatment", "Treat: Ransomware via maintenance access"],
+    ["Risk Quantification", "Ransomware encryption of clinical systems"],
   ];
   for (const [tab, needle] of tabExpect) {
     await page.locator(".ws-tab", { hasText: tab }).click();
@@ -54,7 +61,7 @@ try {
   // Row click expands inline detail; clicking a linked item opens the popup
   await page.locator(".ws-tab", { hasText: "Foundation" }).click();
   await page.waitForTimeout(200);
-  await page.locator(".tbl tbody tr.row-clickable").first().click();
+  await page.locator(".tbl tbody tr.row-clickable").first().locator(".name").click();
   await page.waitForTimeout(200);
   ok("row expands inline detail", await page.locator(".detail").count() > 0);
   await page.screenshot({ path: `${shots}/RowDetail.png` });
@@ -74,11 +81,17 @@ try {
   await page.locator(".ws-tab", { hasText: "Strategic Scenarios" }).click();
   await page.waitForTimeout(200);
   ok("risk matrix in WS3", (await page.locator(".risk-matrix").count()) > 0);
+  // inherent↔residual toggle (fed by WS5 risk treatments)
+  ok("risk matrix has residual toggle", await page.locator(".panel:has(.risk-matrix) .seg-btn", { hasText: "Residual" }).count() > 0);
+  await page.locator(".panel:has(.risk-matrix) .seg-btn", { hasText: "Residual" }).click();
+  await page.waitForTimeout(150);
+  ok("residual mode marks treated risks", (await page.locator(".rm-treated").count()) >= 2);
+  await page.locator(".panel:has(.risk-matrix) .seg-btn", { hasText: "Inherent" }).click();
   await page.locator(".ws-tab", { hasText: "Operational Scenarios" }).click();
   await page.waitForTimeout(200);
   ok("kill-chain steps table has draggable rows", (await page.locator(".tbl tbody tr.row-drag").count()) > 0);
   // expand the op-scenario row to reveal its embedded kill-chain lane
-  await page.locator(".tbl tbody tr.row-clickable").first().click();
+  await page.locator(".tbl tbody tr.row-clickable").first().locator(".name").click();
   await page.waitForTimeout(250);
   ok("kill-chain tiles inside op-scenario row", (await page.locator(".kc-tile").count()) > 5);
   ok("kill-chain steps placed on tiles", (await page.locator(".kc-tile .kc-step").count()) > 0);
@@ -97,6 +110,13 @@ try {
   await page.waitForTimeout(300);
   ok('node click docks info panel under the graph', await page.locator('.detail-dock .info-panel .ip-title').count() > 0);
   await page.screenshot({ path: `${shots}/GraphInfo.png` });
+
+  // Quality-checks (completeness linter) view
+  await page.locator(".ws-tab", { hasText: "Checks" }).click();
+  await page.waitForTimeout(200);
+  ok("checks view lists gaps", (await page.locator(".lint-card").count()) > 0);
+  ok("uncovered kill-chain step flagged", (await page.locator(".lint-card .lint-title", { hasText: "Kill-chain steps with no security measure" }).count()) > 0);
+  await page.screenshot({ path: `${shots}/Checks.png` });
 
   // Copy-for-LLM button present on a workshop
   await page.locator(".ws-tab", { hasText: "Foundation" }).click();

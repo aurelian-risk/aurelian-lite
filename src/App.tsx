@@ -38,7 +38,7 @@ function Sidebar({ route, go, hasStudy }: { route: Route; go: (r: Route) => void
         <span className="num">S</span> Studies
       </button>
       <button className={"nav-item" + (route === "documents" ? " active" : "")} onClick={() => go("documents")}
-        disabled={!hasStudy} title={hasStudy ? "Documents for the active study" : "Open a study to manage its documents"}>
+        title={hasStudy ? "Documents for the active study" : "Import a document corpus (creates a study)"}>
         <span className="num"><Icon.doc /></span> Documents
       </button>
       <button className={"nav-item" + (route === "model" ? " active" : "")} onClick={() => go("model")}>
@@ -73,7 +73,7 @@ export default function App() {
   return (
     <div className="app">
       <Sidebar route={route} go={setRoute} hasStudy={!!activeStudyId} />
-      {route === "documents" && activeStudyId ? (
+      {route === "documents" ? (
         <div className="main"><DocumentsView /></div>
       ) : route === "model" ? (
         <div className="main"><ModelView /></div>

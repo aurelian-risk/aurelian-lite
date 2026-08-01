@@ -6,6 +6,7 @@ import { useStore } from "../domain/store";
 import { exportToFile, type ExportWhat, type Format } from "../domain/persistence";
 import { exportDocs } from "../domain/documents";
 import { getModelId } from "../domain/embeddings";
+import { cryptoAvailable } from "../domain/crypto";
 import { ImportDialog } from "./ImportDialog";
 import { Icon } from "./ui";
 
@@ -13,12 +14,16 @@ export function DataMenu({ studyScope, label = "Data" }: { studyScope?: Study; l
   const [open, setOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   const [format, setFormat] = useState<Format>("yaml");
+  const [encrypt, setEncrypt] = useState(false);
+  const [password, setPassword] = useState("");
   const store = useStore();
 
   const scoped = studyScope ? [studyScope] : undefined;
   const nameHint = studyScope?.name;
+  const canEncrypt = cryptoAvailable();
 
   const doExport = async (what: ExportWhat) => {
+    if (encrypt && password.length < 4) { alert("Enter a password (at least 4 characters) to encrypt the export."); return; }
     setOpen(false);
     // A full/data export is a 100% portable session: include the referenced
     // documents (with cached text) and the settings, not just the study data.
@@ -27,7 +32,8 @@ export function DataMenu({ studyScope, label = "Data" }: { studyScope?: Study; l
       documents = await exportDocs(studyScope ? [studyScope.id] : undefined);
       settings = { modelId: getModelId(), theme: document.documentElement.classList.contains("light") ? "light" as const : "dark" as const };
     }
-    exportToFile(store.exportState(), what, format, { studies: scoped, nameHint, documents, settings });
+    await exportToFile(store.exportState(), what, format, { studies: scoped, nameHint, documents, settings, password: encrypt ? password : undefined });
+    if (encrypt) setPassword("");
   };
 
   return (
@@ -57,6 +63,19 @@ export function DataMenu({ studyScope, label = "Data" }: { studyScope?: Study; l
             <button className="menu-item" onClick={() => doExport("taxonomy")}>
               <Icon.schema /> Taxonomy <span className="menu-hint">schema only</span>
             </button>
+            {canEncrypt && (
+              <>
+                <div className="menu-label">Protection</div>
+                <div className="seg">
+                  <button className={"seg-btn" + (!encrypt ? " on" : "")} onClick={() => setEncrypt(false)}>Plain</button>
+                  <button className={"seg-btn" + (encrypt ? " on" : "")} onClick={() => setEncrypt(true)}>Encrypted</button>
+                </div>
+                {encrypt && (
+                  <input className="menu-pw" type="password" autoComplete="new-password" placeholder="Password (AES-256)"
+                    value={password} onChange={(e) => setPassword(e.target.value)} onClick={(e) => e.stopPropagation()} />
+                )}
+              </>
+            )}
             <div className="menu-sep" />
             <button className="menu-item" onClick={() => { setOpen(false); setImporting(true); }}>
               <Icon.upload /> Import data… <span className="menu-hint">file or paste</span>

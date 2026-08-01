@@ -2,7 +2,7 @@
 // content is NOT ingested into the browser. Files can be opened transiently in
 // a viewer, but nothing is stored. (LLM extraction will read content on demand.)
 import { useEffect, useState } from "react";
-import { useActiveStudy } from "../domain/store";
+import { useActiveStudy, useStore } from "../domain/store";
 import { addRef, deleteDoc, listDocs, pickFileForRef, type RefDoc } from "../domain/documents";
 import { ExtractionDialog } from "./ExtractionDialog";
 import { Icon } from "./ui";
@@ -12,25 +12,33 @@ const fmtDate = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "2
 
 export function DocumentsView() {
   const study = useActiveStudy();
+  const { createStudy, setActiveStudy } = useStore();
   const [docs, setDocs] = useState<RefDoc[]>([]);
   const [extract, setExtract] = useState<{ name: string; docId?: string } | null>(null);
 
   const refresh = () => { if (study) listDocs(study.id).then(setDocs); };
   useEffect(() => { setDocs([]); refresh(); }, [study?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Import works even without a study: the first document bootstraps a study to
+  // hold the corpus (documents are attached to a study).
   const addReference = async () => {
-    if (!study) return;
     const m = await pickFileForRef();
     if (!m) return;
-    await addRef(study.id, m.name, m.mime, m.size, m.text);
-    refresh();
+    let sid = study?.id;
+    if (!sid) { sid = createStudy(m.name.replace(/\.[^.]+$/, "").slice(0, 60) || "Document corpus"); setActiveStudy(sid); }
+    await addRef(sid, m.name, m.mime, m.size, m.text);
+    listDocs(sid).then(setDocs);
   };
 
   if (!study) {
     return (
       <div className="content">
         <div className="page-head"><div style={{ flex: 1 }}><div className="eyebrow">Reference library</div><h1 className="grad-text">Documents</h1></div></div>
-        <div className="empty"><h3>No active study</h3>Documents are managed per study. Open a study first, then add its reference documents here.</div>
+        <div className="empty">
+          <h3>Import a document corpus</h3>
+          Add Word, PDF or text files (text is extracted locally, fully offline). The first document starts a new study to hold the corpus.
+          <div style={{ marginTop: 14 }}><button className="btn primary" onClick={addReference}><Icon.plus /> Add document…</button></div>
+        </div>
       </div>
     );
   }
@@ -46,7 +54,7 @@ export function DocumentsView() {
         <div style={{ flex: 1 }}>
           <div className="eyebrow">Reference library · {study.name}</div>
           <h1 className="grad-text">Documents</h1>
-          <div className="meta" style={{ color: "var(--fg-subtle)" }}>{docs.length} reference{docs.length === 1 ? "" : "s"} for this study · text files cached locally for extraction</div>
+          <div className="meta" style={{ color: "var(--fg-subtle)" }}>{docs.length} reference{docs.length === 1 ? "" : "s"} for this study · Word / PDF / text - extracted &amp; cached locally for extraction</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn" onClick={() => setExtract({ name: "" })}><Icon.spark /> Extract</button>

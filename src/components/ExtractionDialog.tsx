@@ -54,10 +54,11 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
   const addSelected = () => {
     if (!active || !groups) return;
     let added = 0;
+    const src = name.trim() || "pasted text";           // automatic source attribution
     for (const g of groups) g.candidates.forEach((c, i) => {
-      if (sel.has(g.typeKey + ":" + i)) { addEntity(g.typeKey, c.values); added++; }
+      if (sel.has(g.typeKey + ":" + i)) { addEntity(g.typeKey, c.values, src); added++; }
     });
-    alert(`Added ${added} entities to “${active.name}”.`);
+    alert(`Added ${added} entities to “${active.name}” (source: ${src}).`);
     onClose();
   };
 

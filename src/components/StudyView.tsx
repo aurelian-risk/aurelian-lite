@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import type { Study, Taxonomy } from "../domain/types";
 import { useActiveStudy, useStore } from "../domain/store";
 import { workshopMarkdown, reportMarkdown, reportHtml, openReportHtml, downloadText, copyText } from "../domain/clipboard";
@@ -11,8 +11,10 @@ import { MitigationCharts } from "./MitigationCharts";
 import { FrameworkRadar } from "./FrameworkRadar";
 import { ThreatActorRadar } from "./ThreatActorRadar";
 import { AssetHeatmap } from "./AssetHeatmap";
+import { QuantificationView } from "./QuantificationView";
 import { RequirementAdd } from "./RequirementAdd";
 import { GraphView } from "./GraphView";
+import { CompletenessView } from "./CompletenessView";
 import { CanvasView } from "./CanvasView";
 import { DataMenu } from "./DataMenu";
 import { Icon } from "./ui";
@@ -103,11 +105,17 @@ export function StudyView({ onBack }: { onBack: () => void }) {
           <span className="num"><Icon.graph /></span>
           <span className="t-title">Graph</span>
         </button>
+        <button className={"ws-tab plain" + (tab === "checks" ? " active" : "")} onClick={() => setTab("checks")} title="Analysis completeness checks">
+          <span className="num"><Icon.check /></span>
+          <span className="t-title">Checks</span>
+        </button>
       </div>
 
       <div className="content">
         {tab === "graph" ? (
           <GraphView tax={tax} study={study} />
+        ) : tab === "checks" ? (
+          <CompletenessView tax={tax} study={study} />
         ) : tab === "canvas" ? (
           <CanvasView tax={tax} study={study} />
         ) : activeGroup ? (
@@ -128,48 +136,52 @@ export function StudyView({ onBack }: { onBack: () => void }) {
               return mt ? <RiskMatrix tax={tax} study={study} type={mt} color={activeGroup.color} /> : null;
             })()}
             {(() => {
-              // WS4: the kill-chain lane is embedded in each operational scenario's
-              // expanded row; the kill-chain-steps table stays and its rows are
-              // draggable onto the tactic tiles.
-              const stepT = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
-              const opKey = stepT?.fields.find((f) => f.type === "ref" && f.refType)?.refType;
-              return tax.entityTypes.filter((t) => t.group === activeGroup.key).map((t) => {
-                const isReq = t.fields.some((f) => f.key === "framework");
-                return (
-                  <EntitySection key={t.key} type={t} study={study} tax={tax} color={activeGroup.color}
-                    draggableRows={t.key === stepT?.key}
-                    hideAdd={isReq}
-                    headerExtra={isReq ? <RequirementAdd tax={tax} study={study} reqType={t} /> : undefined}
-                    renderDetailExtra={t.key === opKey ? (r) => <KillChainLane tax={tax} study={study} op={r} color={activeGroup.color} /> : undefined} />
-                );
-              });
-            })()}
-            {(() => {
-              // WS1: asset-criticality heatmap. The "business" asset type has a scale
-              // and is referenced by a sibling's multiref (its supporting assets).
-              const gts = tax.entityTypes.filter((t) => t.group === activeGroup.key);
-              const biz = gts.find((t) => t.fields.some((f) => f.type === "scale") && gts.some((o) => o.fields.some((f) => f.type === "multiref" && f.refType === t.key)));
-              if (!biz) return null;
-              const supp = gts.find((t) => t.fields.some((f) => f.type === "multiref" && f.refType === biz.key)) ?? null;
-              return <AssetHeatmap tax={tax} study={study} businessType={biz} supportingType={supp} color={activeGroup.color} />;
-            })()}
-            {(() => {
-              // WS2: threat-landscape radar over the risk-source actors.
-              const actorT = tax.entityTypes.find((t) => t.group === activeGroup.key && t.fields.some((f) => f.type === "scale" && f.key === "capability"));
-              return actorT ? <ThreatActorRadar study={study} actorType={actorT} color={activeGroup.color} /> : null;
-            })()}
-            {(() => {
-              // WS5: coverage overview (ring + tactic heatmap) ABOVE the per-step
-              // mitigation assignment.
+              // WS5: coverage overview (ring + tactic heatmap) ABOVE the tables.
               const stepT = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
               const hasMeasure = tax.entityTypes.some((t) => t.group === activeGroup.key && t.fields.some((f) => f.type === "multiref" && f.refType === stepT?.key));
               return hasMeasure ? <MitigationCharts tax={tax} study={study} color={activeGroup.color} /> : null;
             })()}
             {(() => {
-              // Kill-chain mitigation — rendered BELOW the security-measures table (WS5).
+              // WS5: kill-chain mitigation (per-step measure assignment) ABOVE the tables.
               const stepT = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
               const hasMeasure = tax.entityTypes.some((t) => t.group === activeGroup.key && t.fields.some((f) => f.type === "multiref" && f.refType === stepT?.key));
               return hasMeasure ? <KillChainMitigation tax={tax} study={study} color={activeGroup.color} /> : null;
+            })()}
+            {(() => {
+              // WS4: the kill-chain lane is embedded in each operational scenario's
+              // expanded row; the kill-chain-steps table stays and its rows are
+              // draggable onto the tactic tiles.
+              const stepT = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
+              const opKey = stepT?.fields.find((f) => f.type === "ref" && f.refType)?.refType;
+              // WS1: the asset-criticality heatmap sits BETWEEN the business-asset
+              // table and its supporting-asset table. "business" = a type with a
+              // scale that a sibling's multiref points at (its supporting assets).
+              const gts = tax.entityTypes.filter((t) => t.group === activeGroup.key);
+              const biz = gts.find((t) => t.fields.some((f) => f.type === "scale") && gts.some((o) => o.fields.some((f) => f.type === "multiref" && f.refType === t.key)));
+              const supp = biz ? (gts.find((t) => t.fields.some((f) => f.type === "multiref" && f.refType === biz.key)) ?? null) : null;
+              return gts.map((t) => {
+                const isReq = t.fields.some((f) => f.key === "framework");
+                return (
+                  <Fragment key={t.key}>
+                    <EntitySection type={t} study={study} tax={tax} color={activeGroup.color}
+                      draggableRows={t.key === stepT?.key}
+                      hideAdd={isReq}
+                      headerExtra={isReq ? <RequirementAdd tax={tax} study={study} reqType={t} /> : undefined}
+                      renderDetailExtra={t.key === opKey ? (r) => <KillChainLane tax={tax} study={study} op={r} color={activeGroup.color} /> : undefined} />
+                    {biz && t.key === biz.key && (
+                      <AssetHeatmap tax={tax} study={study} businessType={biz} supportingType={supp} color={activeGroup.color} />
+                    )}
+                  </Fragment>
+                );
+              });
+            })()}
+            {/* Risk Quantification: the derived Monte-Carlo tuner. Purely parametric
+                (from the qualitative model), so the group needs no manual entity. */}
+            {activeGroup.key === "quant" && <QuantificationView tax={tax} study={study} color={activeGroup.color} />}
+            {(() => {
+              // WS2: threat-landscape radar over the risk-source actors.
+              const actorT = tax.entityTypes.find((t) => t.group === activeGroup.key && t.fields.some((f) => f.type === "scale" && f.key === "capability"));
+              return actorT ? <ThreatActorRadar study={study} actorType={actorT} color={activeGroup.color} /> : null;
             })()}
             {(() => {
               // Compliance: framework-coverage radar ABOVE the traceability matrix.

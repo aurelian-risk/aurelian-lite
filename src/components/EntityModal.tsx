@@ -9,20 +9,22 @@ import { useStore } from "../domain/store";
 import { FieldInput, type RefOption } from "./FieldInput";
 import { Icon } from "./ui";
 
-export function EntityModal({ type, tax, study, record, onClose, initialValues }: {
+export function EntityModal({ type, tax, study, record, onClose, onBack, backLabel, initialValues }: {
   type: EntityTypeDef; tax: Taxonomy; study: Study; record: EntityRecord | null; onClose: () => void;
-  initialValues?: Record<string, FieldValue>;
+  onBack?: () => void; backLabel?: string; initialValues?: Record<string, FieldValue>;
 }) {
   const { addEntity, updateEntity, deleteEntity } = useStore();
   const [draft, setDraft] = useState<Record<string, FieldValue>>(() => record ? { ...record.values } : { ...emptyValues(type), ...(initialValues ?? {}) });
   const [error, setError] = useState<string | null>(null);
   const [refRec, setRefRec] = useState<EntityRecord | null>(null);
 
+  // Escape steps back one level (to the previous entity or the factor trace);
+  // when a nested entity is open here, let that innermost modal handle it.
   useEffect(() => {
-    const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape" && !refRec) { (onBack ?? onClose)(); } };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  }, [onClose, onBack, refRec]);
 
   const refOptions = (typeKey: string): RefOption[] =>
     study.entities.filter((e) => e.type === typeKey && e.id !== record?.id)
@@ -84,9 +86,11 @@ export function EntityModal({ type, tax, study, record, onClose, initialValues }
     <div className="overlay" onMouseDown={onClose}>
       <div className="modal-lg" onMouseDown={(e) => e.stopPropagation()}>
         <header className="modal-lg-head">
+          {onBack && <button className="btn ghost sm em-back" onClick={onBack} title="Back">‹ {backLabel ?? "Back"}</button>}
           <div style={{ flex: 1 }}>
             <div className="dialog-sub" style={{ margin: 0 }}>{type.label}</div>
             <h2 style={{ fontSize: 19 }}>{record ? recordTitle(type, record) : `New ${type.label}`}</h2>
+            {record?.source && <div className="ent-source" title="Extracted from this source"><Icon.doc /> {record.source}</div>}
           </div>
           <button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button>
         </header>
@@ -131,6 +135,7 @@ export function EntityModal({ type, tax, study, record, onClose, initialValues }
     </div>,
     document.body,
     )}
-    {refRec && <EntityModal type={getType(tax, refRec.type)!} tax={tax} study={study} record={refRec} onClose={() => setRefRec(null)} />}
+    {refRec && <EntityModal type={getType(tax, refRec.type)!} tax={tax} study={study} record={refRec}
+      onClose={onClose} onBack={() => setRefRec(null)} backLabel={record ? recordTitle(type, record) : "Back"} />}
   </>);
 }

@@ -3,6 +3,9 @@
 // relationships resolved to names). Paste into an LLM chat as grounded context.
 import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue, Study, Taxonomy } from "./types";
 import { getType, recordTitle, scaleLabel, scaleMax } from "./taxonomy";
+import { deriveInputs, meanOf } from "./quantModel";
+import { residualPos } from "./treatment";
+import { simulate, type QuantInputs, type QuantResult } from "./montecarlo";
 
 function fieldSpec(f: FieldDef, tax: Taxonomy): string {
   const parts: string[] = [f.type];
@@ -72,18 +75,15 @@ export function workshopMarkdown(tax: Taxonomy, study: Study, groupKey: string):
 
 const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-/** Sanitize a label for mermaid/markmap (strip separators & newlines). */
+/** Sanitize + truncate a label for embedded SVG text (strip separators/newlines). */
 const mm = (s: string, n = 46): string => {
   const out = String(s).replace(/[":;#<>|`\r\n]+/g, " ").replace(/\s+/g, " ").trim();
   return out.length > n ? out.slice(0, n - 1) + "…" : out;
 };
-/** Stricter sanitize for mermaid node labels (also drop brackets/parens/slashes
- *  that confuse the flowchart parser). */
-const mmi = (s: string, n = 42): string => mm(String(s).replace(/[()[\]{}/]/g, " "), n);
 
 /** Inline SVG of the likelihood × gravity risk matrix (strategic scenarios), for
  *  embedding in the Markdown report. Returns null if there's no suitable type. */
-export function riskMatrixSvg(tax: Taxonomy, study: Study): string | null {
+export function riskMatrixSvg(tax: Taxonomy, study: Study, opts?: { posFn?: (e: EntityRecord) => { x: number; y: number } }): string | null {
   const type = tax.entityTypes.find((t) => /scenario/i.test(t.key) && !/operational/i.test(t.key) && t.fields.filter((f) => f.type === "scale").length >= 2);
   if (!type) return null;
   const scales = type.fields.filter((f) => f.type === "scale");
@@ -91,7 +91,8 @@ export function riskMatrixSvg(tax: Taxonomy, study: Study): string | null {
   const xMax = scaleMax(xF), yMax = scaleMax(yF);
   const items = study.entities.filter((e) => e.type === type.key);
   if (!items.length) return null;
-  const at = (x: number, y: number) => items.filter((e) => (Number(e.values[xF.key]) || 1) === x && (Number(e.values[yF.key]) || 1) === y);
+  const pos = opts?.posFn ?? ((e: EntityRecord) => ({ x: Number(e.values[xF.key]) || 1, y: Number(e.values[yF.key]) || 1 }));
+  const at = (x: number, y: number) => items.filter((e) => { const p = pos(e); return p.x === x && p.y === y; });
   const colorFor = (r: number) => r < 0.3 ? "#2fa36f" : r < 0.55 ? "#e0a13a" : r < 0.8 ? "#dd7a33" : "#d1495b";
 
   // Wider cells + a per-label chip so long scenario names stay readable, and a
@@ -300,52 +301,194 @@ function frameworkRadarSvg(tax: Taxonomy, study: Study): string | null {
   return radarSvg(entries.map(([k]) => k), [{ label: "coverage", color: "#7c5cbb", values: entries.map(([, v]) => (v.t ? v.c / v.t : 0)) }], entries.map(([, v]) => `${v.c}/${v.t}`));
 }
 
-/** Mermaid flowchart of the attack chain: risk source -> strategic scenario ->
- *  feared event (origin -> action -> result). Renders in any mermaid-capable
- *  viewer (unlike markmap). Returns a ```mermaid fenced block, or null. */
-function attackFlowMermaid(tax: Taxonomy, study: Study): string | null {
+const truncTxt = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
+
+/** Inline SVG (offline, no mermaid/CDN) of the attack chain: risk source ->
+ *  strategic scenario -> feared event (origin -> action -> result), as a 3-column
+ *  layered flow with curved edges. */
+function attackFlowSvg(tax: Taxonomy, study: Study): string | null {
   const originType = getType(tax, "risk_origin"), stratType = getType(tax, "strategic_scenario"), fearedType = getType(tax, "feared_event");
   if (!originType || !stratType) return null;
   const origins = study.entities.filter((e) => e.type === "risk_origin");
-  if (!origins.length) return null;
-  const strat = study.entities.filter((e) => e.type === "strategic_scenario");
+  const strat = study.entities.filter((e) => e.type === "strategic_scenario" && origins.some((o) => o.id === e.values.risk_origin));
+  if (!origins.length || !strat.length) return null;
   const byId = new Map(study.entities.map((e) => [e.id, e]));
   const get = (id: FieldValue | undefined) => (typeof id === "string" ? byId.get(id) : undefined);
   const catF = originType.fields.find((f) => f.type === "enum");
   const likeF = stratType.fields.find((f) => f.key === "likelihood"), gravF = stratType.fields.find((f) => f.key === "gravity");
   const impF = fearedType?.fields.find((f) => f.type === "enum"), sevF = fearedType?.fields.find((f) => f.type === "scale");
-  const node = (parts: (string | false | undefined)[]) => parts.filter(Boolean).map((s) => mmi(s as string)).join("<br/>");
 
-  const lines: string[] = ["```mermaid", "flowchart LR"];
-  const fearedNode = new Map<string, string>();
-  let fi = 0;
-  origins.forEach((o, oi) => {
-    const oid = `O${oi}`;
-    lines.push(`  ${oid}["${node([recordTitle(originType, o), catF && String(o.values[catF.key] ?? "")])}"]`);
-    strat.filter((s) => s.values.risk_origin === o.id).forEach((s, si) => {
-      const sid = `S${oi}_${si}`;
-      const lg = [likeF && `L ${scaleLabel(likeF, Number(s.values[likeF.key] ?? 1))}`, gravF && `G ${scaleLabel(gravF, Number(s.values[gravF.key] ?? 1))}`].filter(Boolean).join(" · ");
-      lines.push(`  ${oid} --> ${sid}["${node([recordTitle(stratType, s), lg])}"]`);
-      const fe = fearedType ? get(s.values.feared_event) : undefined;
-      if (fe && fearedType) {
-        let fid = fearedNode.get(fe.id);
-        if (!fid) {
-          fid = `F${fi++}`; fearedNode.set(fe.id, fid);
-          const sub = [impF && String(fe.values[impF.key] ?? ""), sevF && scaleLabel(sevF, Number(fe.values[sevF.key] ?? 1))].filter(Boolean).join(", ");
-          lines.push(`  ${sid} --> ${fid}("${node([recordTitle(fearedType, fe), sub])}")`);
-        } else {
-          lines.push(`  ${sid} --> ${fid}`);
-        }
-      }
-    });
+  interface Node { id: string; title: string; sub: string }
+  const sNodes = strat.map((s) => {
+    const lg = [likeF && `L ${scaleLabel(likeF, Number(s.values[likeF.key] ?? 1))}`, gravF && `G ${scaleLabel(gravF, Number(s.values[gravF.key] ?? 1))}`].filter(Boolean).join(" · ");
+    const fe = fearedType ? get(s.values.feared_event) : undefined;
+    return { id: s.id, title: recordTitle(stratType, s), sub: lg, originId: String(s.values.risk_origin), fearedId: fe?.id };
   });
-  lines.push("```");
-  return lines.join("\n");
+  const feared = new Map<string, Node>();
+  for (const s of sNodes) {
+    if (!s.fearedId) continue;
+    const fe = get(s.fearedId); if (!fe || !fearedType || feared.has(s.fearedId)) continue;
+    const sub = [impF && String(fe.values[impF.key] ?? ""), sevF && scaleLabel(sevF, Number(fe.values[sevF.key] ?? 1))].filter(Boolean).join(", ");
+    feared.set(s.fearedId, { id: s.fearedId, title: recordTitle(fearedType, fe), sub });
+  }
+
+  const PAD = 14, colW = 272, gap = 42, rowH = 62, boxH = 46;
+  const x0 = PAD, x1 = PAD + colW + gap, x2 = PAD + 2 * (colW + gap), W = x2 + colW + PAD;
+  const H = PAD * 2 + sNodes.length * rowH + 16;          // extra room for the column captions
+  const yMid = (i: number) => PAD + i * rowH + rowH / 2;
+  const sY = new Map(sNodes.map((s, i) => [s.id, yMid(i)]));
+  const avgY = (ids: string[]) => ids.reduce((a, id) => a + (sY.get(id) ?? 0), 0) / (ids.length || 1);
+  const oY = new Map(origins.map((o) => [o.id, avgY(sNodes.filter((s) => s.originId === o.id).map((s) => s.id))]));
+  const fY = new Map([...feared.keys()].map((fid) => [fid, avgY(sNodes.filter((s) => s.fearedId === fid).map((s) => s.id))]));
+
+  const p: string[] = [`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif">`];
+  p.push(`<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="14" fill="${HEX.card}" stroke="${HEX.edge}"/>`);
+  const edge = (xa: number, ya: number, xb: number, yb: number) => `<path d="M${xa} ${ya} C${xa + gap * 0.6} ${ya}, ${xb - gap * 0.6} ${yb}, ${xb} ${yb}" fill="none" stroke="#b7c0cd" stroke-width="1.4"/>`;
+  for (const s of sNodes) {                              // edges first (under boxes)
+    if (oY.has(s.originId)) p.push(edge(x0 + colW, oY.get(s.originId)!, x1, sY.get(s.id)!));
+    if (s.fearedId && fY.has(s.fearedId)) p.push(edge(x1 + colW, sY.get(s.id)!, x2, fY.get(s.fearedId)!));
+  }
+  const box = (x: number, ycenter: number, n: { title: string; sub: string }, tint: string) => {
+    const y = ycenter - boxH / 2;
+    return `<rect x="${x}" y="${y}" width="${colW}" height="${boxH}" rx="9" fill="${tint}" fill-opacity="0.14" stroke="${tint}" stroke-opacity="0.55"/>`
+      + `<text x="${x + 12}" y="${y + 19}" font-size="11.5" font-weight="600" fill="${HEX.ink}">${esc(truncTxt(n.title, 44))}</text>`
+      + (n.sub ? `<text x="${x + 12}" y="${y + 34}" font-size="10" fill="${HEX.muted}">${esc(truncTxt(n.sub, 44))}</text>` : "");
+  };
+  for (const o of origins) if (oY.has(o.id)) p.push(box(x0, oY.get(o.id)!, { title: recordTitle(originType, o), sub: catF ? String(o.values[catF.key] ?? "") : "" }, HEX.red));
+  for (const s of sNodes) p.push(box(x1, sY.get(s.id)!, s, HEX.amber));
+  for (const [fid, n] of feared) if (fY.has(fid)) p.push(box(x2, fY.get(fid)!, n, HEX.orange));
+  // column captions
+  const cap = (x: number, t: string) => `<text x="${x + colW / 2}" y="${H - 2}" text-anchor="middle" font-size="10" font-weight="600" fill="${HEX.muted}">${t}</text>`;
+  p.push(cap(x0, "Risk source") + cap(x1, "Strategic scenario") + cap(x2, "Feared event"));
+  p.push("</svg>");
+  return p.join("");
 }
 
 /** A human-readable, taxonomy-driven Markdown report of the whole study:
  *  overview, per-workshop entities (data, relationships resolved to names) and a
  *  deterministic kill-chain mitigation-coverage section. */
+// ── Quantitative risk (Monte-Carlo) for the report ───────────────────────────
+const fmtMoney = (v: number): string => {
+  const a = Math.abs(v);
+  if (a >= 1e9) return `€${(v / 1e9).toFixed(1)}B`;
+  if (a >= 1e6) return `€${(v / 1e6).toFixed(a >= 1e7 ? 0 : 1)}M`;
+  if (a >= 1e3) return `€${(v / 1e3).toFixed(a >= 1e4 ? 0 : 1)}k`;
+  return `€${Math.round(v)}`;
+};
+const fmtPct = (v: number) => `${Math.round(v * 100)}%`;
+const fmtRate = (v: number) => `${v >= 10 ? Math.round(v) : v.toFixed(2)}/yr`;
+
+/** Loss-exceedance curve as an inline SVG (offline): P(annual loss ≥ x), comparing
+ *  inherent (without controls) vs residual (with controls). */
+function lossCurveSvg(rW: QuantResult, rWo: QuantResult): string {
+  const W = 640, H = 250, PL = 54, PR = 118, PT = 16, PB = 42, PAD = 12;
+  const top = Math.max(rW.curve[rW.curve.length - 1].loss, rWo.curve[rWo.curve.length - 1].loss, 1);
+  const X = (loss: number) => PL + (loss / top) * (W - PL - PR);
+  const Y = (p: number) => PT + (1 - p) * (H - PT - PB);
+  const path = (r: QuantResult) => r.curve.map((d, i) => `${i ? "L" : "M"}${X(d.loss).toFixed(1)} ${Y(d.exceedance).toFixed(1)}`).join(" ");
+  const cy = PT + (H - PT - PB) / 2;
+  const p: string[] = [`<svg xmlns="http://www.w3.org/2000/svg" width="${W + PAD * 2}" height="${H + PAD * 2}" viewBox="0 0 ${W + PAD * 2} ${H + PAD * 2}" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif">`];
+  p.push(`<rect x="0.5" y="0.5" width="${W + PAD * 2 - 1}" height="${H + PAD * 2 - 1}" rx="14" fill="${HEX.card}" stroke="${HEX.edge}"/>`);
+  p.push(`<g transform="translate(${PAD} ${PAD})">`);
+  for (const q of [0, 0.25, 0.5, 0.75, 1]) {
+    p.push(`<line x1="${PL}" y1="${Y(q)}" x2="${W - PR}" y2="${Y(q)}" stroke="${HEX.track}"/>`);
+    p.push(`<text x="${PL - 8}" y="${Y(q) + 3.5}" text-anchor="end" font-size="10.5" fill="${HEX.muted}">${q * 100}%</text>`);
+  }
+  for (const f of [0, 0.5, 1]) p.push(`<text x="${X(f * top)}" y="${H - 22}" text-anchor="middle" font-size="10.5" fill="${HEX.muted}">${esc(fmtMoney(f * top))}</text>`);
+  p.push(`<text x="${PL + (W - PL - PR) / 2}" y="${H - 6}" text-anchor="middle" font-size="11" font-weight="600" fill="${HEX.muted}">Annual loss →</text>`);
+  p.push(`<text x="12" y="${cy}" text-anchor="middle" font-size="11" font-weight="600" fill="${HEX.muted}" transform="rotate(-90 12 ${cy})">P(loss ≥ x)</text>`);
+  p.push(`<path d="${path(rWo)}" fill="none" stroke="${HEX.orange}" stroke-width="2" stroke-dasharray="5 3"/>`);
+  p.push(`<path d="${path(rW)}" fill="none" stroke="${HEX.green}" stroke-width="2.4"/>`);
+  const lx = W - PR + 12;
+  p.push(`<line x1="${lx}" y1="${PT + 10}" x2="${lx + 20}" y2="${PT + 10}" stroke="${HEX.green}" stroke-width="2.4"/><text x="${lx + 26}" y="${PT + 13.5}" font-size="10.5" fill="${HEX.ink}">with controls</text>`);
+  p.push(`<line x1="${lx}" y1="${PT + 28}" x2="${lx + 20}" y2="${PT + 28}" stroke="${HEX.orange}" stroke-width="2" stroke-dasharray="5 3"/><text x="${lx + 26}" y="${PT + 31.5}" font-size="10.5" fill="${HEX.ink}">without</text>`);
+  p.push("</g></svg>");
+  return p.join("");
+}
+
+/** Derived Monte-Carlo quantification per operational scenario (with vs without
+ *  controls), honouring any persisted per-factor overrides so the report matches
+ *  the app. Deterministic (seeded), so re-running gives identical numbers. */
+function quantSection(tax: Taxonomy, study: Study): string[] | null {
+  const opType = tax.entityTypes.find((t) => t.fields.some((f) => f.key === "difficulty"));
+  const stepType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
+  const parentF = stepType?.fields.find((f) => f.type === "ref" && f.refType);
+  if (!opType || !stepType || !parentF) return null;
+  const ops = study.entities.filter((e) => e.type === opType.key
+    && study.entities.some((s) => s.type === stepType.key && s.values[parentF.key] === e.id));
+  if (!ops.length) return null;
+
+  const L: string[] = ["---\n", "## Quantitative risk\n",
+    "_Monte-Carlo simulation (loss event frequency × loss magnitude), derived from the qualitative model. Annual loss shown with vs. without the current controls._\n"];
+  const row = (k: string, a: string, b: string) => `<tr><td>${esc(k)}</td><td>${a}</td><td>${b}</td></tr>`;
+  for (const op of ops) {
+    const ov = study.quant?.[op.id]?.overrides as Partial<QuantInputs> | undefined;
+    const dW = deriveInputs(study, tax, op, true), dWo = deriveInputs(study, tax, op, false);
+    const inW: QuantInputs = { ...dW.inputs, ...ov }, inWo: QuantInputs = { ...dWo.inputs, ...ov };
+    const rW = simulate(inW, 40000), rWo = simulate(inWo, 40000);
+    const lm = meanOf(inW.directImpact) + meanOf(inW.cascadingLikelihood) * meanOf(inW.cascadingImpact);
+    const benefit = rWo.ale.mean - rW.ale.mean;
+    const benefitPct = rWo.ale.mean > 0 ? Math.round((benefit / rWo.ale.mean) * 100) : 0;
+    L.push(`### ${recordTitle(opType, op)}`);
+    L.push(`<table class="qt-tbl"><thead><tr><th>Metric</th><th>Inherent<br>(no controls)</th><th>Residual<br>(with controls)</th></tr></thead><tbody>`
+      + row("Expected annual loss (ALE)", fmtMoney(rWo.ale.mean), `<strong>${esc(fmtMoney(rW.ale.mean))}</strong>`)
+      + row("P90 / P99 (bad years)", `${esc(fmtMoney(rWo.ale.p90))} / ${esc(fmtMoney(rWo.ale.p99))}`, `${esc(fmtMoney(rW.ale.p90))} / ${esc(fmtMoney(rW.ale.p99))}`)
+      + row("Loss event frequency", esc(fmtRate(rWo.lef)), esc(fmtRate(rW.lef)))
+      + row("Vulnerability P(adversary > control)", fmtPct(rWo.vuln), fmtPct(rW.vuln))
+      + row("Loss magnitude / event", esc(fmtMoney(lm)), esc(fmtMoney(lm)))
+      + `</tbody></table>`);
+    L.push(`Controls cut the mean annual loss by **${fmtMoney(benefit)}** (-${benefitPct}%). Kill-chain coverage: **${dW.coverage.mitigated}/${dW.coverage.total}** steps mitigated${dW.coverage.total ? ` (avg implementation ${Math.round(dW.coverage.impl * 100)}%)` : ""}.`);
+    L.push("");
+    L.push(`<div align="center">${lossCurveSvg(rW, rWo)}</div>`);
+    L.push("");
+  }
+  return L;
+}
+
+/** Risk-treatment plan + residual risk matrix (inherent -> residual after the
+ *  applied measures). Null when no treatments exist. */
+function treatmentSection(tax: Taxonomy, study: Study): string[] | null {
+  const treatType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType)
+    && t.fields.some((f) => f.key === "decision") && t.fields.some((f) => f.key === "status"));
+  const refF = treatType?.fields.find((f) => f.type === "ref" && f.refType);
+  const riskType = refF?.refType ? getType(tax, refF.refType) : undefined;
+  if (!treatType || !refF || !riskType) return null;
+  const treatments = study.entities.filter((e) => e.type === treatType.key);
+  if (!treatments.length) return null;
+  const byId = new Map(study.entities.map((e) => [e.id, e]));
+  const scales = riskType.fields.filter((f) => f.type === "scale");
+  const xF = scales[0], yF = scales[1];
+  if (!xF || !yF) return null;
+  const decF = treatType.fields.find((f) => f.key === "decision"), ownF = treatType.fields.find((f) => f.key === "owner");
+  const ddF = treatType.fields.find((f) => f.key === "deadline"), stF = treatType.fields.find((f) => f.key === "status");
+  const cell = (v: FieldValue | undefined) => esc(v == null || v === "" ? "—" : String(v));
+
+  const L: string[] = ["---\n", "## Risk treatment\n",
+    "_Treatment decision per risk (strategic scenario). The residual risk is DERIVED from the decision and how well the risk's kill chain is already mitigated - Reduce lowers likelihood by that coverage, Share lowers gravity, Accept keeps the inherent level, Avoid removes it._\n"];
+  let tbl = `<table class="qt-tbl"><thead><tr><th>Risk</th><th>Decision</th><th>Owner</th><th>Deadline</th><th>Status</th><th>Inherent → Residual (L·G)</th></tr></thead><tbody>`;
+  for (const t of treatments) {
+    const risk = byId.get(t.values[refF.key] as string);
+    let shift = "—";
+    if (risk) {
+      const res = residualPos(study, tax, risk, t, xF.key, yF.key);
+      const inh = `${scaleLabel(xF, Number(risk.values[xF.key]) || 1)}·${scaleLabel(yF, Number(risk.values[yF.key]) || 1)}`;
+      shift = `${esc(inh)} → <strong>${esc(scaleLabel(xF, res.x))}·${esc(scaleLabel(yF, res.y))}</strong>`;
+    }
+    tbl += `<tr><td>${risk ? esc(recordTitle(riskType, risk)) : "—"}</td><td>${cell(decF && t.values[decF.key])}</td><td>${cell(ownF && t.values[ownF.key])}</td><td>${cell(ddF && t.values[ddF.key])}</td><td>${cell(stF && t.values[stF.key])}</td><td>${shift}</td></tr>`;
+  }
+  L.push(tbl + "</tbody></table>", "");
+
+  const treatOf = new Map<string, EntityRecord>();
+  for (const t of treatments) { const sid = t.values[refF.key]; if (typeof sid === "string") treatOf.set(sid, t); }
+  const posFn = (e: EntityRecord) => {
+    const t = treatOf.get(e.id);
+    return t ? residualPos(study, tax, e, t, xF.key, yF.key) : { x: Number(e.values[xF.key]) || 1, y: Number(e.values[yF.key]) || 1 };
+  };
+  const svg = riskMatrixSvg(tax, study, { posFn });
+  if (svg) { L.push("**Residual risk matrix** (position after treatment)  ", `<div align="center">${svg}</div>`, ""); }
+  return L;
+}
+
 export function reportMarkdown(tax: Taxonomy, study: Study): string {
   const L: string[] = [];
   L.push(`# ${study.name} - Risk Analysis Report`);
@@ -371,10 +514,10 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
     L.push("");
   }
 
-  const flow = attackFlowMermaid(tax, study);
+  const flow = attackFlowSvg(tax, study);
   if (flow) {
     L.push("## Attack paths (origin -> action -> result)\n");
-    L.push(flow);
+    L.push(`<div align="center">${flow}</div>`);
     L.push("");
   }
 
@@ -416,6 +559,7 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
       L.push(`### ${t.labelPlural} (${items.length})\n`);
       for (const e of items) {
         L.push(`#### ${recordTitle(t, e)}`);
+        if (e.source) L.push(`_Source: ${esc(e.source)}_`);
         if (descF && e.values[descF.key]) L.push(String(e.values[descF.key]));
         const attrs: string[] = [];
         for (const f of t.fields) {
@@ -452,29 +596,46 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
       const at = actor ? getType(tax, actor.type) : undefined;
       return actor && at ? recordTitle(at, actor) : "Threat actor";
     };
-    const seqDiagram = (op: EntityRecord, steps: EntityRecord[], covering: (id: string) => EntityRecord[]): string => {
-      const alias = new Map<string, string>();
-      const targetName = (s: EntityRecord) => {
-        const tr = targetF ? get(s.values[targetF.key]) : undefined;
-        const tt = tr ? getType(tax, tr.type) : undefined;
-        return tr && tt ? recordTitle(tt, tr) : "Targeted system";
-      };
-      for (const s of steps) { const n = targetName(s); if (!alias.has(n)) alias.set(n, "P" + alias.size); }
-      const out = ["```mermaid", "sequenceDiagram", "    autonumber", `    participant ATK as ${mm(attackerOf(op), 30)}`];
-      for (const [n, id] of alias) out.push(`    participant ${id} as ${mm(n, 30)}`);
-      for (const s of steps) {
-        const pid = alias.get(targetName(s))!;
+    const targetName = (s: EntityRecord) => {
+      const tr = targetF ? get(s.values[targetF.key]) : undefined;
+      const tt = tr ? getType(tax, tr.type) : undefined;
+      return tr && tt ? recordTitle(tt, tr) : "Targeted system";
+    };
+    // Inline SVG (offline, no mermaid/CDN): the kill chain as a SWIMLANE sequence
+    // diagram - an attacker lane plus one lane per targeted system, an arrow per
+    // step (attacker -> target) coloured green (mitigated) or red (gap).
+    const killChainSvg = (op: EntityRecord, steps: EntityRecord[], covering: (id: string) => EntityRecord[]): string => {
+      const targets: string[] = [];
+      for (const s of steps) { const n = truncTxt(targetName(s), 22); if (!targets.includes(n)) targets.push(n); }
+      const lanes = [truncTxt(attackerOf(op), 22), ...targets];
+      const PAD = 16, laneW = 150, laneGap = Math.max(176, laneW + 22), hbH = 28, headH = 40, rowH = 54;
+      const laneX = (i: number) => PAD + laneW / 2 + i * laneGap;
+      const W = PAD * 2 + laneW + (lanes.length - 1) * laneGap;
+      const H = PAD + headH + steps.length * rowH + PAD;
+      const p: string[] = [`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif">`];
+      p.push(`<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="14" fill="${HEX.card}" stroke="${HEX.edge}"/>`);
+      lanes.forEach((nm, i) => {                             // lifelines + participant headers
+        const cx = laneX(i), tint = i === 0 ? HEX.red : "#3b6ea5";
+        p.push(`<line x1="${cx}" y1="${PAD + hbH}" x2="${cx}" y2="${H - PAD}" stroke="#cfd6e0" stroke-dasharray="3 3"/>`);
+        p.push(`<rect x="${cx - laneW / 2}" y="${PAD}" width="${laneW}" height="${hbH}" rx="7" fill="${tint}" fill-opacity="0.12" stroke="${tint}" stroke-opacity="0.5"/>`);
+        p.push(`<text x="${cx}" y="${PAD + 18}" text-anchor="middle" font-size="11" font-weight="600" fill="${HEX.ink}">${esc(nm)}${i === 0 ? "" : ""}</text>`);
+      });
+      steps.forEach((s, i) => {
+        const cov = covering(s.id), ok = cov.length > 0, c = ok ? HEX.green : HEX.red;
+        const ti = 1 + targets.indexOf(truncTxt(targetName(s), 22));
+        const y = PAD + headH + i * rowH + rowH / 2;
+        const x0 = laneX(0), x1 = laneX(ti), span = x1 - x0;
+        const maxc = Math.max(12, Math.floor(span / 6.0));
         const tactic = tacticF ? String(s.values[tacticF.key] ?? "") : "";
         const tech = techF ? String(s.values[techF.key] ?? "") : "";
-        const cov = covering(s.id);
-        // Colour-code the step by coverage: green tint = mitigated, red tint = gap.
-        out.push(`    rect ${cov.length ? "rgb(223, 246, 233)" : "rgb(251, 228, 228)"}`);
-        out.push(`    ATK->>${pid}: ${mm((tactic ? tactic + " - " : "") + recordTitle(stepType, s), 52)}${tech ? ` [${mm(tech, 24)}]` : ""}`);
-        out.push(`    Note over ${pid}: ${cov.length ? "shielded by " + mm(cov.map((m) => recordTitle(measureType, m)).join(", "), 48) : "no mitigation (gap)"}`);
-        out.push("    end");
-      }
-      out.push("```");
-      return out.join("\n");
+        const label = (tactic ? tactic + " · " : "") + recordTitle(stepType, s) + (tech ? ` [${tech}]` : "");
+        p.push(`<line x1="${x0}" y1="${y}" x2="${x1 - 7}" y2="${y}" stroke="${c}" stroke-width="1.8"/><path d="M${x1 - 7} ${y - 4} L${x1} ${y} L${x1 - 7} ${y + 4}" fill="${c}"/>`);
+        p.push(`<circle cx="${x0}" cy="${y}" r="9" fill="${c}" fill-opacity="0.2" stroke="${c}"/><text x="${x0}" y="${y + 3.5}" text-anchor="middle" font-size="10" font-weight="700" fill="${c}">${i + 1}</text>`);
+        p.push(`<text x="${x0 + 13}" y="${y - 6}" font-size="10.5" font-weight="600" fill="${HEX.ink}">${esc(truncTxt(label, maxc))}</text>`);
+        p.push(`<text x="${x0 + 13}" y="${y + 13}" font-size="9.5" fill="${c}">${ok ? "shielded by " + esc(truncTxt(cov.map((m) => recordTitle(measureType, m)).join(", "), maxc - 6)) : "no mitigation (gap)"}</text>`);
+      });
+      p.push("</svg>");
+      return p.join("");
     };
     const ops = study.entities.filter((e) => e.type === opType.key
       && study.entities.some((s) => s.type === stepType.key && s.values[parentF.key] === e.id));
@@ -487,7 +648,7 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
         const covering = (sid: string) => measures.filter((m) => Array.isArray(m.values[coversF.key]) && (m.values[coversF.key] as string[]).includes(sid));
         const covered = steps.filter((s) => covering(s.id).length).length;
         L.push(`### ${recordTitle(opType, op)} - ${covered}/${steps.length} steps mitigated`);
-        L.push(seqDiagram(op, steps, covering));
+        L.push(`<div align="center">${killChainSvg(op, steps, covering)}</div>`);
         for (const s of steps) {
           const cov = covering(s.id);
           L.push(`- ${recordTitle(stepType, s)} -> ${cov.length ? cov.map((m) => recordTitle(measureType, m)).join(", ") : "**GAP - no measure**"}`);
@@ -496,6 +657,10 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
       }
     }
   }
+
+  // Risk treatment - plan table + residual risk matrix.
+  const treat = treatmentSection(tax, study);
+  if (treat) L.push(...treat);
 
   // Compliance coverage - framework-coverage radar.
   const fwRadar = frameworkRadarSvg(tax, study);
@@ -506,23 +671,9 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
     L.push("");
   }
 
-  // Risk quantification - colour-coded bar chart of each assessment's factors.
-  const fairType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "scale" && f.key === "primary_loss"));
-  if (fairType) {
-    const fas = study.entities.filter((e) => e.type === fairType.key);
-    if (fas.length) {
-      const orF = fairType.fields.find((f) => f.type === "enum");
-      L.push("---\n");
-      L.push("## Risk quantification\n");
-      for (const fa of fas) {
-        const bars = scaleBarsSvg(fairType, fa);
-        L.push(`### ${recordTitle(fairType, fa)}`);
-        if (orF && fa.values[orF.key]) L.push(`Overall risk: **${String(fa.values[orF.key])}**  `);
-        if (bars) L.push(`<div align="center">${bars}</div>`);
-        L.push("");
-      }
-    }
-  }
+  // Quantitative risk - derived Monte-Carlo (annual loss, inherent vs residual).
+  const quant = quantSection(tax, study);
+  if (quant) L.push(...quant);
 
   L.push("---\n");
   L.push("_Generated with Aurelian Lite - structured cyber & information security analysis (offline)._  ");
@@ -531,9 +682,9 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
 }
 
 // ── Print-ready HTML report ──────────────────────────────────────────────
-// Many users have no Markdown/mermaid viewer, so we also render the report to a
-// self-contained HTML document (inline SVGs render immediately; mermaid diagrams
-// render via a script) that opens in a new tab and prints cleanly.
+// Many users have no Markdown viewer, so we also render the report to a fully
+// self-contained, OFFLINE HTML document - every chart is an inline SVG, no external
+// scripts or CDN - that opens in a new tab and prints cleanly.
 
 /** Minimal Markdown→HTML for OUR generated report subset (headings, bold/italic,
  *  links, lists, ``` fences incl. mermaid, `<div>`/SVG passthrough, hr, breaks). */
@@ -622,7 +773,13 @@ body { margin: 0; background: #eef0f4; color: #1c2430;
 .report pre { background: #f6f7f9; border: 1px solid #e3e6ec; border-radius: 8px; padding: 12px 14px; overflow-x: auto; font-size: 12.5px; }
 .report pre.mermaid { background: transparent; border: none; text-align: center; padding: 0; }
 .report strong { font-weight: 650; }
+.report table.qt-tbl { border-collapse: collapse; width: 100%; margin: 10px 0 6px; font-size: 12.5px; }
+.report table.qt-tbl th, .report table.qt-tbl td { border: 1px solid #e3e6ec; padding: 6px 11px; text-align: left; }
+.report table.qt-tbl thead th { background: #f6f7f9; color: #55606f; font-weight: 600; font-size: 11.5px; }
+.report table.qt-tbl td:not(:first-child), .report table.qt-tbl th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.report table.qt-tbl tbody tr:first-child td { font-size: 13.5px; }
 @media print {
+  table.qt-tbl { break-inside: avoid; }
   body { background: #fff; }
   .report { box-shadow: none; margin: 0; max-width: none; padding: 0 8mm; border-radius: 0; }
   h1, h2, h3 { break-after: avoid; }
@@ -637,10 +794,7 @@ export function reportHtml(tax: Taxonomy, study: Study): string {
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(study.name)} - Risk Analysis Report</title>
 <style>${REPORT_CSS}</style></head>
-<body><main class="report">${body}</main>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-<script>try{mermaid.initialize({startOnLoad:true,flowchart:{htmlLabels:true},sequence:{useMaxWidth:true}});}catch(e){}</script>
-</body></html>`;
+<body><main class="report">${body}</main></body></html>`;
 }
 
 /** Open an HTML document in a new tab (blob URL); falls back to download. */

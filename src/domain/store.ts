@@ -3,7 +3,7 @@
 // migration from the legacy v1 fixed-schema format. Auto-persists (debounced).
 import { create } from "zustand";
 import type {
-  AppState, Bundle, EntityRecord, FieldValue, ID, Study, Taxonomy,
+  AppState, Bundle, EntityRecord, FieldValue, ID, QuantTuning, Study, Taxonomy,
 } from "./types";
 import { DEFAULT_TAXONOMY, getType, refFields } from "./taxonomy";
 import { loadRaw, saveState } from "./persistence";
@@ -140,11 +140,15 @@ export interface StoreState {
   deleteStudy: (id: ID) => void;
   setActiveStudy: (id: ID | null) => void;
 
-  addEntity: (type: string, values: Record<string, FieldValue>) => ID;
+  addEntity: (type: string, values: Record<string, FieldValue>, source?: string) => ID;
   updateEntity: (id: ID, values: Record<string, FieldValue>) => void;
   deleteEntity: (id: ID) => void;
   setNodePos: (id: ID, x: number, y: number) => void;
   setLayout: (layout: Record<ID, { x: number; y: number }>) => void;
+  /** Persist (or clear, when tuning is null) the quantification tuning of an op scenario. */
+  setQuantTuning: (opId: ID, tuning: QuantTuning | null) => void;
+  /** Add or remove an operational scenario from quantification (opt-in). */
+  toggleQuantScenario: (opId: ID, on: boolean) => void;
 }
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -220,11 +224,11 @@ export const useStore = create<StoreState>((set, get) => ({
   },
   setActiveStudy: (id) => { set({ activeStudyId: id }); schedulePersist(get); },
 
-  addEntity: (type, values) => {
+  addEntity: (type, values, source) => {
     const id = uid();
     const ts = nowISO();
     mutateActive(get, set, (study) => ({
-      ...study, entities: [...study.entities, { id, type, values, createdAt: ts, updatedAt: ts }],
+      ...study, entities: [...study.entities, { id, type, values, createdAt: ts, updatedAt: ts, ...(source ? { source } : {}) }],
     }));
     return id;
   },
@@ -247,6 +251,22 @@ export const useStore = create<StoreState>((set, get) => ({
   },
   setLayout: (layout) => {
     mutateActive(get, set, (study) => ({ ...study, layout: { ...(study.layout ?? {}), ...layout } }));
+  },
+  setQuantTuning: (opId, tuning) => {
+    mutateActive(get, set, (study) => {
+      const quant = { ...(study.quant ?? {}) };
+      if (tuning) quant[opId] = tuning; else delete quant[opId];
+      return { ...study, quant };
+    });
+  },
+  toggleQuantScenario: (opId, on) => {
+    mutateActive(get, set, (study) => {
+      const cur = study.quantScenarios ?? [];
+      const next = on ? (cur.includes(opId) ? cur : [...cur, opId]) : cur.filter((id) => id !== opId);
+      const quant = { ...(study.quant ?? {}) };
+      if (!on) delete quant[opId];                       // drop its tunings too when removed
+      return { ...study, quantScenarios: next, quant };
+    });
   },
 }));
 

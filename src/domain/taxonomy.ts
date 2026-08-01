@@ -6,8 +6,10 @@ import type {
 
 const SCALE = ["low", "moderate", "high", "critical"];
 const LIKELIHOOD = ["low", "possible", "likely", "near-certain"];
+const GRAVITY = ["negligible", "noticeable", "severe", "existential"];
+const TREATMENT = ["Reduce", "Accept", "Share", "Avoid"];         // ISO 27005 risk-treatment options
+const TREAT_STATUS = ["Proposed", "In progress", "Implemented", "Verified"];
 const RELIABILITY = ["very low", "low", "good", "very good"];
-const RQ5 = ["very low", "low", "moderate", "high", "very high"];
 const TACTICS = [
   "Reconnaissance", "Resource Development", "Initial Access", "Execution", "Persistence",
   "Privilege Escalation", "Defense Evasion", "Credential Access", "Discovery", "Lateral Movement",
@@ -24,7 +26,7 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
     { key: "ws3", label: "Strategic Scenarios", description: "Ecosystem stakeholders and attack paths", color: "var(--color-workshop-3)" },
     { key: "ws4", label: "Operational Scenarios", description: "Kill-chains with TTPs (tactics, techniques and procedures)", color: "var(--color-workshop-4)" },
     { key: "ws5", label: "Treatment", description: "Security measures and coverage", color: "var(--color-workshop-5)" },
-    { key: "fair", label: "Risk Quantification", description: "Quantitative-style risk assessment", color: "var(--teal-bright)" },
+    { key: "quant", label: "Risk Quantification", description: "Monte-Carlo annual-loss simulation, derived from the qualitative model", color: "var(--teal-bright)" },
     { key: "compliance", label: "Compliance", description: "Framework requirements and coverage", color: "var(--violet)" },
   ],
   entityTypes: [
@@ -98,7 +100,7 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
         { key: "stakeholder", label: "Enters via", type: "ref", refType: "stakeholder", relation: "enters via" },
         { key: "feared_event", label: "Causes", type: "ref", refType: "feared_event", relation: "causes" },
         { key: "likelihood", label: "Likelihood", type: "scale", scaleLabels: LIKELIHOOD },
-        { key: "gravity", label: "Gravity", type: "scale", scaleLabels: ["negligible", "noticeable", "severe", "existential"] },
+        { key: "gravity", label: "Gravity", type: "scale", scaleLabels: GRAVITY },
       ],
     },
     {
@@ -138,19 +140,15 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
       ],
     },
     {
-      key: "fair_assessment", label: "Risk Quantification Assessment", labelPlural: "Risk Quantification Assessments", group: "fair",
+      key: "risk_treatment", label: "Risk Treatment", labelPlural: "Risk Treatments", group: "ws5",
       fields: [
         { key: "name", label: "Name", type: "text", required: true },
-        { key: "description", label: "Rationale", type: "textarea" },
-        { key: "operational_scenario", label: "Assesses", type: "ref", refType: "operational_scenario", relation: "assesses", required: true },
-        { key: "contact_frequency", label: "Contact frequency", type: "scale", scaleLabels: RQ5 },
-        { key: "probability_of_action", label: "Probability of action", type: "scale", scaleLabels: RQ5 },
-        { key: "threat_capability", label: "Threat capability", type: "scale", scaleLabels: RQ5 },
-        { key: "resistance_strength", label: "Resistance strength", type: "scale", scaleLabels: RQ5, polarity: "positive" },
-        { key: "primary_loss", label: "Primary loss magnitude", type: "scale", scaleLabels: RQ5 },
-        { key: "secondary_loss_frequency", label: "Secondary loss frequency", type: "scale", scaleLabels: RQ5 },
-        { key: "secondary_loss", label: "Secondary loss magnitude", type: "scale", scaleLabels: RQ5 },
-        { key: "overall_risk", label: "Overall risk", type: "enum", options: ["Low", "Medium", "High", "Critical"] },
+        { key: "strategic_scenario", label: "Treats risk", type: "ref", refType: "strategic_scenario", relation: "treats", required: true },
+        { key: "decision", label: "Decision", type: "enum", options: TREATMENT },
+        { key: "owner", label: "Owner", type: "text" },
+        { key: "deadline", label: "Deadline / target date", type: "text" },
+        { key: "status", label: "Status", type: "enum", options: TREAT_STATUS },
+        { key: "justification", label: "Justification", type: "textarea", help: "Measures aren't re-listed here: they already mitigate this risk via the kill chain (measure covers step). The residual is derived from that coverage." },
       ],
     },
     {
