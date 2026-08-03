@@ -22,7 +22,7 @@ export function MitigationCharts({ tax, study, color }: { tax: Taxonomy; study: 
     const stepType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
     const parentF = stepType?.fields.find((f) => f.type === "ref" && f.refType);
     const tacticF = stepType?.fields.find((f) => f.type === "enum");
-    const measureType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "multiref" && f.refType === stepType?.key));
+    const measureType = tax.entityTypes.find((t) => t.key !== stepType?.key && t.fields.some((f) => f.type === "multiref" && f.refType === stepType?.key));
     const implF = measureType?.fields.find((f) => f.key === "implementation_level");
     if (!stepType || !parentF?.refType || !tacticF || !measureType) return null;
     const opType = getType(tax, parentF.refType);

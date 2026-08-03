@@ -123,6 +123,8 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
         { key: "tactic", label: "Tactic", type: "enum", options: TACTICS },
         { key: "technique", label: "Technique / TTP", type: "text", suggest: "mitre_technique", help: "e.g. T1566 Phishing" },
         { key: "targets_asset", label: "Targets asset", type: "ref", refType: "supporting_asset", relation: "targets" },
+        { key: "predecessors", label: "Preceded by", type: "multiref", refType: "kill_chain_step", relation: "precedes", column: false, help: "Steps that must occur before this one. Within this scenario only earlier steps are offered (keeps the escalation forward); steps from other scenarios model a cascade. Choices that would create a cycle are hidden." },
+        { key: "join", label: "Requires", type: "enum", options: ["all", "any"], column: false, help: "With several predecessors: 'all' = every prerequisite (AND), 'any' = one path is enough (OR)." },
       ],
     },
     {

@@ -46,9 +46,34 @@ export const meanOf = (r: Range) => {
   return (r.min + l * r.mode + r.max) / (l + 2);
 };
 const c01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
-const lvl = (v: unknown, max = 4) => Math.min(max, Math.max(1, Math.round(Number(v) || 2)));
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+// The calibration arrays below are anchored at a few levels (1..4 ≈ ratio 0, ⅓, ⅔, 1).
+// Sampling them at an arbitrary ratio r ∈ [0,1] by linear interpolation lets a scale of
+// ANY length feed the model without clamping - a classic 1..4 scale hits the anchors
+// exactly, so its results are unchanged; a 1..5 (or 1..N) scale is placed proportionally.
+const sampleRange = (anchors: Range[], r: number): Range => {
+  const p = c01(r) * (anchors.length - 1), i = Math.min(anchors.length - 2, Math.floor(p)), t = p - i;
+  const a = anchors[i], b = anchors[i + 1];
+  return { min: lerp(a.min, b.min, t), mode: lerp(a.mode, b.mode, t), max: lerp(a.max, b.max, t) };
+};
+const sampleNum = (anchors: number[], r: number): number => {
+  const p = c01(r) * (anchors.length - 1), i = Math.min(anchors.length - 2, Math.floor(p)), t = p - i;
+  return lerp(anchors[i], anchors[i + 1], t);
+};
+// Ratio 0..1 of a scale value on its own 1..max scale (0 = lowest level, 1 = highest),
+// so V1..V5 / L1..L5 and any other length map in without information loss. Missing value
+// or record → a neutral mid-low default (matches the old level-2-of-4 fallback).
+const scaleRatio = (tax: Taxonomy, rec: EntityRecord | undefined, key: string, fallback = 1 / 3): number => {
+  if (!rec) return fallback;
+  const f = getType(tax, rec.type)?.fields.find((x) => x.key === key);
+  const v = Number(rec.values[key]);
+  if (!f || !Number.isFinite(v)) return fallback;
+  const max = scaleMax(f);
+  return max > 1 ? c01((v - 1) / (max - 1)) : 0;
+};
 
-// level (1..4) -> calibrated ranges. Frequencies are deliberately conservative:
+// Calibration anchors (levels 1..4 ≈ ratio 0..1; sampled by sampleRange/sampleNum
+// so any scale length works). Frequencies are deliberately conservative:
 // a specific severe end-to-end scenario is attempted a fraction of a time per year,
 // not several - so the annual loss stays in a realistic range once magnitudes are
 // large. Vulnerability then thins these threat events by P(adversary > control).
@@ -69,7 +94,7 @@ const SEV_CASC: Range[] = [R(2e3, 1e4, 4e4), R(2e4, 1e5, 4e5), R(1e5, 5e5, 2e6),
 export function coverageOf(study: Study, tax: Taxonomy, op: EntityRecord): Coverage {
   const stepType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
   const parentF = stepType?.fields.find((f) => f.type === "ref" && f.refType);
-  const measureType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "multiref" && f.refType === stepType?.key));
+  const measureType = tax.entityTypes.find((t) => t.key !== stepType?.key && t.fields.some((f) => f.type === "multiref" && f.refType === stepType?.key));
   const coversF = measureType?.fields.find((f) => f.type === "multiref" && f.refType === stepType?.key);
   const implF = measureType?.fields.find((f) => f.key === "implementation_level");
   if (!stepType || !parentF || !measureType || !coversF) return { mitigated: 0, total: 0, impl: 0, value: 0, steps: [] };
@@ -114,22 +139,22 @@ export function deriveInputs(study: Study, tax: Taxonomy, op: EntityRecord, with
   const rs = refOne(study, strat, "risk_origin");
   const fe = refOne(study, strat, "feared_event");
 
-  const likeL = lvl(op.values.likelihood), diffL = lvl(op.values.difficulty);
-  const capL = lvl(rs?.values.capability), actL = lvl(rs?.values.activity), sevL = lvl(fe?.values.severity);
+  const likeR = scaleRatio(tax, op, "likelihood"), diffR = scaleRatio(tax, op, "difficulty");
+  const capR = scaleRatio(tax, rs, "capability"), actR = scaleRatio(tax, rs, "activity"), sevR = scaleRatio(tax, fe, "severity");
   const cov = coverageOf(study, tax, op);
 
-  const ctlBase = DIFF_BASE[diffL - 1];
+  const ctlBase = sampleNum(DIFF_BASE, diffR);
   const ctlMode = c01(ctlBase + (withControls ? 0.38 * cov.value : 0));
   const control = R(c01(ctlMode - 0.15), ctlMode, c01(ctlMode + 0.12));
 
   const inputs: QuantInputs = {
-    threatActivity: ACTIVITY[actL - 1],
-    attackProbability: PROB_LK[likeL - 1],
-    adversaryStrength: CAPAB[capL - 1],
+    threatActivity: sampleRange(ACTIVITY, actR),
+    attackProbability: sampleRange(PROB_LK, likeR),
+    adversaryStrength: sampleRange(CAPAB, capR),
     controlStrength: control,
-    directImpact: SEV_LOSS[sevL - 1],
-    cascadingLikelihood: SEV_CASC_L[sevL - 1],
-    cascadingImpact: SEV_CASC[sevL - 1],
+    directImpact: sampleRange(SEV_LOSS, sevR),
+    cascadingLikelihood: sampleRange(SEV_CASC_L, sevR),
+    cascadingImpact: sampleRange(SEV_CASC, sevR),
   };
   const rsName = rs ? String(rs.values.name ?? "risk source") : "risk source";
   const prov: Record<keyof QuantInputs, Prov> = {

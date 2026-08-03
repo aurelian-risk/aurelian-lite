@@ -5,9 +5,10 @@ import { StudyView } from "./components/StudyView";
 import { TaxonomyView } from "./components/TaxonomyView";
 import { DocumentsView } from "./components/DocumentsView";
 import { ModelView } from "./components/ModelView";
+import { TimelineView } from "./components/TimelineView";
 import { Icon } from "./components/ui";
 
-type Route = "dashboard" | "study" | "taxonomy" | "documents" | "model";
+type Route = "dashboard" | "study" | "taxonomy" | "documents" | "model" | "timeline";
 
 function Sidebar({ route, go, hasStudy }: { route: Route; go: (r: Route) => void; hasStudy: boolean }) {
   const [light, setLight] = useState(() => document.documentElement.classList.contains("light"));
@@ -47,6 +48,10 @@ function Sidebar({ route, go, hasStudy }: { route: Route; go: (r: Route) => void
       <button className={"nav-item" + (route === "taxonomy" ? " active" : "")} onClick={() => go("taxonomy")}>
         <span className="num"><Icon.schema /></span> Taxonomy
       </button>
+      <button className={"nav-item" + (route === "timeline" ? " active" : "")} onClick={() => go("timeline")}
+        title="Change timeline of the active study">
+        <span className="num"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg></span> Timeline
+      </button>
 
       <div style={{ flex: 1 }} />
       <button className="nav-item" onClick={toggleTheme}>
@@ -73,7 +78,9 @@ export default function App() {
   return (
     <div className="app">
       <Sidebar route={route} go={setRoute} hasStudy={!!activeStudyId} />
-      {route === "documents" ? (
+      {route === "timeline" ? (
+        <div className="main"><TimelineView /></div>
+      ) : route === "documents" ? (
         <div className="main"><DocumentsView /></div>
       ) : route === "model" ? (
         <div className="main"><ModelView /></div>

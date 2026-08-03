@@ -5,7 +5,9 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { EntityRecord, EntityTypeDef, FieldValue, Study, Taxonomy } from "../domain/types";
 import { emptyValues, getType, recordTitle, refFields, validateRecord } from "../domain/taxonomy";
+import { stepFields, predecessorCandidates } from "../domain/killchain";
 import { useStore } from "../domain/store";
+import { getEditor, setEditor } from "../domain/audit";
 import { FieldInput, type RefOption } from "./FieldInput";
 import { Icon } from "./ui";
 
@@ -17,6 +19,8 @@ export function EntityModal({ type, tax, study, record, onClose, onBack, backLab
   const [draft, setDraft] = useState<Record<string, FieldValue>>(() => record ? { ...record.values } : { ...emptyValues(type), ...(initialValues ?? {}) });
   const [error, setError] = useState<string | null>(null);
   const [refRec, setRefRec] = useState<EntityRecord | null>(null);
+  const [editor, setEditorName] = useState(getEditor());
+  const [note, setNote] = useState("");
 
   // Escape steps back one level (to the previous entity or the factor trace);
   // when a nested entity is open here, let that innermost modal handle it.
@@ -60,8 +64,10 @@ export function EntityModal({ type, tax, study, record, onClose, onBack, backLab
   const save = () => {
     const err = validateRecord(type, draft);
     if (err) { setError(err); return; }
-    if (record) updateEntity(record.id, draft);
-    else addEntity(type.key, draft);
+    setEditor(editor);                                   // remembered for next time; read by the store
+    const comment = note.trim() || undefined;
+    if (record) updateEntity(record.id, draft, comment);
+    else addEntity(type.key, draft, undefined, comment);
     onClose();
   };
   const remove = () => { if (record) { deleteEntity(record.id); onClose(); } };
@@ -80,6 +86,25 @@ export function EntityModal({ type, tax, study, record, onClose, onBack, backLab
   }
 
   const patch = (key: string, v: FieldValue) => setDraft((d) => ({ ...d, [key]: v }));
+
+  // B+ kill-chain predecessors: constrained, grouped candidate list (intra = earlier
+  // steps of this scenario; cross = cascade from other scenarios; cycle-closing hidden).
+  // Stored values that no longer qualify (e.g. legacy) are appended so their chips still
+  // resolve — they're tolerated on read, only new picks are constrained.
+  const sf = stepFields(type);
+  const predOptions = (): RefOption[] => {
+    if (!sf) return [];
+    const cand = predecessorCandidates(tax, study, type, {
+      id: record?.id, scenario: String(draft[sf.scenarioField.key] ?? ""), order: Number(draft[sf.orderField.key] ?? 0),
+    });
+    const have = new Set(cand.map((c) => c.id));
+    const sel = Array.isArray(draft[sf.predField.key]) ? (draft[sf.predField.key] as string[]) : [];
+    const extra = sel.filter((id) => !have.has(id)).map((id) => {
+      const e = study.entities.find((x) => x.id === id);
+      return { id, label: e ? recordTitle(type, e) : "(unknown)", group: "Currently set" };
+    });
+    return [...cand, ...extra];
+  };
 
   return (<>
     {createPortal(
@@ -100,7 +125,7 @@ export function EntityModal({ type, tax, study, record, onClose, onBack, backLab
             {type.fields.map((f) => (
               <div className={"field" + (f.type === "textarea" || f.type === "multiref" ? " span2" : "")} key={f.key}>
                 <label>{f.label}{f.required && <span style={{ color: "var(--color-state-error)" }}> *</span>}</label>
-                <FieldInput field={f} value={draft[f.key] ?? null} onChange={(v) => patch(f.key, v)} refOptions={refOptions} siblings={draft} suggested={f.type === "ref" ? suggestedFor(f) : undefined} />
+                <FieldInput field={f} value={draft[f.key] ?? null} onChange={(v) => patch(f.key, v)} refOptions={refOptions} siblings={draft} suggested={f.type === "ref" ? suggestedFor(f) : undefined} multirefOptions={sf && f.key === sf.predField.key ? predOptions() : undefined} />
                 {f.help && <span className="hint">{f.help}</span>}
               </div>
             ))}
@@ -121,6 +146,15 @@ export function EntityModal({ type, tax, study, record, onClose, onBack, backLab
               </div>
             </div>
           )}
+
+          <div className="audit-row">
+            <label className="audit-fld"><span className="audit-k">Editor</span>
+              <input value={editor} onChange={(e) => setEditorName(e.target.value)} placeholder="your name" />
+            </label>
+            <label className="audit-fld"><span className="audit-k">Change note <span className="hint">optional</span></span>
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="why this change" />
+            </label>
+          </div>
 
           {error && <div className="guide warn" style={{ marginTop: 14 }}>{error}</div>}
         </div>

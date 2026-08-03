@@ -7,6 +7,7 @@ import type {
 } from "./types";
 import { DEFAULT_TAXONOMY, getType, refFields } from "./taxonomy";
 import { loadRaw, saveState } from "./persistence";
+import { appendChange, diffValues, getEditor } from "./audit";
 
 function uid(): ID {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
@@ -140,8 +141,8 @@ export interface StoreState {
   deleteStudy: (id: ID) => void;
   setActiveStudy: (id: ID | null) => void;
 
-  addEntity: (type: string, values: Record<string, FieldValue>, source?: string) => ID;
-  updateEntity: (id: ID, values: Record<string, FieldValue>) => void;
+  addEntity: (type: string, values: Record<string, FieldValue>, source?: string, comment?: string) => ID;
+  updateEntity: (id: ID, values: Record<string, FieldValue>, comment?: string) => void;
   deleteEntity: (id: ID) => void;
   setNodePos: (id: ID, x: number, y: number) => void;
   setLayout: (layout: Record<ID, { x: number; y: number }>) => void;
@@ -224,18 +225,26 @@ export const useStore = create<StoreState>((set, get) => ({
   },
   setActiveStudy: (id) => { set({ activeStudyId: id }); schedulePersist(get); },
 
-  addEntity: (type, values, source) => {
+  addEntity: (type, values, source, comment) => {
     const id = uid();
     const ts = nowISO();
+    const history = appendChange(undefined, { editor: getEditor() || "anonymous", kind: "create", ts, comment });
     mutateActive(get, set, (study) => ({
-      ...study, entities: [...study.entities, { id, type, values, createdAt: ts, updatedAt: ts, ...(source ? { source } : {}) }],
+      ...study, entities: [...study.entities, { id, type, values, createdAt: ts, updatedAt: ts, ...(source ? { source } : {}), history }],
     }));
     return id;
   },
-  updateEntity: (id, values) => {
+  updateEntity: (id, values, comment) => {
     mutateActive(get, set, (study) => ({
       ...study,
-      entities: study.entities.map((e) => (e.id === id ? { ...e, values, updatedAt: nowISO() } : e)),
+      entities: study.entities.map((e) => {
+        if (e.id !== id) return e;
+        const changes = diffValues(e.values, values);
+        if (!changes.length && !comment) return e;   // no-op edit: don't touch the record or its history
+        const ts = nowISO();
+        const history = appendChange(e.history, { editor: getEditor() || "anonymous", kind: "update", ts, changes, comment });
+        return { ...e, values, updatedAt: ts, history };
+      }),
     }));
   },
   deleteEntity: (id) => {

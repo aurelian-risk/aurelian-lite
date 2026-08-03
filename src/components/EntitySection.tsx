@@ -2,6 +2,7 @@ import { Fragment, useState, type ReactNode } from "react";
 import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue, Study, Taxonomy } from "../domain/types";
 import { columnFields, getType, recordTitle, refFields, scaleLabel, scaleMax, titleField } from "../domain/taxonomy";
 import { useStore } from "../domain/store";
+import { ChangeHistoryModal, IntegrityBadge } from "./ChangeHistoryModal";
 import { EntityModal } from "./EntityModal";
 import { Icon, ScaleBadge, ScaleBars } from "./ui";
 
@@ -154,6 +155,7 @@ function EntityDetail({ type, record, tax, study, color, onEdit, onDelete, onOpe
   type: EntityTypeDef; record: EntityRecord; tax: Taxonomy; study: Study; color: string;
   onEdit: () => void; onDelete: () => void; onOpenEntity: (id: string) => void; extra?: ReactNode;
 }) {
+  const [histOpen, setHistOpen] = useState(false);
   const title = titleField(type);
   const scalarFields = type.fields.filter((f) => f.key !== title && f.type !== "textarea" && f.type !== "ref" && f.type !== "multiref");
   const scaleFields = scalarFields.filter((f) => f.type === "scale");
@@ -236,6 +238,15 @@ function EntityDetail({ type, record, tax, study, color, onEdit, onDelete, onOpe
           </div>
         </div>
       )}
+      {record.history && record.history.length > 0 && (
+        <button className="hist-btn" onClick={() => setHistOpen(true)}>
+          <span className="d-sub" style={{ margin: 0 }}>Change history</span>
+          <span className="hist-count">{record.history.length}</span>
+          <IntegrityBadge history={record.history} />
+          <span className="hist-view">View →</span>
+        </button>
+      )}
+      {histOpen && <ChangeHistoryModal tax={tax} study={study} record={record} onClose={() => setHistOpen(false)} />}
       <div className="detail-meta mono">updated {new Date(record.updatedAt).toLocaleString()}</div>
     </div>
   );

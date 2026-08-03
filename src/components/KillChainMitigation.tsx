@@ -23,7 +23,7 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
   const orderF = stepType?.fields.find((f) => f.type === "number");
   const tacticF = stepType?.fields.find((f) => f.type === "enum");
   const techF = stepType?.fields.find((f) => f.type === "text" && f.key !== (stepType?.titleField ?? "name"));
-  const measureType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "multiref" && f.refType === stepType?.key));
+  const measureType = tax.entityTypes.find((t) => t.key !== stepType?.key && t.fields.some((f) => f.type === "multiref" && f.refType === stepType?.key));
   const coversF = measureType?.fields.find((f) => f.type === "multiref" && f.refType === stepType?.key);
   if (!stepType || !parentF?.refType || !orderF || !measureType || !coversF) return null;
   const opType = getType(tax, parentF.refType);

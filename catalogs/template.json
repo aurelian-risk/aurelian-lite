@@ -1,0 +1,8 @@
+{
+  "name": "My catalog",
+  "source": "Where these requirements come from (standard, version, licence).",
+  "items": [
+    { "ref_id": "A.1", "title": "First requirement", "category": "Section A", "description": "Optional detail." },
+    { "ref_id": "A.2", "title": "Second requirement", "category": "Section A" }
+  ]
+}

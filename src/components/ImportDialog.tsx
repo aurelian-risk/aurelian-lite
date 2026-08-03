@@ -1,48 +1,43 @@
-// Data import dialog: choose additive vs destructive apply, and a source —
-// either pick a file or paste JSON/YAML text directly. Auto-detects the format.
+// Data import dialog with a review step: parse a bundle (file / paste / a demo
+// revision), preview the diff against the current data (added / changed / removed
+// entities, per field), then apply it additively or destructively.
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { useStore } from "../domain/store";
+import { useActiveStudy, useStore } from "../domain/store";
 import { pickTextFile, parseBundle } from "../domain/persistence";
 import { isEncrypted, decryptText } from "../domain/crypto";
 import { importDocs } from "../domain/documents";
 import { setModelId } from "../domain/embeddings";
-import type { Bundle } from "../domain/types";
+import { diffBundle, diffTotals, demoRevision, type StudyDiff, type FieldDelta } from "../domain/importdiff";
+import type { Bundle, FieldValue } from "../domain/types";
 import { Icon } from "./ui";
 
 type Mode = "merge" | "replace";
 
+const short = (v: FieldValue): string => {
+  if (v == null || v === "") return "—";
+  if (Array.isArray(v)) return `${v.length} link${v.length === 1 ? "" : "s"}`;
+  const s = String(v);
+  return s.length > 30 ? s.slice(0, 30) + "…" : s;
+};
+const deltaText = (f: FieldDelta) => `${f.label}: ${short(f.from)} → ${short(f.to)}`;
+
 export function ImportDialog({ onClose }: { onClose: () => void }) {
   const store = useStore();
+  const tax = useStore((s) => s.taxonomy);
+  const active = useActiveStudy();
   const [mode, setMode] = useState<Mode>("merge");
   const [text, setText] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<{ bundle: Bundle; diff: StudyDiff[]; note?: string } | null>(null);
 
-  const describe = (b: Bundle) => {
-    const parts: string[] = [];
-    if (b.taxonomy) parts.push("a taxonomy");
-    if (b.studies) parts.push(`${b.studies.length} study/studies`);
-    if (b.documents?.length) parts.push(`${b.documents.length} document(s)`);
-    if (b.settings) parts.push("settings");
-    return parts.join(", ") || "nothing usable";
+  const preview = (bundle: Bundle, note?: string) => {
+    const diff = diffBundle(tax, store.studies, bundle.studies ?? []);
+    setPending({ bundle, diff, note });
+    setStatus("");
   };
 
-  const apply = async (b: Bundle) => {
-    if (b.taxonomy && store.studies.length > 0 && mode === "replace") {
-      if (!confirm("This file replaces the taxonomy (data model). Existing entities may no longer match. Continue?")) return;
-    }
-    store.applyBundle(b, { studiesMode: mode });
-    if (b.documents?.length) await importDocs(b.documents);
-    if (b.settings) {
-      if (b.settings.modelId) setModelId(b.settings.modelId);
-      if (b.settings.theme) { const el = document.documentElement; el.classList.toggle("light", b.settings.theme === "light"); el.classList.toggle("dark", b.settings.theme !== "light"); }
-    }
-    setStatus(`Imported ${describe(b)} (${mode === "merge" ? "added to" : "replaced"} existing data).`);
-    setTimeout(onClose, 800);
-  };
-
-  // Encrypted exports (.enc) prompt for the password before parsing.
   const resolveText = async (raw: string): Promise<string> => {
     if (!isEncrypted(raw)) return raw;
     const pw = prompt("This export is encrypted. Enter the password:");
@@ -53,65 +48,114 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
 
   const fromFile = async () => {
     setBusy(true); setStatus("");
-    try { await apply(parseBundle(await resolveText(await pickTextFile()))); }
+    try { preview(parseBundle(await resolveText(await pickTextFile()))); }
     catch (e) { if (e instanceof Error && e.message !== "No file selected" && e.message !== "cancelled") setStatus("Import failed: " + e.message); }
     setBusy(false);
   };
-
-  const fromText = async () => {
+  const fromText = () => {
     if (!text.trim()) { setStatus("Paste JSON or YAML text first, or choose a file."); return; }
-    setBusy(true); setStatus("");
-    try { await apply(parseBundle(await resolveText(text))); }
-    catch (e) { if (!(e instanceof Error && e.message === "cancelled")) setStatus("Could not parse: " + (e instanceof Error ? e.message : String(e))); }
-    setBusy(false);
+    try { preview(parseBundle(text)); }
+    catch (e) { setStatus("Could not parse: " + (e instanceof Error ? e.message : String(e))); }
+  };
+  const previewDemo = () => {
+    if (!active) return;
+    preview({ kind: "ebios-data", version: 2, studies: [demoRevision(active)] },
+      "Demo: a colleague's revision of this study — a couple of entities changed, one added, one removed. Nothing is applied until you confirm.");
   };
 
-  const MODES: { id: Mode; title: string; hint: string }[] = [
-    { id: "merge", title: "Additive", hint: "Add new studies / merge partial data into existing ones. Nothing is deleted." },
-    { id: "replace", title: "Destructive", hint: "Replace the current dataset entirely with the imported one." },
-  ];
+  const apply = async () => {
+    if (!pending) return;
+    const b = pending.bundle;
+    if (b.taxonomy && store.studies.length > 0 && mode === "replace"
+      && !confirm("This file replaces the taxonomy (data model). Existing entities may no longer match. Continue?")) return;
+    store.applyBundle(b, { studiesMode: mode });
+    if (b.documents?.length) await importDocs(b.documents);
+    if (b.settings) {
+      if (b.settings.modelId) setModelId(b.settings.modelId);
+      if (b.settings.theme) { const el = document.documentElement; el.classList.toggle("light", b.settings.theme === "light"); el.classList.toggle("dark", b.settings.theme !== "light"); }
+    }
+    onClose();
+  };
+
+  const totals = pending ? diffTotals(pending.diff) : null;
 
   return createPortal(
     <div className="overlay" onMouseDown={onClose}>
-      <div className="modal-lg" style={{ maxWidth: 560 }} onMouseDown={(e) => e.stopPropagation()}>
+      <div className="modal-lg" style={{ maxWidth: 620 }} onMouseDown={(e) => e.stopPropagation()}>
         <header className="modal-lg-head">
           <div style={{ flex: 1 }}>
             <div className="dialog-sub" style={{ margin: 0 }}>Data · JSON / YAML (auto-detected)</div>
-            <h2 style={{ fontSize: 19 }}>Import data</h2>
+            <h2 style={{ fontSize: 19 }}>{pending ? "Review changes" : "Import data"}</h2>
           </div>
           <button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button>
         </header>
 
-        <div className="modal-lg-body">
-          <div className="menu-label" style={{ padding: "0 0 8px" }}>Apply as</div>
-          <div className="import-modes">
-            {MODES.map((m) => (
-              <label key={m.id} className={"import-mode" + (mode === m.id ? " on" : "") + (m.id === "replace" ? " danger" : "")}>
-                <input type="radio" name="import-mode" checked={mode === m.id} onChange={() => setMode(m.id)} />
-                <span>
-                  <span className="im-title">{m.title}</span>
-                  <span className="im-hint">{m.hint}</span>
-                </span>
-              </label>
+        {!pending ? (
+          <div className="modal-lg-body">
+            <div className="menu-label" style={{ padding: "16px 0 8px" }}>Source</div>
+            <div className="field" style={{ marginBottom: 8 }}>
+              <label>Paste JSON / YAML</label>
+              <textarea style={{ minHeight: 130, fontFamily: "var(--font-mono)", fontSize: 12 }} value={text}
+                onChange={(e) => setText(e.target.value)} placeholder="Paste a bundle, study data, or a taxonomy here…" />
+            </div>
+            <div className="idiff-actions">
+              <button className="btn" disabled={busy} onClick={fromFile}><Icon.upload /> Choose file…</button>
+              {active && <button className="btn ghost" onClick={previewDemo} title="See the diff without editing a file">Preview a demo revision</button>}
+              <span style={{ flex: 1 }} />
+              <button className="btn primary" disabled={busy || !text.trim()} onClick={fromText}>Preview pasted →</button>
+            </div>
+            {status && <div className="hint" style={{ marginTop: 12 }}>{status}</div>}
+          </div>
+        ) : (
+          <div className="modal-lg-body">
+            {pending.note && <div className="guide" style={{ marginBottom: 12 }}>{pending.note}</div>}
+            <div className="idiff-summary">
+              <span className="idiff-c add">+{totals!.added} added</span>
+              <span className="idiff-c chg">~{totals!.changed} changed</span>
+              <span className="idiff-c rem">−{totals!.removed} {mode === "replace" ? "removed" : "kept"}</span>
+            </div>
+            {pending.diff.length === 0 && <div className="hint">No study data in this file (taxonomy/settings only).</div>}
+            {pending.diff.map((sd) => (
+              <div className="idiff-study" key={sd.id}>
+                <div className="idiff-study-h">{sd.name}{sd.isNew && <span className="idiff-new">new study</span>}</div>
+                {[...sd.changed, ...sd.added, ...sd.removed].length === 0 && <div className="hint">No differences.</div>}
+                {[...sd.changed, ...sd.added, ...sd.removed].map((ed) => (
+                  <div className={"idiff-ent " + ed.kind} key={ed.kind + ed.id}>
+                    <span className={"idiff-badge " + ed.kind}>{ed.kind === "added" ? "+" : ed.kind === "removed" ? "−" : "~"}</span>
+                    <span className="idiff-lbl">{ed.label}</span>
+                    <span className="idiff-type">{ed.typeLabel}</span>
+                    {ed.kind === "removed" && <span className="idiff-hint">{mode === "replace" ? "will be removed" : "kept (additive)"}</span>}
+                    {ed.fields && <span className="idiff-fields">{ed.fields.slice(0, 3).map(deltaText).join(" · ")}{ed.fields.length > 3 ? ` · +${ed.fields.length - 3} more` : ""}</span>}
+                    {ed.last && ed.kind !== "removed" && (
+                      <span className="idiff-meta">{ed.last.editor} · {new Date(ed.last.ts).toLocaleString()}{ed.last.comment ? ` · “${ed.last.comment}”` : ""}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
             ))}
           </div>
-
-          <div className="menu-label" style={{ padding: "16px 0 8px" }}>Source</div>
-          <div className="field" style={{ marginBottom: 8 }}>
-            <label>Paste JSON / YAML</label>
-            <textarea style={{ minHeight: 140, fontFamily: "var(--font-mono)", fontSize: 12 }} value={text}
-              onChange={(e) => setText(e.target.value)} placeholder="Paste a bundle, study data, or a taxonomy here…" />
-          </div>
-          <div className="import-or"><span>or</span></div>
-          <button className="btn" disabled={busy} onClick={fromFile}><Icon.upload /> Choose file…</button>
-          {status && <div className="hint" style={{ marginTop: 10 }}>{status}</div>}
-        </div>
+        )}
 
         <footer className="modal-lg-foot">
-          <span className="hint">{mode === "merge" ? "Additive import" : "Destructive import — replaces all data"}</span>
-          <span style={{ flex: 1 }} />
-          <button className="btn ghost" onClick={onClose}>Cancel</button>
-          <button className="btn primary" disabled={busy || !text.trim()} onClick={fromText}><Icon.download /> Import pasted</button>
+          {!pending ? (
+            <span className="hint">Choose a source to preview the changes first.</span>
+          ) : (
+            <>
+              <div className="import-modes-inline">
+                {(["merge", "replace"] as Mode[]).map((m) => (
+                  <label key={m} className={"seg-btn" + (mode === m ? " on" : "")}>
+                    <input type="radio" name="imode" checked={mode === m} onChange={() => setMode(m)} style={{ display: "none" }} />
+                    {m === "merge" ? "Additive" : "Destructive"}
+                  </label>
+                ))}
+              </div>
+              <span style={{ flex: 1 }} />
+              <button className="btn ghost" onClick={() => setPending(null)}>‹ Back</button>
+              <button className={"btn " + (mode === "replace" ? "danger" : "primary")} onClick={apply}>
+                {mode === "replace" ? "Replace all" : "Apply changes"}
+              </button>
+            </>
+          )}
         </footer>
       </div>
     </div>,

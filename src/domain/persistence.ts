@@ -82,10 +82,25 @@ export async function clearStorage(): Promise<void> {
 // ── File download / upload ─────────────────────────────────────────────
 export type Format = "json" | "yaml";
 
+/** Recursively sort object keys (arrays keep their order — it is meaningful for
+ *  entities/history). Makes the export deterministic. */
+function sortDeep(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(sortDeep);
+  if (v && typeof v === "object") {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(v as Record<string, unknown>).sort()) out[k] = sortDeep((v as Record<string, unknown>)[k]);
+    return out;
+  }
+  return v;
+}
+
+// Git-friendly: sorted keys + no line-wrapping so re-exporting unchanged data is
+// byte-identical and a single-field change is a single-line diff.
 function serialize(obj: unknown, format: Format): string {
+  const sorted = sortDeep(obj);
   return format === "yaml"
-    ? yaml.dump(obj, { noRefs: true, lineWidth: 100 })
-    : JSON.stringify(obj, null, 2);
+    ? yaml.dump(sorted, { noRefs: true, lineWidth: -1, sortKeys: true })
+    : JSON.stringify(sorted, null, 2) + "\n";
 }
 
 function download(filename: string, content: string, format: Format): void {

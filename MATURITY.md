@@ -41,9 +41,8 @@ some interfaces to still change between minor versions.
 - Model weights are never bundled or exported; on-device embedding models are fetched at runtime by
   their library and cached.
 
-## Roadmap & changes
+## Changes
 
-- Where the tool is heading: [ROADMAP.md](ROADMAP.md).
 - What has changed: [CHANGELOG.md](CHANGELOG.md).
 
 ## Relationship to Aurelian Risk Manager

@@ -608,7 +608,7 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
   const stepType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
   const parentF = stepType?.fields.find((f) => f.type === "ref" && f.refType);
   const orderF = stepType?.fields.find((f) => f.type === "number");
-  const measureType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "multiref" && f.refType === stepType?.key));
+  const measureType = tax.entityTypes.find((t) => t.key !== stepType?.key && t.fields.some((f) => f.type === "multiref" && f.refType === stepType?.key));
   const coversF = measureType?.fields.find((f) => f.type === "multiref" && f.refType === stepType?.key);
   const opType = parentF?.refType ? getType(tax, parentF.refType) : undefined;
   if (stepType && parentF && orderF && measureType && coversF && opType) {

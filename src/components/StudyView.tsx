@@ -5,6 +5,7 @@ import { workshopMarkdown, reportMarkdown, reportHtml, openReportHtml, downloadT
 import { EntitySection } from "./EntitySection";
 import { RiskMatrix } from "./RiskMatrix";
 import { KillChainLane } from "./KillChainLane";
+import { AttackPathsView } from "./AttackPathsView";
 import { KillChainMitigation } from "./KillChainMitigation";
 import { CoverageMatrix } from "./CoverageMatrix";
 import { MitigationCharts } from "./MitigationCharts";
@@ -138,13 +139,13 @@ export function StudyView({ onBack }: { onBack: () => void }) {
             {(() => {
               // WS5: coverage overview (ring + tactic heatmap) ABOVE the tables.
               const stepT = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
-              const hasMeasure = tax.entityTypes.some((t) => t.group === activeGroup.key && t.fields.some((f) => f.type === "multiref" && f.refType === stepT?.key));
+              const hasMeasure = tax.entityTypes.some((t) => t.group === activeGroup.key && t.key !== stepT?.key && t.fields.some((f) => f.type === "multiref" && f.refType === stepT?.key));
               return hasMeasure ? <MitigationCharts tax={tax} study={study} color={activeGroup.color} /> : null;
             })()}
             {(() => {
               // WS5: kill-chain mitigation (per-step measure assignment) ABOVE the tables.
               const stepT = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
-              const hasMeasure = tax.entityTypes.some((t) => t.group === activeGroup.key && t.fields.some((f) => f.type === "multiref" && f.refType === stepT?.key));
+              const hasMeasure = tax.entityTypes.some((t) => t.group === activeGroup.key && t.key !== stepT?.key && t.fields.some((f) => f.type === "multiref" && f.refType === stepT?.key));
               return hasMeasure ? <KillChainMitigation tax={tax} study={study} color={activeGroup.color} /> : null;
             })()}
             {(() => {
@@ -174,6 +175,13 @@ export function StudyView({ onBack }: { onBack: () => void }) {
                   </Fragment>
                 );
               });
+            })()}
+            {(() => {
+              // WS4: integrated attack-paths projection — all kill chains of this study
+              // converging on the target assets, as a sub-section below the tables. Shown
+              // only in the workshop that owns the kill-chain step type.
+              const stepT = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
+              return stepT && stepT.group === activeGroup.key ? <AttackPathsView tax={tax} study={study} color={activeGroup.color} /> : null;
             })()}
             {/* Risk Quantification: the derived Monte-Carlo tuner. Purely parametric
                 (from the qualitative model), so the group needs no manual entity. */}

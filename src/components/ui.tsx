@@ -127,10 +127,25 @@ export function ScaleBars({ value, max, label, positive }: { value: number; max:
   );
 }
 
+// Render a flat option list as <optgroup>s, preserving first-seen group order.
+function groupOptions(opts: { id: string; label: string; group?: string }[]) {
+  const order: string[] = [];
+  const by = new Map<string, { id: string; label: string }[]>();
+  for (const o of opts) {
+    const g = o.group ?? "";
+    if (!by.has(g)) { by.set(g, []); order.push(g); }
+    by.get(g)!.push(o);
+  }
+  return order.map((g) =>
+    g ? <optgroup key={g} label={g}>{by.get(g)!.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</optgroup>
+      : by.get(g)!.map((o) => <option key={o.id} value={o.id}>{o.label}</option>),
+  );
+}
+
 export function MultiSelect({
   options, selected, onChange, placeholder = "add …", emptyHint, onClickChip, renderChipExtra,
 }: {
-  options: { id: string; label: string }[];
+  options: { id: string; label: string; group?: string }[];
   selected: string[];
   onChange: (ids: string[]) => void;
   placeholder?: string;
@@ -161,7 +176,7 @@ export function MultiSelect({
         <select value="" style={{ width: "auto", minWidth: 160 }}
           onChange={(e) => e.target.value && onChange([...selected, e.target.value])}>
           <option value="">{placeholder}</option>
-          {avail.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+          {avail.some((o) => o.group) ? groupOptions(avail) : avail.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
         </select>
       )}
     </div>
