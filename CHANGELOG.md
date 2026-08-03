@@ -5,6 +5,35 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.3.5] — 2026-08-03
+
+### Added
+- **Change history & Timeline** — every create and edit is recorded in a per-entity,
+  hash-chained, tamper-evident audit trail (with editor and an optional note); integrity is
+  verified on load, and a global **Timeline** view lists all changes. The history travels
+  inside the exported bundle.
+- **Import diff / merge** — preview exactly what an imported revision *adds, changes or
+  removes* (per entity, with editor, time and comment) before applying it, in additive or
+  destructive mode.
+- **Attack Paths view** — a read-only projection of all operational-scenario kill chains onto
+  their target assets, highlighting **choke points** (pass-through assets that several chains
+  converge on — the highest-leverage place to add a control). A collapsible sub-section of the
+  Operational Scenarios workshop.
+- **Kill-chain attack graph** — a step may declare predecessors, turning the linear chain into
+  a DAG with AND/OR joins: earlier steps within a scenario, or a step from *another* scenario to
+  model a **cascade**. Choices that would break the forward escalation or create a cycle are
+  hidden, so the graph stays acyclic by construction.
+- **Importable requirement catalogs** — an IEC 62443-3-3 starter and a documented catalog
+  format for bringing your own (licensed) frameworks.
+
+### Changed
+- **Deterministic export** — bundles are written with sorted keys and stable YAML so successive
+  exports produce clean, review-friendly git diffs.
+- **Workshop navigation redesigned** as a colour-coded 1→7 stepper with a clearer active state;
+  the view tabs (Flow / Graph / Checks) are set apart as secondary.
+- Rating scales: the risk matrices and quantification now adapt to any scale length.
+- Added project governance docs (CHANGELOG, MATURITY).
+
 ## [0.3.1] — 2026-08-01
 
 ### Changed
@@ -51,6 +80,7 @@ downloadable single-file build under [Releases](https://github.com/aurelian-risk
   knowledge graph, likelihood × severity risk matrix, and on-device embedding-assisted extraction.
 - Offline, single-file, private by design.
 
+[0.3.5]: https://github.com/aurelian-risk/aurelian-lite/releases/tag/v0.3.5
 [0.3.1]: https://github.com/aurelian-risk/aurelian-lite/releases/tag/v0.3.1
 [0.3.0]: https://github.com/aurelian-risk/aurelian-lite/releases/tag/v0.3.0
 [0.2.0]: https://github.com/aurelian-risk/aurelian-lite/releases/tag/v0.2.0

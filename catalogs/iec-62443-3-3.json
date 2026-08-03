@@ -1,0 +1,13 @@
+{
+  "name": "IEC 62443-3-3",
+  "source": "IEC 62443-3-3 Foundational Requirements (FR 1-7), high-level structure only. The detailed System Requirements (SR) and their text are copyrighted by IEC and are NOT included - add them from your licensed copy.",
+  "items": [
+    { "ref_id": "FR 1", "title": "Identification and authentication control", "category": "Foundational Requirement" },
+    { "ref_id": "FR 2", "title": "Use control", "category": "Foundational Requirement" },
+    { "ref_id": "FR 3", "title": "System integrity", "category": "Foundational Requirement" },
+    { "ref_id": "FR 4", "title": "Data confidentiality", "category": "Foundational Requirement" },
+    { "ref_id": "FR 5", "title": "Restricted data flow", "category": "Foundational Requirement" },
+    { "ref_id": "FR 6", "title": "Timely response to events", "category": "Foundational Requirement" },
+    { "ref_id": "FR 7", "title": "Resource availability", "category": "Foundational Requirement" }
+  ]
+}

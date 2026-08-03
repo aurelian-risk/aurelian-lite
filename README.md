@@ -7,7 +7,7 @@
     <a href="MATURITY.md"><img src="https://img.shields.io/badge/status-beta-e0a13a.svg" alt="Status: Beta"></a>
   </p>
   <p>
-    <a href="ROADMAP.md">Roadmap</a> · <a href="CHANGELOG.md">Changelog</a> · <a href="MATURITY.md">Maturity &amp; suitability</a>
+    <a href="CHANGELOG.md">Changelog</a> · <a href="MATURITY.md">Maturity &amp; suitability</a>
   </p>
 </div>
 

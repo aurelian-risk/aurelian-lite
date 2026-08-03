@@ -74,6 +74,23 @@ try {
   await page.keyboard.press("Escape");
   await page.waitForTimeout(150);
 
+  // Change history (hash-chained audit trail): editing records who/what + verifies
+  await page.locator(".detail .btn", { hasText: "Edit" }).first().click();
+  await page.waitForSelector(".modal-lg");
+  await page.locator('.modal-lg input[placeholder="your name"]').fill("e2e");
+  await page.locator('.modal-lg input[placeholder="why this change"]').fill("audit check");
+  const _hta = page.locator(".modal-lg textarea").first();
+  await _hta.fill((await _hta.inputValue()) + " .");
+  await page.locator(".modal-lg .btn.primary", { hasText: "Save" }).click();
+  await page.waitForTimeout(200);
+  ok("change history button shown after edit", (await page.locator(".hist-btn").count()) > 0);
+  ok("change-history integrity verified", (await page.locator(".hist-btn .hist-chain.ok").count()) > 0);
+  await page.locator(".hist-btn").click();
+  await page.waitForSelector(".modal-lg .hist-item");
+  ok("change history popup lists entries", (await page.locator(".modal-lg .hist-item").count()) > 0);
+  await page.locator('.modal-lg .btn.ghost[aria-label="Close"]').click();
+  await page.waitForTimeout(150);
+
   // Risk matrix only in WS3; kill-chain builder in WS4
   await page.locator(".ws-tab", { hasText: "Risk Sources" }).click();
   await page.waitForTimeout(200);
@@ -110,6 +127,52 @@ try {
   await page.waitForTimeout(300);
   ok('node click docks info panel under the graph', await page.locator('.detail-dock .info-panel .ip-title').count() > 0);
   await page.screenshot({ path: `${shots}/GraphInfo.png` });
+
+  // Attack paths: integrated cross-chain projection, a collapsible sub-section of WS4
+  await page.locator(".ws-tab", { hasText: "Operational Scenarios" }).click();
+  await page.waitForSelector(".ap-head", { timeout: 5000 });
+  ok("attack paths is a collapsible WS4 sub-section", (await page.locator(".panel:has(.ap-head) .panel-head h3", { hasText: "Attack paths" }).count()) > 0);
+  ok("attack paths collapsed by default", (await page.locator(".ap-graph").count()) === 0);
+  await page.locator(".ap-head").click();
+  await page.waitForSelector(".ap-graph", { timeout: 5000 });
+  await page.locator(".ap-graph").scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+  ok("attack paths has a choke-point explanation box", (await page.locator(".ap-note").count()) > 0);
+  const apSteps = await page.locator(".ap-node.step").count();
+  ok(`attack paths render ${apSteps} step nodes`, apSteps >= 6);
+  ok("attack paths reach asset nodes", (await page.locator(".ap-node.asset, .ap-node.biz").count()) >= 2);
+  ok("attack paths highlight ≥1 choke point", (await page.locator(".ap-node.choke").count()) >= 1);
+  ok("leaf business-asset targets are NOT choke points", (await page.locator(".ap-node.biz.choke").count()) === 0);
+  ok("attack paths draw edges", (await page.locator(".ap-edges path").count()) > 10);
+  ok("attack paths list per-chain toggle chips", (await page.locator(".ap-chip").count()) >= 2);
+  await page.screenshot({ path: `${shots}/AttackPaths.png` });
+  // toggling a chain off hides its exclusive nodes
+  const apBefore = await page.locator(".ap-node").count();
+  await page.locator(".ap-chip").last().click();
+  await page.waitForTimeout(250);
+  ok("hiding a chain removes nodes", (await page.locator(".ap-node").count()) < apBefore);
+  await page.locator(".ap-chip").last().click();
+  await page.waitForTimeout(200);
+  // clicking a node opens the underlying step/asset
+  await page.locator(".ap-node.step", { hasText: "Lateral movement" }).click();
+  await page.waitForTimeout(250);
+  ok("attack-path node click opens entity popup", (await page.locator(".modal-lg").count()) > 0);
+  // B+ predecessors: constrained + grouped candidate list on the kill-chain step editor
+  const predGroups = await page.evaluate(() => {
+    for (const s of document.querySelectorAll(".modal-lg .multi select")) {
+      const gs = [...s.querySelectorAll("optgroup")].map((g) => g.label);
+      if (gs.some((l) => /This scenario|Cascade from/.test(l))) {
+        const opts = [...s.querySelectorAll("option")].map((o) => o.textContent || "");
+        return { intra: gs.includes("This scenario"), cross: gs.some((l) => l.startsWith("Cascade from")),
+          offersLaterSameScenario: opts.some((t) => /Exfiltrate patient records|Encrypt the HIS/.test(t)) };
+      }
+    }
+    return null;
+  });
+  ok("predecessors dropdown groups intra + cross-scenario candidates", !!predGroups && predGroups.intra && predGroups.cross);
+  ok("predecessors dropdown hides later same-scenario steps (forward-only)", !!predGroups && predGroups.offersLaterSameScenario === false);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(150);
 
   // Quality-checks (completeness linter) view
   await page.locator(".ws-tab", { hasText: "Checks" }).click();
@@ -157,10 +220,31 @@ try {
   await page.waitForTimeout(150);
   await page.locator(".menu-item", { hasText: "Import data" }).click();
   await page.waitForTimeout(200);
-  ok("import dialog offers additive + destructive", (await page.locator(".import-mode").count()) === 2);
   ok("import dialog has paste textarea", (await page.locator(".modal-lg textarea").count()) > 0);
+  // Import diff / merge: preview a demo revision → added / changed / removed diff
+  await page.locator(".modal-lg button", { hasText: "Preview a demo revision" }).click();
+  await page.waitForTimeout(200);
+  ok("import diff summary shows counts", (await page.locator(".idiff-summary .idiff-c").count()) >= 3);
+  ok("import diff lists entity changes", (await page.locator(".idiff-ent").count()) > 0);
+  ok("import diff offers additive + destructive apply", (await page.locator(".modal-lg-foot .import-modes-inline .seg-btn").count()) === 2);
   await page.screenshot({ path: `${shots}/Import.png` });
+  await page.locator(".modal-lg-foot .btn.ghost", { hasText: "Back" }).click().catch(() => {});
+  await page.waitForTimeout(100);
   await page.locator(".overlay").click({ position: { x: 5, y: 5 } }).catch(() => {});
+  await page.waitForTimeout(150);
+
+  // Timeline (global change history) — left-nav view; the sample seeds history
+  await page.locator(".sidebar .nav-item", { hasText: "Timeline" }).click();
+  await page.waitForTimeout(250);
+  ok("timeline grouped by day with entries", (await page.locator(".tl-day-h").count()) > 0 && (await page.locator(".tl-item").count()) >= 5);
+  ok("timeline shows change stats", (await page.locator(".tl-stats strong").count()) >= 3);
+  await page.screenshot({ path: `${shots}/Timeline.png` });
+  await page.locator(".tl-item").first().click();
+  await page.waitForSelector(".modal-lg .hist-item");
+  ok("timeline item opens change-history popup", (await page.locator(".modal-lg .hist-item").count()) > 0);
+  await page.locator('.modal-lg .btn.ghost[aria-label="Close"]').click();
+  await page.waitForTimeout(120);
+  await page.locator(".sidebar .nav-item", { hasText: "Studies" }).click();
   await page.waitForTimeout(150);
 
   // Taxonomy view

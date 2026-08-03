@@ -1,6 +1,7 @@
 // A realistic sample study (hospital) to populate and exercise the data view.
 // Uses the default EBIOS taxonomy field keys and wires relationships by id.
 import type { EntityRecord, FieldValue, Study } from "./types";
+import { sealChain } from "./audit";
 
 function uid(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
@@ -56,17 +57,17 @@ export function makeSampleStudy(): Study {
   // ── Workshop 4 - Operational Scenario / Kill-chain ──
   const os = add("operational_scenario", { name: "Ransomware encryption of clinical systems", description: "The full end-to-end kill chain a ransomware operator would follow: an initial spear-phish of the maintenance provider, persistence on the maintenance host, theft of cached admin credentials, lateral movement into the clinical network, exfiltration of patient records for double extortion, and finally encryption of the Hospital Information System.", strategic_scenario: ssRansom, likelihood: 3, difficulty: 2 });
   const st1 = add("kill_chain_step", { name: "Phishing the maintenance provider", description: "Spear-phishing email delivers a loader.", operational_scenario: os, step_order: 1, tactic: "Initial Access", technique: "T1566 Phishing", targets_asset: saHis });
-  const st2 = add("kill_chain_step", { name: "Establish persistence via scheduled task", description: "Register a scheduled task to survive reboots.", operational_scenario: os, step_order: 2, tactic: "Persistence", technique: "T1053 Scheduled Task/Job", targets_asset: saHis });
-  const st3 = add("kill_chain_step", { name: "Credential dumping on maintenance host", description: "Harvest cached admin credentials.", operational_scenario: os, step_order: 3, tactic: "Credential Access", technique: "T1003 OS Credential Dumping", targets_asset: saDomain });
-  const stLateral = add("kill_chain_step", { name: "Lateral movement into clinical network", description: "Pivot via remote services.", operational_scenario: os, step_order: 4, tactic: "Lateral Movement", technique: "T1021 Remote Services", targets_asset: saNetwork });
-  const stExfil = add("kill_chain_step", { name: "Exfiltrate patient records", description: "Stage and copy records to an external server before encryption.", operational_scenario: os, step_order: 5, tactic: "Exfiltration", technique: "T1567 Exfiltration Over Web Service", targets_asset: saHis });
-  const st6 = add("kill_chain_step", { name: "Encrypt the HIS database", description: "Deploy ransomware on the core database.", operational_scenario: os, step_order: 6, tactic: "Impact", technique: "T1486 Data Encrypted for Impact", targets_asset: saHis });
+  const st2 = add("kill_chain_step", { name: "Establish persistence via scheduled task", description: "Register a scheduled task to survive reboots.", operational_scenario: os, step_order: 2, tactic: "Persistence", technique: "T1053 Scheduled Task/Job", targets_asset: saHis, predecessors: [st1] });
+  const st3 = add("kill_chain_step", { name: "Credential dumping on maintenance host", description: "Harvest cached admin credentials.", operational_scenario: os, step_order: 3, tactic: "Credential Access", technique: "T1003 OS Credential Dumping", targets_asset: saDomain, predecessors: [st1] });
+  const stLateral = add("kill_chain_step", { name: "Lateral movement into clinical network", description: "Pivot via remote services.", operational_scenario: os, step_order: 4, tactic: "Lateral Movement", technique: "T1021 Remote Services", targets_asset: saNetwork, predecessors: [st2, st3], join: "all" });
+  const stExfil = add("kill_chain_step", { name: "Exfiltrate patient records", description: "Stage and copy records to an external server before encryption.", operational_scenario: os, step_order: 5, tactic: "Exfiltration", technique: "T1567 Exfiltration Over Web Service", targets_asset: saHis, predecessors: [stLateral] });
+  const st6 = add("kill_chain_step", { name: "Encrypt the HIS database", description: "Deploy ransomware on the core database.", operational_scenario: os, step_order: 6, tactic: "Impact", technique: "T1486 Data Encrypted for Impact", targets_asset: saHis, predecessors: [stLateral] });
 
   // Second operational scenario (insider) - to exercise multiple kill-chains.
   const os2 = add("operational_scenario", { name: "Insider exfiltration of patient records", description: "A shorter, quieter chain: a privileged insider logs in with legitimate elevated credentials, queries and stages bulk patient records, and copies them onto an encrypted USB drive - producing few of the malware or lateral-movement artefacts an external attacker would leave.", strategic_scenario: ssInsider, likelihood: 2, difficulty: 1 });
-  add("kill_chain_step", { name: "Abuse valid database credentials", description: "Log in with legitimate elevated access.", operational_scenario: os2, step_order: 1, tactic: "Initial Access", technique: "T1078 Valid Accounts", targets_asset: saHis });
-  const stI2 = add("kill_chain_step", { name: "Collect patient records", description: "Query and stage bulk patient records.", operational_scenario: os2, step_order: 2, tactic: "Collection", technique: "T1005 Data from Local System", targets_asset: saHis });
-  const stI3 = add("kill_chain_step", { name: "Copy records to removable media", description: "Exfiltrate onto an encrypted USB drive.", operational_scenario: os2, step_order: 3, tactic: "Exfiltration", technique: "T1052 Exfiltration Over Physical Medium", targets_asset: saHis });
+  const stI1 = add("kill_chain_step", { name: "Abuse valid database credentials", description: "Log in with legitimate elevated access.", operational_scenario: os2, step_order: 1, tactic: "Initial Access", technique: "T1078 Valid Accounts", targets_asset: saHis });
+  const stI2 = add("kill_chain_step", { name: "Collect patient records", description: "Query and stage bulk patient records.", operational_scenario: os2, step_order: 2, tactic: "Collection", technique: "T1005 Data from Local System", targets_asset: saHis, predecessors: [stI1] });
+  const stI3 = add("kill_chain_step", { name: "Copy records to removable media", description: "Exfiltrate onto an encrypted USB drive.", operational_scenario: os2, step_order: 3, tactic: "Exfiltration", technique: "T1052 Exfiltration Over Physical Medium", targets_asset: saHis, predecessors: [stI2] });
 
   // ── Compliance (framework requirements) ──
   add("requirement", { name: "Risk analysis and information system security policies", ref_id: "21(2)(a)", framework: "NIS2", category: "Governance" }); // intentionally left uncovered (gap demo)
@@ -87,12 +88,42 @@ export function makeSampleStudy(): Study {
 
   // Risk treatment: decision + owner + residual risk after the measures. Two risks
   // are treated (they move down/left in the residual matrix); the others stay put.
-  add("risk_treatment", { name: "Treat: Ransomware via maintenance access", strategic_scenario: ssRansom, decision: "Reduce", owner: "CISO", deadline: "2026-Q4", status: "In progress", justification: "Reduce via the kill-chain measures (MFA, segmentation, EDR, immutable backups). Residual likelihood follows their coverage; the MFA rollout is still in progress." });
+  const trRansom = add("risk_treatment", { name: "Treat: Ransomware via maintenance access", strategic_scenario: ssRansom, decision: "Reduce", owner: "CISO", deadline: "2026-Q4", status: "In progress", justification: "Reduce via the kill-chain measures (MFA, segmentation, EDR, immutable backups). Residual likelihood follows their coverage; the MFA rollout is still in progress." });
   add("risk_treatment", { name: "Treat: Insider data exfiltration", strategic_scenario: ssInsider, decision: "Reduce", owner: "Data Protection Officer", deadline: "2026-Q3", status: "Implemented", justification: "Reduce via DLP and egress monitoring on the exfiltration steps of the kill chain." });
 
   // Risk Quantification is fully derived (Monte-Carlo from the qualitative model) -
   // no manual assessment entity to seed. Quantification is opt-in per scenario; the
   // sample opts both operational scenarios in so the demo shows figures out of the box.
+
+  // Illustrative, hash-chained change history on a few entities, so the Timeline
+  // and per-entity audit trail demo out of the box. Editors are made-up analysts.
+  const day = 86400000, now = Date.now();
+  const at = (d: number) => new Date(now - d * day).toISOString();
+  const seed = (id: string, entries: Array<{ editor: string; kind: "create" | "update"; ts: string; changes?: { field: string; from: FieldValue; to: FieldValue }[]; comment?: string }>) => {
+    const e = entities.find((x) => x.id === id);
+    if (!e || !entries.length) return;
+    e.history = sealChain(entries);
+    e.createdAt = entries[0].ts;
+    e.updatedAt = entries[entries.length - 1].ts;
+  };
+  seed(baRecords, [
+    { editor: "Analyst A", kind: "create", ts: at(9) },
+    { editor: "Analyst B", kind: "update", ts: at(4), changes: [{ field: "criticality", from: 3, to: 4 }], comment: "Raised to critical after the DPIA — leakage triggers mandatory breach notification." },
+  ]);
+  seed(feDisclosure, [{ editor: "Analyst A", kind: "create", ts: at(9) }]);
+  seed(roRansom, [
+    { editor: "Analyst A", kind: "create", ts: at(8) },
+    { editor: "Analyst C", kind: "update", ts: at(3), changes: [{ field: "activity", from: 3, to: 4 }], comment: "Threat-intel: active ransomware campaigns targeting hospitals this quarter." },
+  ]);
+  seed(ssRansom, [
+    { editor: "Analyst B", kind: "create", ts: at(7) },
+    { editor: "Analyst B", kind: "update", ts: at(2), changes: [{ field: "gravity", from: 3, to: 4 }], comment: "Gravity raised — encryption of the HIS halts emergency care." },
+  ]);
+  seed(os, [{ editor: "Analyst A", kind: "create", ts: at(6), comment: "Modelled the end-to-end kill chain from the maintenance-access vector." }]);
+  seed(trRansom, [
+    { editor: "Reviewer", kind: "create", ts: at(5) },
+    { editor: "Analyst C", kind: "update", ts: at(1), changes: [{ field: "status", from: "Proposed", to: "In progress" }], comment: "MFA rollout kicked off; treatment now in progress." },
+  ]);
 
   return {
     id: uid(),

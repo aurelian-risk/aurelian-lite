@@ -4,10 +4,10 @@ import { scaleLabel, scaleMax } from "../domain/taxonomy";
 import { suggestTechniques, techniqueLabel } from "../domain/mitre";
 import { MultiSelect, ScaleInput } from "./ui";
 
-export interface RefOption { id: string; label: string }
+export interface RefOption { id: string; label: string; group?: string }
 
 export function FieldInput({
-  field, value, onChange, refOptions, siblings, suggested,
+  field, value, onChange, refOptions, siblings, suggested, multirefOptions,
 }: {
   field: FieldDef;
   value: FieldValue;
@@ -17,6 +17,8 @@ export function FieldInput({
   siblings?: Record<string, FieldValue>;
   /** ref: ids to surface first, in a "Scenario-linked" group (soft, non-restricting). */
   suggested?: Set<string>;
+  /** multiref: grouped/filtered candidate override (e.g. kill-chain predecessors). */
+  multirefOptions?: RefOption[];
 }) {
   switch (field.type) {
     case "textarea":
@@ -69,9 +71,9 @@ export function FieldInput({
 
     case "multiref":
       return (
-        <MultiSelect options={refOptions(field.refType ?? "")}
+        <MultiSelect options={multirefOptions ?? refOptions(field.refType ?? "")}
           selected={Array.isArray(value) ? (value as string[]) : []}
-          onChange={(ids) => onChange(ids)} emptyHint="no entities to link yet" />
+          onChange={(ids) => onChange(ids)} emptyHint={multirefOptions ? "no eligible steps — set this step's order and scenario first" : "no entities to link yet"} />
       );
 
     default:

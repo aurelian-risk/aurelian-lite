@@ -72,6 +72,21 @@ export interface Taxonomy {
 
 export type FieldValue = string | number | boolean | string[] | null;
 
+/** One field's change within a history entry. */
+export interface FieldChange { field: string; from: FieldValue; to: FieldValue }
+
+/** A hash-chained change-history entry (see domain/audit.ts). `editor` is a
+ *  self-declared name — there is no authentication (single-user desktop). */
+export interface ChangeEntry {
+  ts: string;
+  editor: string;
+  kind: "create" | "update";
+  changes?: FieldChange[];
+  comment?: string;
+  prevHash: string;
+  hash: string;
+}
+
 export interface EntityRecord {
   id: ID;
   type: string; // EntityTypeDef.key
@@ -81,6 +96,8 @@ export interface EntityRecord {
   /** Provenance for extracted entities: where they came from (e.g. a document name
    *  and chunk). Meta, not a taxonomy field - shown as a source badge. */
   source?: string;
+  /** Hash-chained change log (who/when/what + comment). Persisted with the study. */
+  history?: ChangeEntry[];
 }
 
 export interface Study {
