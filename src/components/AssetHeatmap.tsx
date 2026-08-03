@@ -60,7 +60,7 @@ export function AssetHeatmap({ tax, study, businessType, supportingType, color }
                   onKeyDown={canExpand ? (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(e.id); } } : undefined}
                   title={canExpand ? (isOpen ? "Collapse" : "Expand dependencies") : undefined}>
                   {canExpand && <span className={"caret" + (isOpen ? " open" : "")}><Icon.chevron /></span>}
-                  <span className="ah-name">{recordTitle(businessType, e)}</span>
+                  <span className="ah-name" title={recordTitle(businessType, e)}>{recordTitle(businessType, e)}</span>
                   <button className="ah-open" title={`Open ${businessType.label.toLowerCase()}`} onClick={(ev) => { ev.stopPropagation(); setRec(e); }}><Icon.edit /></button>
                 </div>
                 <div className="ah-meta">

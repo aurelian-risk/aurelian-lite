@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useActiveStudy, useStore } from "../domain/store";
 import { addRef, deleteDoc, listDocs, pickFileForRef, type RefDoc } from "../domain/documents";
 import { ExtractionDialog } from "./ExtractionDialog";
+import { CatalogImport } from "./CatalogImport";
 import { Icon } from "./ui";
 
 const fmtSize = (n: number) => (!n ? "—" : n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
@@ -13,8 +14,10 @@ const fmtDate = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "2
 export function DocumentsView() {
   const study = useActiveStudy();
   const { createStudy, setActiveStudy } = useStore();
+  const tax = useStore((s) => s.taxonomy);
   const [docs, setDocs] = useState<RefDoc[]>([]);
   const [extract, setExtract] = useState<{ name: string; docId?: string } | null>(null);
+  const [catImport, setCatImport] = useState(false);
 
   const refresh = () => { if (study) listDocs(study.id).then(setDocs); };
   useEffect(() => { setDocs([]); refresh(); }, [study?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -57,8 +60,9 @@ export function DocumentsView() {
           <div className="meta" style={{ color: "var(--fg-subtle)" }}>{docs.length} reference{docs.length === 1 ? "" : "s"} for this study · Word / PDF / text - extracted &amp; cached locally for extraction</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn" onClick={() => setExtract({ name: "" })}><Icon.spark /> Extract</button>
           <button className="btn primary" onClick={addReference}><Icon.plus /> Add reference</button>
+          <button className="btn" onClick={() => setCatImport(true)} title="Import a requirement/measure framework from a table (CSV/TSV/JSON)"><Icon.upload /> Import framework</button>
+          <button className="btn" onClick={() => setExtract({ name: "" })}><Icon.spark /> Extract</button>
         </div>
       </div>
 
@@ -99,6 +103,7 @@ export function DocumentsView() {
       )}
 
       {extract && <ExtractionDialog initialName={extract.name} docId={extract.docId} onClose={() => setExtract(null)} />}
+      {catImport && <CatalogImport tax={tax} study={study} onClose={() => { setCatImport(false); refresh(); }} />}
     </div>
   );
 }

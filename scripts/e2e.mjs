@@ -233,6 +233,40 @@ try {
   await page.locator(".overlay").click({ position: { x: 5, y: 5 } }).catch(() => {});
   await page.waitForTimeout(150);
 
+  // Catalog picker (security measures) + semi-deterministic framework import (Documents)
+  await page.locator(".ws-tab", { hasText: "Treatment" }).click();
+  await page.waitForTimeout(250);
+  ok("security-measure catalog picker present", (await page.getByRole("button", { name: /Security Measure/ }).count()) > 0);
+  await page.getByRole("button", { name: /Security Measure/ }).first().click();
+  await page.waitForTimeout(200);
+  ok("measure picker lists the bundled library", (await page.locator(".modal-lg .panel-head h3", { hasText: "Common measures" }).count()) > 0);
+  await page.locator('.modal-lg .btn.ghost[aria-label="Close"]').click();
+  await page.waitForTimeout(150);
+  await page.locator(".sidebar .nav-item", { hasText: "Documents" }).click();
+  await page.waitForTimeout(200);
+  ok("documents offers framework import", (await page.getByRole("button", { name: /Import framework/ }).count()) > 0);
+  await page.getByRole("button", { name: /Import framework/ }).click();
+  await page.waitForSelector(".modal-lg");
+  await page.locator(".modal-lg .seg-btn", { hasText: /Measure/ }).click().catch(() => {});
+  ok("import target toggle switches colour (.seg-btn.on)", (await page.locator(".modal-lg .seg-btn.on", { hasText: /Measure/ }).count()) > 0);
+  await page.locator(".modal-lg textarea").fill("Control ID,Requirement,Domain,Guidance\nX-1,Just-in-time admin,Access,Grant admin temporarily\nX-2,Immutable backups,Resilience,Keep an offline copy");
+  await page.locator(".modal-lg button", { hasText: "Parse" }).click();
+  await page.waitForTimeout(300);
+  ok("table import maps columns via header aliases", (await page.locator(".modal-lg .panel-head h3", { hasText: "Map columns" }).count()) > 0);
+  ok("import lists parsed rows as a selectable catalog", (await page.locator(".modal-lg .ex-cand").count()) === 2 && (await page.locator(".modal-lg .ex-cand input[type=checkbox]").count()) === 2);
+  await page.screenshot({ path: `${shots}/CatalogImport.png` });
+  await page.locator(".modal-lg .ex-cand input[type=checkbox]").first().uncheck();
+  await page.waitForTimeout(150);
+  ok("unchecking an item excludes it (Add 1 selected)", (await page.locator(".modal-lg-foot .btn.primary", { hasText: "Add 1 selected" }).count()) > 0);
+  await page.locator(".modal-lg .ex-cand input[type=checkbox]").first().check();
+  await page.waitForTimeout(100);
+  await page.locator(".modal-lg-foot .btn.primary").click();
+  await page.waitForTimeout(300);
+  ok("only selected rows are added to the study", (await page.locator(".modal-lg .guide.warn", { hasText: "Added 2 measures" }).count()) > 0);
+  ok("added rows re-render as 'in study' in the preview", (await page.locator(".modal-lg .ex-cand .badge", { hasText: "in study" }).count()) >= 1);
+  await page.locator('.modal-lg .btn.ghost[aria-label="Close"]').click().catch(() => {});
+  await page.waitForTimeout(150);
+
   // Timeline (global change history) — left-nav view; the sample seeds history
   await page.locator(".sidebar .nav-item", { hasText: "Timeline" }).click();
   await page.waitForTimeout(250);
