@@ -797,7 +797,7 @@ select { cursor: pointer; }
 .rb-val { font-size: 11px; color: var(--fg-subtle); white-space: nowrap; }
 
 /* Asset criticality heatmap (expandable → supporting-asset tree) */
-.ah-tile.open { grid-column: 1 / -1; }   /* expanded tile spans the row so long supporting-asset names fit */
+.ah-tile.open { grid-column: span 2; }   /* expanded tile widens to 2 columns (not the whole row) so the supporting-asset tree has room without dominating */
 .ah-legend { display: flex; gap: 12px; flex-wrap: wrap; }
 .ah-legend-item { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--fg-muted); text-transform: capitalize; }
 .ah-legend-item i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
@@ -810,7 +810,10 @@ select { cursor: pointer; }
 .ah-head[role="button"]:hover { background: var(--bg-hover); }
 .ah-head .caret { flex: none; display: inline-flex; color: var(--fg-subtle); transition: transform 0.14s var(--ease); }
 .ah-head .caret.open { transform: rotate(90deg); }
-.ah-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--fg); line-height: 1.25; }
+.ah-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--fg); line-height: 1.25;
+  /* clamp to 2 lines AND reserve 2 lines, so every collapsed tile is the same height →
+     the grid packs without ragged gaps between tiles of different name lengths. */
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.5em; }
 .ah-open { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
   padding: 0; border: none; background: none; border-radius: 6px; color: var(--fg-subtle); cursor: pointer;
   opacity: 0; transition: opacity 0.12s, background 0.12s, color 0.12s; }

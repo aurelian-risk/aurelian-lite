@@ -1,6 +1,6 @@
 {
   "name": "aurelian-lite",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Aurelian Lite - structured, offline cyber risk analysis (EBIOS RM) in a single portable HTML file",
   "type": "module",
   "license": "MIT",
@@ -29,7 +29,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test:e2e": "node scripts/e2e.mjs",
-    "shots": "node scripts/shots.mjs"
+    "shots": "node scripts/shots.mjs",
+    "test:catalog": "esbuild src/domain/catalogimport.ts --bundle --format=esm --outfile=node_modules/.cache/catalogimport.mjs --log-level=error && MOD=node_modules/.cache/catalogimport.mjs node scripts/catalog-test.mjs"
   },
   "dependencies": {
     "d3-force": "^3.0.0",

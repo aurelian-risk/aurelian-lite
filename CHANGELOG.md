@@ -5,6 +5,25 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.3.6] — 2026-08-03
+
+### Added
+- **Security-measure catalog** — the **+ Security Measure** button now offers a bundled, curated
+  library of common controls (MFA, network segmentation, EDR, backups, security awareness, …) plus
+  the free frameworks (NIS2, NIST CSF, NIST 800-53) as measure sources — the same catalog picker
+  requirements already had. Pick from a catalog or create a custom measure.
+- **Framework / catalog import** (Documents) — a **semi-deterministic** importer for requirement
+  *and* measure catalogs. Paste or load a table (CSV / TSV / JSON), map its columns to fields
+  (auto-detected, with an optional embedding-assisted **Suggest with AI**), then pick which rows to
+  add. Values are read **verbatim**; the embedding model only *assists* column mapping — it never
+  extracts field values. Robust to quoting, multi-line cells, BOM, `,`/`;`/tab delimiters and
+  non-ASCII content.
+
+### Changed
+- **Asset-criticality heatmap** — tiles now share a uniform height, so they pack together without
+  ragged gaps between different-length names; an expanded tile widens to two columns instead of
+  spanning the whole row.
+
 ## [0.3.5] — 2026-08-03
 
 ### Added
@@ -80,6 +99,7 @@ downloadable single-file build under [Releases](https://github.com/aurelian-risk
   knowledge graph, likelihood × severity risk matrix, and on-device embedding-assisted extraction.
 - Offline, single-file, private by design.
 
+[0.3.6]: https://github.com/aurelian-risk/aurelian-lite/releases/tag/v0.3.6
 [0.3.5]: https://github.com/aurelian-risk/aurelian-lite/releases/tag/v0.3.5
 [0.3.1]: https://github.com/aurelian-risk/aurelian-lite/releases/tag/v0.3.1
 [0.3.0]: https://github.com/aurelian-risk/aurelian-lite/releases/tag/v0.3.0

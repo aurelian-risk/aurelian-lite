@@ -13,7 +13,8 @@ import { FrameworkRadar } from "./FrameworkRadar";
 import { ThreatActorRadar } from "./ThreatActorRadar";
 import { AssetHeatmap } from "./AssetHeatmap";
 import { QuantificationView } from "./QuantificationView";
-import { RequirementAdd } from "./RequirementAdd";
+import { CatalogAdd } from "./CatalogAdd";
+import { catalogTargets } from "../domain/catalog";
 import { GraphView } from "./GraphView";
 import { CompletenessView } from "./CompletenessView";
 import { CanvasView } from "./CanvasView";
@@ -160,14 +161,17 @@ export function StudyView({ onBack }: { onBack: () => void }) {
               const gts = tax.entityTypes.filter((t) => t.group === activeGroup.key);
               const biz = gts.find((t) => t.fields.some((f) => f.type === "scale") && gts.some((o) => o.fields.some((f) => f.type === "multiref" && f.refType === t.key)));
               const supp = biz ? (gts.find((t) => t.fields.some((f) => f.type === "multiref" && f.refType === biz.key)) ?? null) : null;
+              // Catalog-backed types (requirement, security measure) get the "+ Add"
+              // catalog picker in place of the plain add button — treated analogously.
+              const targets = catalogTargets(tax);
               return gts.map((t) => {
-                const isReq = t.fields.some((f) => f.key === "framework");
+                const target = targets.find((tg) => tg.type.key === t.key);
                 return (
                   <Fragment key={t.key}>
                     <EntitySection type={t} study={study} tax={tax} color={activeGroup.color}
                       draggableRows={t.key === stepT?.key}
-                      hideAdd={isReq}
-                      headerExtra={isReq ? <RequirementAdd tax={tax} study={study} reqType={t} /> : undefined}
+                      hideAdd={!!target}
+                      headerExtra={target ? <CatalogAdd tax={tax} study={study} target={target} /> : undefined}
                       renderDetailExtra={t.key === opKey ? (r) => <KillChainLane tax={tax} study={study} op={r} color={activeGroup.color} /> : undefined} />
                     {biz && t.key === biz.key && (
                       <AssetHeatmap tax={tax} study={study} businessType={biz} supportingType={supp} color={activeGroup.color} />
