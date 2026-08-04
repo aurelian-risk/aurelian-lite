@@ -325,7 +325,13 @@ select { cursor: pointer; }
 .ap-legend .sw.biz { background: var(--color-workshop-1, #c98a2a); }
 .ap-legend .sw.choke { background: transparent; border-radius: 4px; box-shadow: 0 0 0 2px var(--color-workshop-1, #c98a2a), 0 0 0 5px color-mix(in oklch, var(--color-workshop-1, #c98a2a) 20%, transparent); }
 .ap-legend .k { width: 22px; height: 0; border-top: 2px solid var(--fg-subtle); }
+.ap-legend .k.kc { border-top-width: 2.5px; border-top-color: var(--color-workshop-4, #7d5bd0); }
 .ap-legend .k.dash { border-top-style: dashed; border-top-color: var(--chainB, #7d5bd0); }
+.ap-legend .k.dot { border-top-style: dotted; border-top-color: var(--fg-subtle); opacity: 0.7; }
+/* target zone label + asset-node icon */
+.ap-zone-label { position: absolute; z-index: 3; font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--fg-subtle); pointer-events: none; }
+.ap-asset-ic { vertical-align: -1.5px; margin-right: 4px; color: var(--nc); opacity: 0.85; }
 .ap-note { display: flex; gap: 11px; align-items: flex-start; margin-top: 16px; padding: 13px 15px; border-radius: 10px;
   border: 1px solid color-mix(in oklch, var(--color-workshop-1, #c98a2a) 32%, var(--hairline));
   background: color-mix(in oklch, var(--color-workshop-1, #c98a2a) 8%, transparent); font-size: 12.5px; line-height: 1.55; color: var(--fg-muted); }
@@ -434,8 +440,16 @@ select { cursor: pointer; }
 .gi-rel-lbl { color: var(--fg-subtle); }
 .graph-wrap > svg { width: 100%; height: 100%; display: block; cursor: grab; }
 .graph-wrap > svg:active { cursor: grabbing; }
-.graph-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 14px; align-items: center; }
+.graph-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; align-items: center; }
 .graph-legend .item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--fg-muted); }
+/* focus-graph: entity search + results dropdown */
+.graph-search-wrap { position: relative; }
+.graph-search { padding: 6px 11px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); font-size: 12.5px; min-width: 220px; }
+.graph-results { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; background: var(--bg-raised); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: var(--shadow-md); padding: 4px; max-height: 280px; overflow: auto; min-width: 260px; backdrop-filter: blur(12px); }
+.gr-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 6px 9px; border-radius: 7px; border: none; background: none; cursor: pointer; font-size: 12.5px; color: var(--fg); }
+.gr-item:hover { background: var(--bg-hover); }
+.gr-item .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
 
 /* ── Seitenkopf / Hero ────────────────────────────────────────────── */
 .page-head { display: flex; align-items: flex-end; gap: 16px; margin-bottom: 26px; }
@@ -575,18 +589,28 @@ select { cursor: pointer; }
 .flow-layout { display: flex; gap: 16px; align-items: flex-start; }
 .graph-main, .flow-main { flex: 1; min-width: 0; }
 .flow-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.flow-scroll { overflow-x: auto; }
+.flow-scroll { overflow: auto; max-height: calc(100vh - 210px); }
 .flow-lanes { position: relative; display: flex; gap: 10px; padding-bottom: 16px; min-height: 460px; }
 .ribbons { position: absolute; inset: 0; z-index: 10; pointer-events: none; overflow: visible; width: 100%; height: 100%; }
 .flow-side { flex: none; width: 330px; position: sticky; top: 84px; align-self: flex-start; }
 
 /* Swimlane (lanes stay static so cards' offsetParent is .flow-lanes for FLIP) */
 .flow-lane { flex: 1 0 192px; max-width: 240px; display: flex; flex-direction: column; min-width: 178px; }
-.lane-header { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid var(--border);
-  border-bottom-width: 2px; border-radius: 10px 10px 0 0; background: var(--bg-panel); backdrop-filter: blur(10px);
-  position: relative; transition: transform 0.5s cubic-bezier(0.34, 1.2, 0.4, 1); will-change: transform; }
-/* Header flown above its relocated column during the flow FLIP flight. */
-.lane-header.ef-lane-flown { z-index: 25; box-shadow: var(--shadow-md); border-radius: 10px; }
+.lane-header { display: flex; align-items: center; gap: 7px; padding: 5px 10px 6px; border: 1px solid var(--border);
+  border-bottom-width: 2px; border-radius: 10px 10px 0 0;
+  /* opaque base (--bg-0) so cards scroll cleanly UNDER the sticky header — the glassy
+     --bg-panel/--bg-raised are translucent and would let items bleed through. */
+  background: linear-gradient(var(--bg-panel), var(--bg-panel)), var(--bg-0);
+  position: sticky; top: 0; z-index: 40; transition: transform 0.5s cubic-bezier(0.34, 1.2, 0.4, 1); will-change: transform; }
+/* Header flown above its relocated column during the flow FLIP flight. Both stay above
+   the cards' flight z-index (.flow-node.z30) so the sticky headers keep the top layer. */
+.lane-header.ef-lane-flown { z-index: 45; box-shadow: var(--shadow-md); border-radius: 10px; }
+/* Full-width mask over the whole header row: opaque behind the headers + across the
+   gaps BETWEEN them (masks ribbons there), then a soft fade so cards dissolve out
+   cleanly instead of a hard sliver. z-index sits between ribbons (10) and headers (40);
+   works because .flow-lanes is not a stacking context. */
+.flow-topmask { position: sticky; top: 0; left: 0; width: 100%; height: 60px; margin-bottom: -60px;
+  z-index: 20; pointer-events: none; background: linear-gradient(var(--bg-0), var(--bg-0) 44px, transparent); }
 .lane-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .lane-label { font-size: 10.5px; font-weight: 700; flex: 1; letter-spacing: 0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -632,6 +656,33 @@ select { cursor: pointer; }
 .diagram-dock-layout .graph-main, .diagram-dock-layout .flow-main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .diagram-dock-layout .graph-wrap { flex: 1; min-height: 0; height: auto; }
 .diagram-dock-layout .flow-scroll { flex: 1; min-height: 0; }
+
+/* Focus/ego graph: browsable index (left, full height) + ego-net (top-right) + focus detail (bottom-right). */
+.graph-focus-layout { display: grid; grid-template-columns: 234px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto;
+  column-gap: 14px; row-gap: 12px; height: calc(100vh - 152px); min-height: 480px; }
+.graph-focus-layout .graph-index { grid-column: 1; grid-row: 1 / span 2; }
+.graph-focus-layout .graph-main { grid-column: 2; grid-row: 1; min-height: 0; display: flex; flex-direction: column; }
+.graph-focus-layout .graph-wrap { flex: 1; min-height: 0; height: auto; }
+.graph-focus-layout .detail-dock { grid-column: 2; grid-row: 2; }
+.graph-index { display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--border);
+  border-radius: 12px; background: var(--bg-panel); overflow: hidden; }
+.graph-index .graph-search { margin: 10px 10px 8px; min-width: 0; width: calc(100% - 20px); }
+.gi-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 6px 8px; }
+.gi-group { margin-bottom: 6px; }
+.gi-group-h { display: flex; align-items: center; gap: 7px; padding: 6px 8px 5px; font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); position: sticky; top: 0; z-index: 1;
+  background: linear-gradient(var(--bg-panel), var(--bg-panel)), var(--bg-0); }
+.gi-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.gi-count { margin-left: auto; font-weight: 600; color: var(--fg-subtle); }
+.gi-e { display: block; width: 100%; text-align: left; padding: 5px 9px; border-radius: 7px; border: none;
+  background: none; cursor: pointer; font-size: 12.5px; color: var(--fg); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.gi-e:hover { background: var(--bg-hover); }
+.gi-e.active { background: color-mix(in oklch, var(--primary) 14%, transparent); font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--primary); }
+.gi-e.active.primary { background: color-mix(in oklch, var(--primary) 22%, transparent); box-shadow: inset 3px 0 0 var(--primary); }
+.gi-e.inspected { box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--primary) 45%, transparent); } /* inspected, not focused */
+
 .detail-dock { flex: none; max-height: 40vh; overflow-y: auto;
   animation: dock-rise 0.32s cubic-bezier(0.22, 1, 0.36, 1); }
 .detail-dock .info-panel { max-height: none; }

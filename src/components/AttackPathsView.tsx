@@ -17,9 +17,9 @@ interface Node { id: string; kind: "step" | "asset" | "biz"; chains: Set<string>
 interface Edge { from: string; to: string; kind: "intra" | "cross" | "asset"; }
 
 export function AttackPathsView({ tax, study, color }: { tax: Taxonomy; study: Study; color: string }) {
-  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [shown, setShown] = useState<Set<string>>(new Set()); // scenarios start OFF; toggled on one by one
   const [openRec, setOpenRec] = useState<EntityRecord | null>(null);
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
 
   const model = useMemo(() => {
     const stepType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
@@ -100,7 +100,7 @@ export function AttackPathsView({ tax, study, color }: { tax: Taxonomy; study: S
   if (!model) return <div className="empty" style={{ padding: "60px 24px" }}>No kill-chain steps yet — model an operational scenario's kill chain to see its attack paths.</div>;
 
   const { nodes, edges, ops, chainColor, chainName } = model;
-  const visibleChain = (id: string) => !hidden.has(id);
+  const visibleChain = (id: string) => shown.has(id);
   const nodeVisible = (n: Node) => [...n.chains].some(visibleChain);
   const vis = [...nodes.values()].filter(nodeVisible);
   const visIds = new Set(vis.map((n) => n.id));
@@ -118,8 +118,19 @@ export function AttackPathsView({ tax, study, color }: { tax: Taxonomy; study: S
     const d = ps.length ? 1 + Math.max(...ps.map((p) => depth(p, new Set(seen)))) : 0;
     memo.set(id, d); return d;
   };
-  const cols: Node[][] = [];
-  for (const n of vis) { const d = depth(n.id); (cols[d] ||= []).push(n); }
+  // Steps layer on the left by depth (step→step edges only); ALL assets go into a
+  // dedicated target zone on the right — supporting assets, then business assets — so
+  // they never interleave with the step columns.
+  const stepCols: Node[][] = [];
+  for (const n of vis) if (n.kind === "step") { const d = depth(n.id); (stepCols[d] ||= []).push(n); }
+  for (let i = 0; i < stepCols.length; i++) stepCols[i] ||= [];
+  const suppNodes = vis.filter((n) => n.kind === "asset");
+  const bizNodes = vis.filter((n) => n.kind === "biz");
+  const zoneCol = stepCols.length;                 // first target-zone column index
+  const cols: Node[][] = [...stepCols];
+  if (suppNodes.length) cols.push(suppNodes);
+  if (bizNodes.length) cols.push(bizNodes);
+  const hasZone = suppNodes.length + bizNodes.length > 0;
   const maxRows = Math.max(1, ...cols.map((c) => (c ? c.length : 0)));
   const W = PAD * 2 + cols.length * NW + (cols.length - 1) * HGAP;
   const H = PAD * 2 + maxRows * NH + (maxRows - 1) * VGAP;
@@ -129,6 +140,7 @@ export function AttackPathsView({ tax, study, color }: { tax: Taxonomy; study: S
     const y0 = PAD + (H - PAD * 2 - colH) / 2;
     c.forEach((n, ri) => { n.x = PAD + di * (NW + HGAP); n.y = y0 + ri * (NH + VGAP); });
   });
+  const zoneX = PAD + zoneCol * (NW + HGAP) - HGAP / 2; // left edge of the target-zone band
   // choke points: a *pass-through* asset that ≥2 visible chains converge on AND that
   // still feeds something downstream (has an outgoing edge). A leaf target (e.g. a
   // business asset every path simply ends at) is the objective, not a choke point.
@@ -136,7 +148,7 @@ export function AttackPathsView({ tax, study, color }: { tax: Taxonomy; study: S
   const choke = (n: Node) => n.kind !== "step" && [...n.chains].filter(visibleChain).length >= 2 && hasOut.has(n.id);
   const chokeCount = vis.filter(choke).length;
 
-  const toggle = (id: string) => setHidden((h) => { const n = new Set(h); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggle = (id: string) => setShown((h) => { const n = new Set(h); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const anchor = (id: string, side: "l" | "r") => { const n = nodes.get(id)!; return { x: side === "r" ? n.x + NW : n.x, y: n.y + NH / 2 }; };
 
   return (
@@ -160,21 +172,34 @@ export function AttackPathsView({ tax, study, color }: { tax: Taxonomy; study: S
         ))}
       </div>
 
+      {vis.length === 0 ? (
+        <div className="empty" style={{ padding: "44px 16px", textAlign: "center" }}>Toggle a scenario above to display its attack path, then add more to see where they converge.</div>
+      ) : (
       <div className="ap-stage">
         <div className="ap-scroll">
           <div className="ap-graph" style={{ width: W, height: H }}>
             <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="ap-edges">
               <defs>
-                <marker id="ap-ar" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--fg-subtle)" /></marker>
-                <marker id="ap-arA" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--color-workshop-1)" /></marker>
-                <marker id="ap-arX" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 z" fill="var(--chainB, #7d5bd0)" /></marker>
+                {/* kill-chain arrow inherits each edge's chain colour via context-stroke */}
+                <marker id="ap-kc" markerWidth="8" markerHeight="8" refX="6.5" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="context-stroke" /></marker>
+                <marker id="ap-cross" markerWidth="8" markerHeight="8" refX="6.5" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="var(--chainB, #7d5bd0)" /></marker>
+                <marker id="ap-asset" markerWidth="7" markerHeight="7" refX="5.5" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7 z" fill="var(--fg-subtle)" /></marker>
               </defs>
+              {hasZone && (
+                <g>
+                  <rect x={zoneX} y={0} width={W - zoneX} height={H} rx="10" fill="color-mix(in oklch, var(--amber-bright, #dd9a33) 7%, transparent)" />
+                  <line x1={zoneX} y1={6} x2={zoneX} y2={H - 6} stroke="var(--border)" strokeWidth="1.5" strokeDasharray="3 5" />
+                </g>
+              )}
               {visEdges.map((e, i) => {
                 const a = anchor(e.from, "r"), b = anchor(e.to, "l"), mx = (a.x + b.x) / 2;
                 const d = `M${a.x} ${a.y} C ${mx} ${a.y}, ${mx} ${b.y}, ${b.x - 2} ${b.y}`;
-                const st = e.kind === "asset" ? { stroke: "var(--color-workshop-1)", w: 2.4, dash: "", m: "url(#ap-arA)", op: 0.75 }
-                  : e.kind === "cross" ? { stroke: "var(--chainB, #7d5bd0)", w: 1.7, dash: "5 4", m: "url(#ap-arX)", op: 0.85 }
-                  : { stroke: "var(--fg-subtle)", w: 1.5, dash: "", m: "url(#ap-ar)", op: 0.65 };
+                // kill-chain backbone = bold, in the source chain's colour; cross-chain =
+                // dashed accent; asset links = quiet grey dotted connectors into the zone.
+                const chainCol = chainColor.get([...(nodes.get(e.from)?.chains ?? new Set<string>())][0] ?? "") ?? "var(--fg-subtle)";
+                const st = e.kind === "asset" ? { stroke: "var(--fg-subtle)", w: 1.4, dash: "1.5 4", m: "url(#ap-asset)", op: 0.5 }
+                  : e.kind === "cross" ? { stroke: "var(--chainB, #7d5bd0)", w: 1.8, dash: "6 4", m: "url(#ap-cross)", op: 0.9 }
+                  : { stroke: chainCol, w: 2.4, dash: "", m: "url(#ap-kc)", op: 0.95 };
                 return <path key={i} d={d} fill="none" stroke={st.stroke} strokeWidth={st.w} strokeDasharray={st.dash} markerEnd={st.m} opacity={st.op} />;
               })}
             </svg>
@@ -187,22 +212,24 @@ export function AttackPathsView({ tax, study, color }: { tax: Taxonomy; study: S
                   onClick={() => n.rec && setOpenRec(n.rec)}>
                   {n.kind === "step" && <span className={"ap-dot " + (n.mit ? "ok" : "gap")} />}
                   {choke(n) && <span className="ap-choke-badge">choke</span>}
-                  <div className="ap-tac">{n.tactic || (n.kind === "step" ? "Step" : "Asset")}</div>
+                  <div className="ap-tac">{n.kind !== "step" && <svg className="ap-asset-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><ellipse cx="12" cy="6" rx="7" ry="3" /><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6" /><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3" /></svg>}{n.tactic || (n.kind === "step" ? "Step" : "Asset")}</div>
                   <div className="ap-nm">{n.label}</div>
                   {n.tech && <span className="ap-tt">{n.tech}</span>}
                 </div>
               );
             })}
+            {hasZone && <div className="ap-zone-label" style={{ left: zoneX + 10, top: 3 }}>Target assets</div>}
           </div>
         </div>
       </div>
+      )}
 
       <div className="ap-legend">
         <span className="it"><span className="ap-dot ok" style={{ position: "static" }} /> step mitigated</span>
         <span className="it"><span className="ap-dot gap" style={{ position: "static" }} /> coverage gap</span>
-        <span className="it"><span className="sw asset" /> supporting asset</span>
-        <span className="it"><span className="sw biz" /> business asset</span>
-        <span className="it"><span className="k dash" /> cross-chain link (explicit)</span>
+        <span className="it"><span className="k kc" /> kill-chain link</span>
+        <span className="it"><span className="k dash" /> cross-chain link</span>
+        <span className="it"><span className="k dot" /> reaches asset</span>
         <span className="it"><span className="sw choke" /> choke point</span>
       </div>
 
@@ -211,7 +238,7 @@ export function AttackPathsView({ tax, study, color }: { tax: Taxonomy; study: S
         <div>
           <strong>Choke points</strong> are assets that more than one kill chain has to pass through to reach its target.
           Because several attack paths converge on them, a single control placed there mitigates multiple scenarios at once —
-          making them the highest-leverage place to invest. Toggle a chain above to isolate its paths; click any node to open the underlying step or asset.
+          making them the highest-leverage place to invest. Toggle scenarios on one at a time to build up the picture; click any node to open the underlying step or asset.
         </div>
       </div>
 

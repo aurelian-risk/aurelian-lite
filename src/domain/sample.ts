@@ -88,8 +88,8 @@ export function makeSampleStudy(): Study {
 
   // Risk treatment: decision + owner + residual risk after the measures. Two risks
   // are treated (they move down/left in the residual matrix); the others stay put.
-  const trRansom = add("risk_treatment", { name: "Treat: Ransomware via maintenance access", strategic_scenario: ssRansom, decision: "Reduce", owner: "CISO", deadline: "2026-Q4", status: "In progress", justification: "Reduce via the kill-chain measures (MFA, segmentation, EDR, immutable backups). Residual likelihood follows their coverage; the MFA rollout is still in progress." });
-  add("risk_treatment", { name: "Treat: Insider data exfiltration", strategic_scenario: ssInsider, decision: "Reduce", owner: "Data Protection Officer", deadline: "2026-Q3", status: "Implemented", justification: "Reduce via DLP and egress monitoring on the exfiltration steps of the kill chain." });
+  const trRansom = add("risk_treatment", { name: "Treat: Ransomware via maintenance access", strategic_scenario: ssRansom, decision: "Reduce", owner: "CISO", deadline: "2026-Q4", status: "In progress", justification: "Reduce rather than accept: the kill chain can be broken cost-effectively at the maintenance-access and lateral-movement stages, and the residual is derived from that coverage. Still in progress, so the residual likelihood is not yet fully realised." });
+  add("risk_treatment", { name: "Treat: Insider data exfiltration", strategic_scenario: ssInsider, decision: "Reduce", owner: "Data Protection Officer", deadline: "2026-Q3", status: "Implemented", justification: "Reduce: the exfiltration stages of the kill chain are well covered, and the residual is derived from that coverage." });
 
   // Risk Quantification is fully derived (Monte-Carlo from the qualitative model) -
   // no manual assessment entity to seed. Quantification is opt-in per scenario; the

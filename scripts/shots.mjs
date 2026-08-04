@@ -76,7 +76,7 @@ try {
   await app.waitForSelector(".ws-tabs", { timeout: 10000 });
   // Light theme (the app default) — no toggle.
 
-  await tab("Foundation", 600);
+  await tab("Assets & Scope", 600);
   await shot("hero");           // clean entity tables = hero
 
   await tab("Strategic Scenarios");

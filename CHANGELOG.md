@@ -5,6 +5,19 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.3.7] — 2026-08-04
+
+### Changed
+- **Relationship graph** is now a focus / ego-network: one entity at the centre with its
+  neighbours around it, plus a searchable, workshop-grouped index of every entity on the left.
+- **Flow view** — thinner connectors and column headers that freeze while you scroll (`Esc` clears
+  the selection).
+- First workshop renamed **“Assets & Scope”** (was “Foundation”).
+
+### Added
+- **Multi-focus compare** (Shift-click), **inspect vs. double-click to re-centre**, and
+  **draggable nodes** that spring back into place.
+
 ## [0.3.6] — 2026-08-03
 
 ### Added
@@ -43,7 +56,7 @@ downloadable single-file build under [Releases](https://github.com/aurelian-risk
   model a **cascade**. Choices that would break the forward escalation or create a cycle are
   hidden, so the graph stays acyclic by construction.
 - **Importable requirement catalogs** — an IEC 62443-3-3 starter and a documented catalog
-  format for bringing your own (licensed) frameworks.
+  format for bringing your own frameworks.
 
 ### Changed
 - **Deterministic export** — bundles are written with sorted keys and stable YAML so successive

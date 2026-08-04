@@ -42,7 +42,7 @@ try {
   ok("sample study opened", !!title && title.includes("Riverside"));
 
   const tabExpect = [
-    ["Foundation", "Patient records"],
+    ["Assets & Scope", "Patient records"],
     ["Risk Sources", "Ransomware group"],
     ["Strategic Scenarios", "Ransomware via maintenance access"],
     ["Operational Scenarios", "Phishing the maintenance provider"],
@@ -59,7 +59,7 @@ try {
   }
 
   // Row click expands inline detail; clicking a linked item opens the popup
-  await page.locator(".ws-tab", { hasText: "Foundation" }).click();
+  await page.locator(".ws-tab", { hasText: "Assets & Scope" }).click();
   await page.waitForTimeout(200);
   await page.locator(".tbl tbody tr.row-clickable").first().locator(".name").click();
   await page.waitForTimeout(200);
@@ -114,26 +114,55 @@ try {
   ok("kill-chain steps placed on tiles", (await page.locator(".kc-tile .kc-step").count()) > 0);
   await page.screenshot({ path: `${shots}/KillChain.png` });
 
-  // Graph
+  // Graph — focus / ego-network (a centred node + its direct neighbours)
   await page.locator(".ws-tab", { hasText: "Graph" }).click();
-  await page.waitForTimeout(900);
-  const nodes = await page.locator(".graph-wrap svg circle").count();
-  ok(`graph rendered ${nodes} nodes`, nodes > 15);
-  // relationship edge labels
-  ok('edge labels rendered', await page.locator('.graph-wrap svg text', { hasText: 'supports' }).count() > 0);
+  await page.waitForTimeout(700);
+  ok('focus graph index lists all entities grouped', (await page.locator('.graph-index .gi-group').count()) > 1 && (await page.locator('.graph-index .gi-e').count()) > 5);
+  ok('focus graph names the current focus', (await page.locator('.graph-index .gi-e.active').count()) === 1 && (await page.locator('.graph-legend b').count()) > 0);
+  ok('focus graph shows centre + neighbour labels', (await page.locator('.graph-wrap svg text').count()) > 5);
+  ok('focus graph draws directional edges', (await page.locator('.graph-wrap svg line[marker-end], .graph-wrap svg line[marker-start]').count()) > 3);
   await page.screenshot({ path: `${shots}/Graph.png` });
-  // click-to-info widget
-  await page.locator('.graph-wrap svg g circle').first().click();
-  await page.waitForTimeout(300);
-  ok('node click docks info panel under the graph', await page.locator('.detail-dock .info-panel .ip-title').count() > 0);
+  // no node clicked yet → no detail box on the default view
+  ok('no detail box until a node is clicked', (await page.locator('.detail-dock').count()) === 0);
+  // search filters the index; focusing FROM the index must NOT open the detail box
+  await page.locator('.graph-search').fill('Patient records');
+  await page.waitForTimeout(200);
+  ok('focus graph search filters the index', (await page.locator('.graph-index .gi-list .gi-e').count()) > 0);
+  await page.locator('.graph-index .gi-list .gi-e').first().click();
+  await page.waitForTimeout(250);
+  ok('focusing from the index shows no detail box', (await page.locator('.detail-dock').count()) === 0);
+  // clicking a NODE inspects it: the box appears, with a ring, WITHOUT moving the focus
+  const legendBefore = (await page.locator('.graph-legend').first().innerText()).trim();
+  await page.locator('.graph-wrap svg g[transform^="translate"]').first().locator('circle,rect,path').first().click();
+  await page.waitForTimeout(200);
+  ok('clicking a node opens the box (inspect) without re-centring',
+    (await page.locator('.detail-dock .info-panel .ip-title').count()) > 0
+    && (await page.locator('.graph-wrap svg circle[stroke-dasharray]').count()) > 0
+    && ((await page.locator('.graph-legend').first().innerText()).trim() === legendBefore));
   await page.screenshot({ path: `${shots}/GraphInfo.png` });
+  // the detail box close button hides it again
+  await page.locator('.detail-dock .info-panel button[aria-label="Close"]').click();
+  await page.waitForTimeout(150);
+  ok('detail box close button hides the dock', (await page.locator('.detail-dock').count()) === 0);
+  // Shift-click builds a multi-focus selection (index clicks still open no box); "Clear extra" collapses back
+  await page.locator('.graph-search').fill('');
+  await page.waitForTimeout(150);
+  await page.locator('.graph-index .gi-e').nth(1).click({ modifiers: ['Shift'] });
+  await page.waitForTimeout(200);
+  ok('shift-click builds a multi-focus selection', (await page.locator('.graph-index .gi-e.active').count()) >= 2 && (await page.locator('.graph-legend', { hasText: 'focuses' }).count()) > 0 && (await page.locator('.detail-dock').count()) === 0);
+  await page.locator('.graph-index .gi-e').nth(3).click({ modifiers: ['Shift'] });
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: `${shots}/GraphMulti.png` });
+  await page.locator('.graph-legend button', { hasText: 'Clear extra' }).click();
+  await page.waitForTimeout(150);
+  ok('clear extra returns to a single focus', (await page.locator('.graph-index .gi-e.active').count()) === 1);
 
   // Attack paths: integrated cross-chain projection, a collapsible sub-section of WS4
   await page.locator(".ws-tab", { hasText: "Operational Scenarios" }).click();
-  await page.waitForSelector(".ap-head", { timeout: 5000 });
-  ok("attack paths is a collapsible WS4 sub-section", (await page.locator(".panel:has(.ap-head) .panel-head h3", { hasText: "Attack paths" }).count()) > 0);
-  ok("attack paths collapsed by default", (await page.locator(".ap-graph").count()) === 0);
-  await page.locator(".ap-head").click();
+  await page.waitForSelector(".ap-toolbar", { timeout: 5000 });
+  ok("attack paths is a WS4 sub-section", (await page.locator(".panel:has(.ap-head) .panel-head h3", { hasText: "Attack paths" }).count()) > 0);
+  ok("attack paths expanded by default with scenarios hidden", (await page.locator(".ap-body .empty").count()) > 0 && (await page.locator(".ap-chip.off").count()) >= 2 && (await page.locator(".ap-graph").count()) === 0);
+  for (const c of await page.locator(".ap-chip").all()) await c.click(); // toggle every scenario on
   await page.waitForSelector(".ap-graph", { timeout: 5000 });
   await page.locator(".ap-graph").scrollIntoViewIfNeeded();
   await page.waitForTimeout(300);
@@ -141,16 +170,17 @@ try {
   const apSteps = await page.locator(".ap-node.step").count();
   ok(`attack paths render ${apSteps} step nodes`, apSteps >= 6);
   ok("attack paths reach asset nodes", (await page.locator(".ap-node.asset, .ap-node.biz").count()) >= 2);
+  ok("assets sit in a dedicated target zone", (await page.locator(".ap-zone-label").count()) > 0);
   ok("attack paths highlight ≥1 choke point", (await page.locator(".ap-node.choke").count()) >= 1);
   ok("leaf business-asset targets are NOT choke points", (await page.locator(".ap-node.biz.choke").count()) === 0);
   ok("attack paths draw edges", (await page.locator(".ap-edges path").count()) > 10);
   ok("attack paths list per-chain toggle chips", (await page.locator(".ap-chip").count()) >= 2);
   await page.screenshot({ path: `${shots}/AttackPaths.png` });
-  // toggling a chain off hides its exclusive nodes
+  // toggling a scenario off removes its nodes
   const apBefore = await page.locator(".ap-node").count();
   await page.locator(".ap-chip").last().click();
   await page.waitForTimeout(250);
-  ok("hiding a chain removes nodes", (await page.locator(".ap-node").count()) < apBefore);
+  ok("toggling a scenario off removes its nodes", (await page.locator(".ap-node").count()) < apBefore);
   await page.locator(".ap-chip").last().click();
   await page.waitForTimeout(200);
   // clicking a node opens the underlying step/asset
@@ -182,7 +212,7 @@ try {
   await page.screenshot({ path: `${shots}/Checks.png` });
 
   // Copy-for-LLM button present on a workshop
-  await page.locator(".ws-tab", { hasText: "Foundation" }).click();
+  await page.locator(".ws-tab", { hasText: "Assets & Scope" }).click();
   await page.waitForTimeout(150);
   ok("copy-for-LLM button present", await page.locator(".group-toolbar button", { hasText: "Copy for LLM" }).count() > 0);
 
@@ -203,6 +233,11 @@ try {
   await page.locator(".flow-node").filter({ hasText: "Ransomware group" }).first().click({ force: true });
   await page.waitForTimeout(400);
   ok("multi-select keeps ≥2 selected", await page.locator(".flow-node.selected").count() >= 2);
+  await page.keyboard.press("Escape"); // Escape clears the selection
+  await page.waitForTimeout(200);
+  ok("Escape clears the flow selection", (await page.locator(".flow-node.selected").count()) === 0);
+  await page.locator(".flow-node").filter({ hasText: "Ransomware group" }).first().click({ force: true });
+  await page.waitForTimeout(300);
   await page.screenshot({ path: `${shots}/FlowNarrow.png` });
   // robustness: a non-scenario node still shows connections + free multi-select
   await page.getByText(/^Clear \(/).click({ force: true });

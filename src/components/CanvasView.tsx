@@ -232,6 +232,13 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
   // Tear down the re-centre observer / frame on unmount.
   useEffect(() => () => { roRef.current?.disconnect(); cancelAnimationFrame(centerRafRef.current); }, []);
 
+  // Escape clears the current selection (same as the Clear button).
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") { setSelected((prev) => (prev.size ? new Set() : prev)); setFocused(null); } };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+
   // Mount warm-up so the first flight doesn't stutter (parent port).
   useLayoutEffect(() => {
     const el = lanesRef.current;
@@ -273,11 +280,12 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
         {selected.size > 0 && <button className="btn sm" onClick={() => { setSelected(new Set()); setFocused(null); }}>Clear ({selected.size})</button>}
       </div>
       <div className="flow-scroll">
+        <div className="flow-topmask" aria-hidden />
         <div className="flow-lanes" ref={lanesRef}>
           {activeRibbons.length > 0 && (
             <svg ref={ribbonSvgRef} className="ribbons" preserveAspectRatio="none">
               {activeRibbons.map((r) => (
-                <path key={r.key} data-ribbon={r.key} fill="none" stroke={r.color} strokeWidth={3} strokeOpacity={0.95} strokeLinecap="round" />
+                <path key={r.key} data-ribbon={r.key} fill="none" stroke={r.color} strokeWidth={1.7} strokeOpacity={0.9} strokeLinecap="round" />
               ))}
             </svg>
           )}

@@ -1,6 +1,6 @@
 {
   "name": "aurelian-lite",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "Aurelian Lite - structured, offline cyber risk analysis (EBIOS RM) in a single portable HTML file",
   "type": "module",
   "license": "MIT",
