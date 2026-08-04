@@ -175,9 +175,7 @@ Full details are in [`NOTICE`](NOTICE) (data sources and trademarks) and
   `bge-small-en-v1.5`, MIT) download from the Hugging Face Hub at runtime and are
   not bundled with the app.
 
-ISO/IEC 27001/27002, CIS Controls and BSI IT-Grundschutz are **not** bundled -
-import your own licensed copy to use them. None of the organisations named above
-endorse or are affiliated with this project.
+None of the organisations named above endorse or are affiliated with this project.
 
 ## Disclaimer
 

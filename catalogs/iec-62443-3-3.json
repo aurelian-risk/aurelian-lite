@@ -1,6 +1,6 @@
 {
   "name": "IEC 62443-3-3",
-  "source": "IEC 62443-3-3 Foundational Requirements (FR 1-7), high-level structure only. The detailed System Requirements (SR) and their text are copyrighted by IEC and are NOT included - add them from your licensed copy.",
+  "source": "IEC 62443-3-3 Foundational Requirements (FR 1-7), high-level structure.",
   "items": [
     { "ref_id": "FR 1", "title": "Identification and authentication control", "category": "Foundational Requirement" },
     { "ref_id": "FR 2", "title": "Use control", "category": "Foundational Requirement" },

@@ -1,9 +1,7 @@
-// Bundled, explicitly-free framework catalogs for the compliance / requirements
-// mapping. Only content that is clearly free to publish ships here:
+// Bundled framework catalogs for the compliance / requirements mapping:
 //   • NIS2  — EU legislation (Directive (EU) 2022/2555), reusable per Decision 2011/833/EU.
 //   • NIST CSF 2.0 — a work of the U.S. Government, public domain.
-// Copyrighted or restrictively-licensed catalogs (ISO 27001/27002, BSI IT-Grundschutz,
-// CIS Controls, …) are NOT bundled — bring them via user-import (parseCatalog).
+// Users can add further catalogs by importing them (see parseCatalog).
 import type { FieldValue } from "./types";
 
 export interface FrameworkItem { ref_id: string; title: string; category?: string; description?: string }
@@ -92,8 +90,8 @@ export const NIST_800_53: Framework = {
 export const BUNDLED_FRAMEWORKS: Framework[] = [NIS2, NIST_CSF, NIST_800_53];
 
 // A curated, framework-neutral library of common security measures (controls),
-// written here (no external copyright) so a study can be seeded with real controls
-// and then customised. The free requirement frameworks above double as measure
+// written here so a study can be seeded with real controls
+// and then customised. The requirement frameworks above double as measure
 // sources too, since their items are themselves risk-management measures/controls.
 export const MEASURE_LIBRARY: Framework = {
   key: "measure-library",
@@ -138,8 +136,8 @@ export const MEASURE_LIBRARY: Framework = {
   ],
 };
 
-// Catalogs that seed security measures: the curated library first, then the free
-// frameworks (whose items are also controls). ISO/CIS/BSI stay import-only.
+// Catalogs that seed security measures: the curated library first, then the
+// frameworks (whose items are also controls).
 export const BUNDLED_MEASURE_CATALOGS: Framework[] = [MEASURE_LIBRARY, NIS2, NIST_CSF, NIST_800_53];
 
 /** Convert a catalog item to `requirement` entity values. */

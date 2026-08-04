@@ -21,7 +21,7 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
   name: "EBIOS RM-inspired",
   description: "Default risk-analysis taxonomy: foundation, risk sources, strategic and operational scenarios, treatment.",
   groups: [
-    { key: "ws1", label: "Foundation", description: "Business assets, supporting assets, feared events", color: "var(--color-workshop-1)" },
+    { key: "ws1", label: "Assets & Scope", description: "Business assets, supporting assets, feared events", color: "var(--color-workshop-1)" },
     { key: "ws2", label: "Risk Sources", description: "Threat actors and their objectives", color: "var(--color-workshop-2)" },
     { key: "ws3", label: "Strategic Scenarios", description: "Ecosystem stakeholders and attack paths", color: "var(--color-workshop-3)" },
     { key: "ws4", label: "Operational Scenarios", description: "Kill-chains with TTPs (tactics, techniques and procedures)", color: "var(--color-workshop-4)" },
