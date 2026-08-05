@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import type { EntityRecord, Taxonomy } from "../domain/types";
 import { getType, recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
 import type { Derived } from "../domain/quantModel";
+import { effectClassOf, EFFECT_CHANNEL } from "../domain/controls";
 import type { QuantInputs, Range } from "../domain/montecarlo";
 import type { FConf } from "./QuantificationView";
 import { DistInput, fmtVal, type Unit } from "./DistInput";
@@ -60,8 +61,11 @@ function Term({ t, hit }: { t: EqTerm; hit: boolean }) {
 function equation(node: Node, v: Vals): { terms: EqTerm[]; op: string; result: number; approx?: boolean; note?: string } {
   switch (node) {
     case "tef": return { op: "×", result: v.tef, terms: [{ label: "Contact frequency", value: v.contact, unit: "rate" }, { label: "Probability of action", value: v.prob, unit: "prob" }] };
-    case "vuln": return { op: "vs", result: v.vuln, note: "P( adversary > control ) - the share of threat events where the adversary's capability beats the controls, measured over the simulation", terms: [{ label: "Adversary strength", value: v.adv, unit: "prob" }, { label: "Control strength", value: v.ctl, unit: "prob" }] };
-    case "lef": return { op: "×", result: v.lef, terms: [{ label: "Threat event frequency", value: v.tef, unit: "rate" }, { label: "Vulnerability", value: v.vuln, unit: "prob" }] };
+    case "vuln": return { op: "vs", result: v.vuln, note: "P( capability > resistance ) - the share of threat events in which the drawn capability exceeds the scenario baseline and every defended step on at least one route through the chain, measured over the simulation", terms: [{ label: "Adversary strength", value: v.adv, unit: "prob" }, { label: "Control strength", value: v.ctl, unit: "prob" }] };
+    // Rates below 1/yr are far easier to judge as a return period, so say it in words too.
+    case "lef": return { op: "×", result: v.lef,
+      note: v.lef > 0 && v.lef < 1 ? `about one loss event every ${Math.round(1 / v.lef)} years` : undefined,
+      terms: [{ label: "Threat event frequency", value: v.tef, unit: "rate" }, { label: "Vulnerability", value: v.vuln, unit: "prob" }] };
     case "secondary": return { op: "×", result: v.secondary, terms: [{ label: "Cascading likelihood", value: v.cascL, unit: "prob" }, { label: "Cascading impact", value: v.cascI, unit: "money" }] };
     case "lm": return { op: "+", result: v.lm, terms: [{ label: "Direct impact", value: v.direct, unit: "money" }, { label: "Secondary risk", value: v.secondary, unit: "money" }] };
     case "ale": return { op: "×", result: v.ale, approx: true, note: "mean over the simulated years", terms: [{ label: "Loss event frequency", value: v.lef, unit: "rate" }, { label: "Loss magnitude", value: v.lm, unit: "money" }] };
@@ -99,21 +103,47 @@ export function FactorTrace({ fkey, range, vals, derived, tax, unit, conf, accen
     const s = scaleOf(tax, op, "likelihood");
     source = (<>{openBtn(op, "Operational scenario")}{s && <p className="ft-calc">Likelihood = <b>{s.label}</b> → probability of action ≈ {Math.round(range.min * 100)}% · <b>{Math.round(range.mode * 100)}%</b> · {Math.round(range.max * 100)}%</p>}</>);
   } else if (m.kind === "control") {
-    const cov = derived.coverage;
+    const diff = scaleOf(tax, op, "difficulty");
+    const chain = derived.chain;
+    // Walk the chain in TRAVERSAL order (that is what the simulation does), pulling each
+    // step's measures from the coverage detail.
+    const walk = (chain ?? []).map((cs) => ({ cs, sc: derived.coverage.steps.find((s) => s.step.id === cs.id) }));
     source = (
       <>
         {openBtn(op, "Attack chain")}
-        <p className="ft-calc"><b>{cov.mitigated}/{cov.total}</b> steps mitigated · avg implementation <b>{Math.round(cov.impl * 100)}%</b> → coverage {Math.round(cov.value * 100)}%, combined with the scenario difficulty → control strength <b>{Math.round(range.mode * 100)}%</b>. More / stronger measures raise it.</p>
-        <div className="ft-steps">
-          {cov.steps.map((sc, i) => (
-            <div className={"ft-step" + (sc.measures.length ? "" : " gap")} key={i}>
-              <span className="ft-step-n">{i + 1}. {recordTitle(getType(tax, sc.step.type)!, sc.step)}</span>
-              {sc.measures.length
-                ? <span className="ft-step-c ok">shielded · {sc.measures.map((mm) => recordTitle(getType(tax, mm.type)!, mm)).join(", ")} · blocks {Math.round(sc.coverage * 100)}%</span>
-                : <span className="ft-step-c bad">no measure (gap)</span>}
-            </div>
-          ))}
-        </div>
+        <p className="ft-calc">
+          {diff && <>Difficulty = <b>{diff.label}</b> ({diff.value}/{diff.max}) → </>}
+          a baseline resistance of <b>{Math.round(range.mode * 100)}%</b>, beaten once before the chain starts.
+          {chain?.length
+            ? <> After that, a step is only a further hurdle if something blocks or detects him there. Steps with nothing on them cost him nothing - so splitting the chain into more steps never makes it look safer.</>
+            : <> No kill-chain steps here, so the baseline decides on its own.</>}
+        </p>
+        {walk.length > 0 && (
+          <div className="ft-steps">
+            {walk.map(({ cs, sc }, i) => (
+              <div className={"ft-step" + (cs.gate || cs.interrupt > 0 ? "" : " gap")} key={cs.id}>
+                <span className="ft-step-n">
+                  {i + 1}. {sc ? recordTitle(getType(tax, sc.step.type)!, sc.step) : "step"}
+                  {cs.preds.length > 1 && <em className="ft-step-join"> · needs {cs.join === "any" ? "any one" : "all"} of {cs.preds.length}</em>}
+                  {cs.terminal && <em className="ft-step-join"> · objective</em>}
+                </span>
+                <span className="ft-step-c">
+                  {cs.gate && <b className="ok">blocks {Math.round(cs.gate.mode * 100)}%</b>}
+                  {cs.interrupt > 0 && <b className="watch">detected {Math.round(cs.interrupt * 100)}%</b>}
+                  {!cs.gate && cs.interrupt === 0 && (
+                    <span className="bad">{cs.terminal && sc?.detection ? "detected only once the damage is done" : "nothing here - the attacker walks through"}</span>
+                  )}
+                  {sc?.measures.map((mm) => (
+                    <span className="ft-step-m" key={mm.id} title={`${effectClassOf(mm)}: ${EFFECT_CHANNEL[effectClassOf(mm)]}`}>
+                      {recordTitle(getType(tax, mm.type)!, mm)}
+                      <i className="ft-cls">{effectClassOf(mm)}</i>
+                    </span>
+                  ))}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </>
     );
   } else {

@@ -5,7 +5,7 @@ import { create } from "zustand";
 import type {
   AppState, Bundle, EntityRecord, FieldValue, ID, QuantTuning, Study, Taxonomy,
 } from "./types";
-import { DEFAULT_TAXONOMY, getType, refFields } from "./taxonomy";
+import { DEFAULT_TAXONOMY, getType, reconcileTaxonomy, refFields } from "./taxonomy";
 import { loadRaw, saveState } from "./persistence";
 import { appendChange, diffValues, getEditor } from "./audit";
 
@@ -71,7 +71,9 @@ function migrate(raw: unknown): AppState {
   if (obj.version === 2) {
     return {
       version: 2,
-      taxonomy: (obj.taxonomy as Taxonomy) ?? DEFAULT_TAXONOMY,
+      // Stored taxonomies predate later additions to the default vocabulary; pick
+      // those up additively instead of forcing a reset (see reconcileTaxonomy).
+      taxonomy: reconcileTaxonomy((obj.taxonomy as Taxonomy) ?? DEFAULT_TAXONOMY),
       studies: (obj.studies as Study[]) ?? [],
       activeStudyId: (obj.activeStudyId as ID) ?? null,
     };
@@ -174,7 +176,7 @@ export const useStore = create<StoreState>((set, get) => ({
 
   applyBundle: (b, opts) => {
     const patch: Partial<StoreState> = {};
-    if (b.taxonomy) patch.taxonomy = b.taxonomy;
+    if (b.taxonomy) patch.taxonomy = reconcileTaxonomy(b.taxonomy);
     if (b.studies) {
       if (opts.studiesMode === "merge") {
         // Additive: fold incoming studies into existing ones sharing an id

@@ -12,8 +12,22 @@ export type Unit = "money" | "rate" | "prob";
 const clamp = (x: number, lo: number, hi: number) => (x < lo ? lo : x > hi ? hi : x);
 
 export function fmtVal(v: number, unit: Unit): string {
-  if (unit === "prob") return `${Math.round(v * 100)}%`;
-  if (unit === "rate") return `${v >= 10 ? Math.round(v) : v.toFixed(1)}/yr`;
+  // Small-but-real values must never render as a flat zero: a loss-event frequency of
+  // 0.03/yr shown as "0.0/yr" makes the whole factor chain read as "0 × €8.7M = €274k",
+  // which looks like a broken calculation rather than a rare event.
+  if (unit === "prob") {
+    if (v <= 0) return "0%";
+    const p = v * 100;
+    if (p >= 1) return `${Math.round(p)}%`;
+    return p >= 0.1 ? `${p.toFixed(1)}%` : "<0.1%";
+  }
+  if (unit === "rate") {
+    if (v <= 0) return "0/yr";
+    if (v >= 10) return `${Math.round(v)}/yr`;
+    if (v >= 1) return `${v.toFixed(1)}/yr`;
+    if (v < 0.001) return "<0.001/yr";
+    return `${Number(v.toPrecision(2))}/yr`;   // two significant digits, no trailing zeros
+  }
   // money, compact
   const a = Math.abs(v);
   if (a >= 1e9) return `€${(v / 1e9).toFixed(1)}B`;

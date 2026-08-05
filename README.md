@@ -69,24 +69,39 @@ control that mitigates it.
 - **Monte-Carlo risk quantification** - an own, offline simulation engine turns the qualitative
   model into an annual-loss distribution (loss-exceedance curve, percentiles), with every factor
   derived parametrically from the study inputs and traceable back to them. Opt-in per scenario.
+- **The kill chain is the calculation** - each simulated attempt walks the chain in order,
+  honouring every step's prerequisites, so alternative routes and true choke points shape the
+  result. You see where the attempts are stopped: how many by the scenario itself, how many at
+  each step, and how many reach the objective.
+- **Measures act through their mechanism** - preventive measures block an attacker at the step
+  they cover, detective ones can interrupt the intrusion before it reaches its objective,
+  corrective ones are damage control (they reduce the loss, not the chance of it), deterrent ones
+  reduce the number of attempts and avoidance removes the exposure itself.
 
 <div align="center">
 <img src="docs/quant.png" alt="Aurelian Lite - Monte-Carlo annual-loss distribution, inherent vs residual" width="860">
 </div>
 
 - **Treatment & residual risk** - record an ISO-27005-style decision (reduce / accept / share /
-  avoid) per risk; the residual position on the matrix is derived from your kill-chain coverage,
-  not typed in twice.
-- **Defense-in-depth coverage** - kill-chain step coverage weighted by each measure's
-  implementation level *and* lifecycle status, with saturation, so two half-done controls don't
-  read as fully mitigated.
+  avoid) per risk; the residual position on the matrix comes from the same traversal as the risk
+  figures, split across both axes, so a treatment that only buys recovery moves the risk down
+  rather than left - never typed in twice.
+- **Chain defence** - what actually becomes of an attack attempt: blocked, detected in time, or
+  through to the objective. Per step, layers stack with saturation and are weighted by each
+  measure's implementation level *and* lifecycle status, so two half-done controls don't read as
+  fully mitigated.
 
 <div align="center">
-<img src="docs/coverage.png" alt="Aurelian Lite - coverage overview: defense-in-depth status ring and per-tactic coverage tiles" width="860">
+<img src="docs/coverage.png" alt="Aurelian Lite - chain defence: attack-attempt outcome ring and per-tactic defence tiles" width="860">
 </div>
 
 - **Quality checks** - a completeness linter that surfaces gaps: uncovered kill-chain steps,
-  untreated risks, and more.
+  untreated risks, kill chains defended by detection alone, monitored chains with nothing to
+  respond with, and more.
+
+> **How the numbers are produced** is written up in [docs/method.md](docs/method.md) - where each
+> factor comes from, how the chain is traversed, how the model was calibrated, and what it does
+> not claim.
 - **Word / PDF corpus import** - extract document text fully offline (PDF via a bundled PDF.js,
   `.docx` via the browser's own decompression) to seed a study, with automatic source attribution
   on every extracted entity.

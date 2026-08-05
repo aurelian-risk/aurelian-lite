@@ -3,6 +3,7 @@
 // requirements, etc. - each with the affected entities and a fix hint. Purely
 // deterministic and taxonomy-guarded: a rule is skipped if its types are absent.
 import type { EntityRecord, Study, Taxonomy } from "./types";
+import { declaredClass, effectClassOf, hasEffectField } from "./controls";
 
 export type Severity = "high" | "medium" | "low";
 
@@ -98,6 +99,86 @@ export function lintStudy(tax: Taxonomy, study: Study): LintCheck[] {
         return !any("covers") && !any("protects") && !any("fulfills");
       }));
   }
+  // Measures with no effect class - they are quantified as preventive by default,
+  // which is right for most controls but wrong for backups, monitoring or deterrence.
+  if (has("security_measure") && hasEffectField(tax, "security_measure")) {
+    add("measure-unclassified", "Security measures with no effect class", "medium",
+      "Set the measure type. The quantification derives a control's effect from it - a corrective control reduces the loss, a detective one can break the chain, a deterrent one reduces attempts. Unclassified measures are counted as preventive.",
+      "security_measure", ents("security_measure").filter((m) => !declaredClass(m)));
+  }
+  // ── What the effect classes make visible ────────────────────────────────
+  // A measure on a step is not the same as a defence at that step: only blocking and
+  // detecting measures stop an attacker there. These rules surface the gaps that a plain
+  // "is anything attached" count cannot see - and that the quantification acts on.
+  if (has("kill_chain_step") && has("security_measure")) {
+    const steps = ents("kill_chain_step");
+    const measures = ents("security_measure");
+    const coversOf = (m: EntityRecord) => (Array.isArray(m.values.covers) ? m.values.covers as string[] : []);
+    const onStep = (id: string) => measures.filter((m) => coversOf(m).includes(id));
+    const stops = (m: EntityRecord) => { const c = effectClassOf(m); return c === "Preventive" || c === "Detective"; };
+    const stepsOfScenario = (opId: string) => steps.filter((s) => s.values.operational_scenario === opId);
+
+    // A step that carries measures, none of which stops anybody there. Reads as handled
+    // in every "covered" count, and is wide open in the model.
+    add("damage-control-only", "Kill-chain steps where nothing blocks or detects", "medium",
+      "The measures on these steps act on the loss or on the number of attacks; none of them prevents or detects an attacker at the step itself. Add a preventive or detective measure, or accept the gap explicitly.",
+      "kill_chain_step", steps.filter((s) => { const m = onStep(s.id); return m.length > 0 && !m.some(stops); }));
+
+    // Steps that never show up in the tactic view because they carry no tactic.
+    add("step-no-tactic", "Kill-chain steps with no tactic", "low",
+      "A step without a tactic is missing from the tactic defence view. Set the tactic so the step is counted.",
+      "kill_chain_step", steps.filter((s) => !String(s.values.tactic ?? "").trim()));
+
+    if (has("operational_scenario")) {
+      const ops = ents("operational_scenario");
+      const measuresOf = (op: EntityRecord) => stepsOfScenario(op.id).flatMap((s) => onStep(s.id));
+
+      // The finding the averaged model used to hide: a chain nothing stops anywhere.
+      add("chain-nothing-stops", "Kill chains that nothing blocks or detects", "high",
+        "No measure on these chains prevents or detects an attacker at any step; the measures present act on the loss or on the number of attacks. The quantification will show most attempts reaching the objective.",
+        "operational_scenario", ops.filter((op) => stepsOfScenario(op.id).length > 0 && !measuresOf(op).some(stops)));
+
+      // Watched everywhere, barred nowhere. Easy to miss, because every step looks
+      // attended to - and it is the posture the averaged model flattered most.
+      add("chain-detection-only", "Kill chains defended by detection alone", "high",
+        "These chains carry no preventive measure at any step - they are only monitored. Detection provides an opportunity to interrupt an intrusion, and only where a response capability exists; it does not prevent access. Add at least one preventive measure, or record the exposure as accepted.",
+        "operational_scenario", ops.filter((op) => {
+          const m = measuresOf(op);
+          return m.some((x) => effectClassOf(x) === "Detective") && !m.some((x) => effectClassOf(x) === "Preventive");
+        }));
+
+      // Detection is only worth what the response makes of it - the model scales it by
+      // the corrective capability, so a chain watched but not recoverable is a real gap.
+      add("detection-no-response", "Monitored chains with no way to respond", "medium",
+        "These chains carry detective measures but no corrective one, so the model credits them with almost no response capability. Detection that cannot be acted upon reduces risk only marginally.",
+        "operational_scenario", ops.filter((op) => {
+          const m = measuresOf(op);
+          return m.some((x) => effectClassOf(x) === "Detective") && !m.some((x) => effectClassOf(x) === "Corrective");
+        }));
+
+      // Without predecessors the chain is read as a straight line, so alternative routes
+      // and true prerequisites never enter the calculation.
+      add("chain-no-prerequisites", "Kill chains modelled as a straight line", "low",
+        "No step in these chains names its prerequisites, so the chain is read as a sequence in step order. Set 'preceded by' wherever a step genuinely requires an earlier one - alternative routes and choke points only become visible once the prerequisites are modelled.",
+        "operational_scenario", ops.filter((op) => {
+          const ss = stepsOfScenario(op.id);
+          return ss.length > 2 && !ss.some((s) => Array.isArray(s.values.predecessors) && (s.values.predecessors as string[]).length);
+        }));
+
+      // A treatment that claims to reduce, with nothing on the chain doing the reducing.
+      if (has("risk_treatment") && has("strategic_scenario")) {
+        add("reduce-without-measures", "Risks treated as 'Reduce' with nothing reducing them", "medium",
+          "The decision states reduction, but no measure is attached to any step of the chains behind this risk. Either attach the measures that justify the decision, or change it to accepted.",
+          "risk_treatment", ents("risk_treatment").filter((t) => {
+            if (String(t.values.decision ?? "") !== "Reduce") return false;
+            const sid = t.values.strategic_scenario;
+            const chains = ops.filter((op) => op.values.strategic_scenario === sid);
+            return chains.length > 0 && !chains.some((op) => measuresOf(op).length > 0);
+          }));
+      }
+    }
+  }
+
   // Risk sources not used by any strategic scenario.
   if (has("risk_origin") && has("strategic_scenario")) {
     const used = referenced("strategic_scenario", "risk_origin");

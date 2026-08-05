@@ -5,10 +5,10 @@
 // curve) recomputes live; an inherent<->residual toggle shows what the controls buy.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { EntityRecord, Study, Taxonomy } from "../domain/types";
-import { getType } from "../domain/taxonomy";
+import { getType, recordTitle } from "../domain/taxonomy";
 import { useStore } from "../domain/store";
 import { simulate, type QuantInputs, type QuantResult, type Range } from "../domain/montecarlo";
-import { deriveInputs, meanOf, type Coverage, type Prov } from "../domain/quantModel";
+import { deriveInputs, meanOf, type Derived, type Prov } from "../domain/quantModel";
 import { DistInput, fmtVal, type Unit } from "./DistInput";
 import { FactorTrace } from "./FactorTrace";
 import { EntityModal } from "./EntityModal";
@@ -130,14 +130,16 @@ function QuantTree({ tax, study, op, color }: { tax: Taxonomy; study: Study; op:
   const [computing, setComputing] = useState(false);
   const [computeMs, setComputeMs] = useState(0);
   const timer = useRef<number | undefined>(undefined);
-  const key = JSON.stringify(inputsWith) + "|" + JSON.stringify(inputsWithout);
+  // The chain is part of the model, not of the inputs, so it has to be in the key too -
+  // otherwise re-pointing a measure at another step would leave a stale result on screen.
+  const key = JSON.stringify(inputsWith) + "|" + JSON.stringify(inputsWithout) + "|" + JSON.stringify(derivedWith.chain);
   useEffect(() => {
     setComputing(true);
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
       const t0 = performance.now();
-      setResWith(simulate(inputsWith, ITER));
-      setResWithout(simulate(inputsWithout, ITER));
+      setResWith(simulate(inputsWith, ITER, derivedWith.chain));
+      setResWithout(simulate(inputsWithout, ITER, derivedWithout.chain));
       setComputeMs(performance.now() - t0);
       setComputing(false);
     }, 120);
@@ -156,10 +158,9 @@ function QuantTree({ tax, study, op, color }: { tax: Taxonomy; study: Study; op:
   const secondary = M("cascadingLikelihood") * M("cascadingImpact");
   const nodes = { tef, vuln, lef, primary, secondary, lm: primary + secondary, ale: result?.ale.mean ?? primary + secondary };
 
-  // What the controls buy: they raise control strength (via kill-chain coverage),
-  // which lowers vulnerability and shifts the whole loss curve down.
-  const cov = derivedWith.coverage;
-  const csWith = meanOf(derivedWith.inputs.controlStrength), csWithout = meanOf(derivedWithout.inputs.controlStrength);
+  // What the controls buy. NOT a higher control strength any more - that is the
+  // scenario baseline and is the same either way. The controls sit ON the chain, so
+  // what they buy is measured by where the attempts now die.
   const benefit = resWith && resWithout ? resWithout.ale.mean - resWith.ale.mean : 0;
   const benefitPct = resWithout && resWithout.ale.mean > 0 ? Math.round((benefit / resWithout.ale.mean) * 100) : 0;
 
@@ -178,7 +179,7 @@ function QuantTree({ tax, study, op, color }: { tax: Taxonomy; study: Study; op:
         </div>
       </div>
       {resWith && resWithout && <LossDistribution resultWith={resWith} resultWithout={resWithout} active={residual ? "with" : "without"} accent={color}
-        cov={cov} csWith={csWith} csWithout={csWithout} benefit={benefit} onTraceControls={() => setTrace("controlStrength")} />}
+        derived={derivedWith} tax={tax} benefit={benefit} onTraceControls={() => setTrace("controlStrength")} />}
 
       <div className="qt-tree">
         <NodeRow op="×" title="Loss event frequency" value={fmtVal(lef, "rate")} />
@@ -266,9 +267,9 @@ function MoneyRow({ title, value, onChange, unit, lo, hi, log, accent, prov, onT
 // (residual, filled) is pulled left. The mean of each is marked and the gap
 // between them is what the controls buy. Below it, the control chain is spelled
 // out (kill-chain coverage -> control strength -> loss reduction).
-function LossDistribution({ resultWith, resultWithout, active, accent, cov, csWith, csWithout, benefit, onTraceControls }: {
+function LossDistribution({ resultWith, resultWithout, active, accent, derived, tax, benefit, onTraceControls }: {
   resultWith: QuantResult; resultWithout: QuantResult; active: "with" | "without"; accent: string;
-  cov: Coverage; csWith: number; csWithout: number; benefit: number; onTraceControls: () => void;
+  derived: Derived; tax: Taxonomy; benefit: number; onTraceControls: () => void;
 }) {
   const W = 520, H = 214, PL = 20, PB = 36, PT = 28, PR = 18;
   const base = H - PB, plotH = H - PT - PB;
@@ -326,11 +327,70 @@ function LossDistribution({ resultWith, resultWithout, active, accent, cov, csWi
         {ticks.map((t) => <text key={"t" + t} x={X(t)} y={H - 14} textAnchor="middle" className="qv-ax">{fmtVal(t, "money")}</text>)}
         <text x={W - PR} y={H - 2} textAnchor="end" className="qv-ax" fillOpacity={0.75}>annual loss (log €) →</text>
       </svg>
-      <button type="button" className="qt-ctrl-note" onClick={onTraceControls} title="Trace the control strength">
-        <b>{cov.mitigated}/{cov.total}</b> kill-chain steps mitigated{cov.total ? ` (avg impl ${Math.round(cov.impl * 100)}%)` : ""} → control strength
-        {" "}<span style={{ color: warn }}>{Math.round(csWithout * 100)}%</span> → <span style={{ color: accent }}>{Math.round(csWith * 100)}%</span>,
-        {" "}lowering vulnerability and cutting the mean loss by {fmtVal(benefit, "money")}. <span className="qt-ctrl-more">trace →</span>
+      <ChainBreak result={resultWith} derived={derived} tax={tax} accent={accent} benefit={benefit} onTrace={onTraceControls} />
+    </div>
+  );
+}
+
+// Where the attempts die. This is what the traversal knows and the old averaged model
+// could not say: of every attack attempt, which share is stopped by the scenario's own
+// difficulty, which share by each control on the chain, and which share gets through.
+// It answers "where does my money work" far better than any single loss figure.
+function ChainBreak({ result, derived, tax, accent, benefit, onTrace }: {
+  result: QuantResult; derived: Derived; tax: Taxonomy; accent: string; benefit: number; onTrace: () => void;
+}) {
+  const warn = "var(--color-state-warning)";
+  const titleOf = (id: string) => {
+    const sc = derived.coverage.steps.find((s) => s.step.id === id);
+    return sc ? recordTitle(getType(tax, sc.step.type)!, sc.step) : "step";
+  };
+  // The bar must account for every attempt, so it keeps even the slivers; only the
+  // written-out list below is trimmed to the ones worth naming.
+  const segs = [
+    ...(result.blockedAtBaseline > 0 ? [{ id: "", label: "capability below baseline resistance", p: result.blockedAtBaseline }] : []),
+    ...result.breaks.filter((b) => b.p > 0).sort((a, b) => b.p - a.p).map((b) => ({ id: b.id, label: titleOf(b.id), p: b.p })),
+  ];
+  // Every outcome gets a row: the list is framed as "out of every 100", so dropping the
+  // small ones would leave it visibly short of 100. Only defended steps ever appear here,
+  // so the list stays short by construction.
+  const named = segs.filter((s) => s.p > 0.0005);
+  if (!segs.length) {
+    return (
+      <button type="button" className="qt-ctrl-note" onClick={onTrace} title="Trace the control strength">
+        Nothing on this chain stops an attempt - every attacker who starts, finishes. <span className="qt-ctrl-more">trace →</span>
       </button>
+    );
+  }
+  const row = (p: number, label: string, cls = "") => (
+    <div className={"qb-row " + cls} key={label}>
+      <span className="qb-p mono">{(p * 100).toFixed(1)}%</span>
+      <span className="qb-l">{label}</span>
+    </div>
+  );
+  return (
+    <div className="qt-break">
+      <div className="qt-break-h">
+        <span className="qt-shift-lbl">Where the attempts are stopped</span>
+        <span className="qb-scale">out of every 100 attacks on this chain</span>
+      </div>
+      <div className="qt-break-bar" role="img" aria-label="share of attack attempts stopped at each stage of the chain">
+        {segs.map((s, i) => (
+          <span key={s.id || "base"} className="qt-break-seg" title={`${s.label}: ${(s.p * 100).toFixed(1)}%`}
+            style={{ width: `${s.p * 100}%`, background: accent, opacity: Math.max(0.3, 0.85 - i * 0.11) }} />
+        ))}
+        <span className="qt-break-seg through" title={`reaches the objective: ${(result.vuln * 100).toFixed(1)}%`}
+          style={{ width: `${result.vuln * 100}%`, background: warn }} />
+      </div>
+      <div className="qb-rows">
+        {named.map((s) => row(s.p, s.id ? `stopped at ${s.label}` : "attacker capability below the scenario's baseline resistance"))}
+        {row(result.vuln, "reach the objective - these become loss events", "through")}
+      </div>
+      <div className="qb-foot">
+        {result.detected > 0.002 && <span>Of those, {Math.round(result.detected * 100)} were stopped by detection and response rather than by resistance.</span>}
+        <button type="button" className="qt-break-trace" onClick={onTrace}>
+          controls cut the mean loss by {fmtVal(benefit, "money")} · trace →
+        </button>
+      </div>
     </div>
   );
 }

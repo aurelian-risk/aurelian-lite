@@ -38,7 +38,13 @@ export function RiskMatrix({ tax, study, type, color }: { tax: Taxonomy; study: 
     const t = treatOf.get(e.id);
     return t ? residualPos(study, tax, e, t, xF.key, yF.key) : inherent(e); // untreated stay put
   };
-  const posOf = (e: EntityRecord) => (mode === "residual" ? residual(e) : inherent(e));
+  // Resolve every position ONCE per render. The residual position now runs the chain
+  // traversal (see treatment.ts), so calling it per grid cell - which is what a naive
+  // `at(x, y)` does - would simulate the same risk once for every square on the board.
+  const posMap = new Map<string, { x: number; y: number }>(
+    items.map((e) => [e.id, mode === "residual" ? residual(e) : inherent(e)]),
+  );
+  const posOf = (e: EntityRecord) => posMap.get(e.id) ?? inherent(e);
   const at = (x: number, y: number) => items.filter((e) => { const p = posOf(e); return p.x === x && p.y === y; });
   const xs = Array.from({ length: xMax }, (_, i) => i + 1);
   const ys = Array.from({ length: yMax }, (_, i) => yMax - i); // high gravity on top
@@ -48,7 +54,7 @@ export function RiskMatrix({ tax, study, type, color }: { tax: Taxonomy; study: 
     const t = treatOf.get(e.id); const inh = inherent(e);
     if (!t) return `${recordTitle(type, e)} — untreated (stays at inherent)`;
     const dec = decisionF ? String(t.values[decisionF.key] ?? "") : "";
-    const r = residual(e);
+    const r = posOf(e);
     return `${recordTitle(type, e)} — ${dec || "treated"}: ${scaleLabel(xF, inh.x)}·${scaleLabel(yF, inh.y)} → ${scaleLabel(xF, r.x)}·${scaleLabel(yF, r.y)}`;
   };
 
