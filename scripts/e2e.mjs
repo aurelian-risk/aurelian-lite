@@ -58,6 +58,41 @@ try {
     await page.screenshot({ path: `${shots}/${tab.replace(/\W+/g, "_")}.png` });
   }
 
+  // Quantification: the chain traversal has to be visible, not just computed. The view
+  // must show where attempts are stopped, and the factor popup must explain the model
+  // that is actually running (baseline + per-step hurdles), not the old averaged one.
+  await page.locator(".ws-tab", { hasText: "Risk Quantification" }).click();
+  await page.waitForSelector(".qt-break-bar", { timeout: 15000 });
+  ok("quantification shows where attempts are stopped", (await page.locator(".qt-break-bar .qt-break-seg").count()) >= 2);
+  const qb = await page.locator(".qt-break").innerText();
+  ok("the breakdown says what the percentages are shares OF", /out of every 100 attacks/i.test(qb));
+  ok("the share that gets through is called out", /reach the objective/i.test(await page.locator(".qb-row.through").innerText()));
+  ok("each stopping point is a row that says what happened", (await page.locator(".qb-rows .qb-row").count()) >= 2
+    && /stopped at/i.test(qb));
+  await page.locator(".qt-break").scrollIntoViewIfNeeded();
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: `${shots}/QuantChain.png` });
+  await page.locator(".qt-break-trace").click();
+  await page.waitForSelector(".ft-card", { timeout: 5000 });
+  const ft = await page.locator(".ft-card").innerText();
+  ok("the factor popup explains the baseline the attacker must beat", /baseline resistance/i.test(ft));
+  ok("the factor popup states that undefended steps are free", /never makes it look safer/i.test(ft));
+  ok("the factor popup walks the chain step by step", (await page.locator(".ft-card .ft-step").count()) >= 3);
+  ok("resisting steps show their hurdle", (await page.locator(".ft-card .ft-step-c .ok").count()) >= 1);
+  ok("watched steps show the chance of being caught", (await page.locator(".ft-card .ft-step-c .watch").count()) >= 1);
+  ok("measures on the chain show their effect class", (await page.locator(".ft-card .ft-cls").count()) >= 1);
+  ok("the chain distinguishes resisting from detecting measures",
+    /PREVENTIVE/i.test(ft) && /DETECTIVE/i.test(ft));
+  ok("the popup no longer describes the retired averaged model", !/avg implementation|steps mitigated/i.test(ft));
+  // A rare event is not a zero event: rates below 1/yr used to render as "0.0/yr", which
+  // made the whole chain read as "0 x €8.7M = €274k".
+  const path = await page.locator(".ft-card .ft-calc-path").innerText();
+  ok("small frequencies keep their significant digits", !/\b0\.0\/yr/.test(path) && /0\.\d+\/yr/.test(path));
+  ok("the loss frequency is also given as a return period", /one loss event every \d+ years/i.test(path));
+  await page.screenshot({ path: `${shots}/QuantFactorTrace.png` });
+  await page.locator('.ft-card button[aria-label="Close"]').click();
+  await page.waitForTimeout(150);
+
   // Row click expands inline detail; clicking a linked item opens the popup
   await page.locator(".ws-tab", { hasText: "Assets & Scope" }).click();
   await page.waitForTimeout(200);
@@ -209,6 +244,21 @@ try {
   await page.waitForTimeout(200);
   ok("checks view lists gaps", (await page.locator(".lint-card").count()) > 0);
   ok("uncovered kill-chain step flagged", (await page.locator(".lint-card .lint-title", { hasText: "Kill-chain steps with no security measure" }).count()) > 0);
+  // Effect classification: the linter surfaces measures whose effect class is unset
+  // (they would be quantified as preventive by default). The sample leaves none, so
+  // the rule has to show up among the PASSING checks, not the failing ones.
+  ok("effect-class check passes on the sample", (await page.locator(".lint-pass", { hasText: "Security measures with no effect class" }).count()) > 0);
+  ok("effect-class check is not failing", (await page.locator(".lint-card .lint-title", { hasText: "Security measures with no effect class" }).count()) === 0);
+  // Model-aware rules: a chain can be fully "covered" and still stop nobody. The sample's
+  // insider chain is watched but never barred, which the quantification confirms.
+  const dOnly = page.locator(".lint-card:has(.lint-title:text-is('Kill chains defended by detection alone'))");
+  ok("detection-only chains are flagged as a high finding", (await dOnly.count()) === 1
+    && /high/i.test(await dOnly.locator(".lint-sev").innerText()));
+  ok("...and it names the insider chain", /Insider exfiltration/i.test(await dOnly.innerText()));
+  ok("monitored chains with nothing to respond with are flagged",
+    (await page.locator(".lint-card .lint-title", { hasText: "Monitored chains with no way to respond" }).count()) === 1);
+  ok("the checks cover the effect model, not just missing links",
+    (await page.locator(".lint-card, .lint-pass").count()) >= 16);
   await page.screenshot({ path: `${shots}/Checks.png` });
 
   // Copy-for-LLM button present on a workshop
@@ -268,9 +318,46 @@ try {
   await page.locator(".overlay").click({ position: { x: 5, y: 5 } }).catch(() => {});
   await page.waitForTimeout(150);
 
-  // Catalog picker (security measures) + semi-deterministic framework import (Documents)
+  // Treatment analytics must speak the model's language: an outcome ring (resisted /
+  // caught / through) instead of an averaged "coverage" figure, and a chain counted as
+  // defended only where something actually resists or watches.
   await page.locator(".ws-tab", { hasText: "Treatment" }).click();
+  await page.waitForSelector(".mc-ring", { timeout: 15000 });
+  const mc = await page.locator(".panel:has(.mc-ring)").innerText();
+  ok("treatment shows what becomes of an attempt", /blocked/i.test(mc) && /detected in time/i.test(mc) && /reaches the objective/i.test(mc));
+  ok("the ring counts attempts, not coverage", /attempts stopped/i.test(mc) && !/residual gap/i.test(mc));
+  ok("the ring says how many steps block and how many detect", /steps block an attacker/i.test(mc) && /detect him/i.test(mc));
+  ok("kill-chain mitigation counts defended steps, not merely covered ones",
+    (await page.locator(".tbl .badge", { hasText: /\d+\/\d+ defended/ }).count()) > 0);
+  ok("the tactic heatmap carries a colour key", (await page.locator(".hm-key .hm-key-bar i").count()) >= 4);
+  ok("the heatmap scrolls instead of clipping its columns", (await page.locator(".hm-scroll").count()) > 0);
+  await page.locator(".mc-ring").scrollIntoViewIfNeeded();
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: `${shots}/ChainDefence.png` });
+  // Every percentage has to be able to explain itself.
+  await page.locator("button.hm-cell").first().click();
+  await page.waitForSelector(".ft-card", { timeout: 5000 });
+  const tp = await page.locator(".ft-card").innerText();
+  ok("a heatmap tile shows the working as a calculation", (await page.locator(".ft-card .tx-formula").count()) === 1
+    && /average of \d+ step/i.test(tp));
+  ok("the explanation lists the steps that go into the average", (await page.locator(".ft-card .tx-row").count()) >= 2);
+  ok("the explanation says which classes are not counted", /corrective, deterrent and avoidance measures are not counted/i.test(tp));
+  // Saying only what those classes DON'T do left the analyst none the wiser, and "they act
+  // elsewhere" named no place. The text has to say WHICH factor each of them acts on.
+  ok("the explanation names the factor each excluded class acts on",
+    /act on .{0,12}the loss/i.test(tp) && /damage control/i.test(tp) && /the number of attacks/i.test(tp));
+  ok("the explanation says they still count towards the risk", /both move the risk figures/i.test(tp));
+  ok("the explanation separates being defended from being safe", /how consistently the tactic's steps are defended/i.test(tp));
+  await page.screenshot({ path: `${shots}/TacticExplain.png` });
+  await page.locator('.ft-card button[aria-label="Close"]').click();
+  await page.waitForTimeout(150);
+
+  // Catalog picker (security measures) + semi-deterministic framework import (Documents)
   await page.waitForTimeout(250);
+  // Measures act through different channels; the sample exercises the two that sit at
+  // the ends of the chain (deterrence on the attempt, avoidance on the exposure).
+  ok("sample carries a deterrent measure", (await page.locator(".tbl .name", { hasText: "Audited access with published monitoring notice" }).count()) > 0);
+  ok("sample carries an avoidance measure", (await page.locator(".tbl .name", { hasText: "Decommission the legacy maintenance gateway" }).count()) > 0);
   ok("security-measure catalog picker present", (await page.getByRole("button", { name: /Security Measure/ }).count()) > 0);
   await page.getByRole("button", { name: /Security Measure/ }).first().click();
   await page.waitForTimeout(200);

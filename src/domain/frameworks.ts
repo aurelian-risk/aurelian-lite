@@ -3,8 +3,13 @@
 //   • NIST CSF 2.0 — a work of the U.S. Government, public domain.
 // Users can add further catalogs by importing them (see parseCatalog).
 import type { FieldValue } from "./types";
+import { EFFECT_CLASSES, type EffectClass } from "./controls";
 
-export interface FrameworkItem { ref_id: string; title: string; category?: string; description?: string }
+/** `effect` is the quantitative effect class (see controls.ts). It is set only where a
+ *  control's mechanism is unambiguous; governance and support controls are left unset
+ *  on purpose, so the linter asks the analyst to decide in context rather than the
+ *  catalog silently claiming an effect the control does not have. */
+export interface FrameworkItem { ref_id: string; title: string; category?: string; description?: string; effect?: EffectClass }
 export interface Framework { key: string; name: string; source: string; items: FrameworkItem[] }
 
 // NIS2 — Directive (EU) 2022/2555, Article 21(2) risk-management measures.
@@ -98,41 +103,41 @@ export const MEASURE_LIBRARY: Framework = {
   name: "Common measures",
   source: "Aurelian Lite curated library of common security controls (framework-neutral).",
   items: [
-    { ref_id: "IAM-01", title: "Multi-factor authentication", category: "Identity & access", description: "Enforce MFA for remote access, admin and privileged accounts." },
-    { ref_id: "IAM-02", title: "Least-privilege access", category: "Identity & access", description: "Grant the minimum rights needed; remove standing admin where possible." },
-    { ref_id: "IAM-03", title: "Privileged access management", category: "Identity & access", description: "Vault, broker and session-record privileged credentials; just-in-time elevation." },
-    { ref_id: "IAM-04", title: "Periodic access reviews & timely offboarding", category: "Identity & access", description: "Recertify entitlements; revoke access promptly on role change or departure." },
-    { ref_id: "IAM-05", title: "Single sign-on / centralised identity", category: "Identity & access", description: "Federate authentication to reduce credential sprawl and enforce policy centrally." },
-    { ref_id: "NET-01", title: "Network segmentation", category: "Network", description: "Separate sensitive systems into isolated zones to limit lateral movement." },
-    { ref_id: "NET-02", title: "Firewall & egress filtering", category: "Network", description: "Restrict inbound and outbound traffic to what is explicitly required." },
-    { ref_id: "NET-03", title: "Secure remote access (VPN / ZTNA)", category: "Network", description: "Terminate remote sessions through authenticated, encrypted, policy-checked gateways." },
-    { ref_id: "END-01", title: "Endpoint detection & response (EDR)", category: "Endpoint", description: "Deploy EDR/anti-malware with central telemetry and containment." },
-    { ref_id: "END-02", title: "Patch & vulnerability management", category: "Endpoint", description: "Identify, prioritise and remediate vulnerabilities on a defined cadence." },
-    { ref_id: "END-03", title: "Secure configuration / hardening baseline", category: "Endpoint", description: "Apply and monitor a hardened baseline; disable unused services and defaults." },
-    { ref_id: "END-04", title: "Application allow-listing", category: "Endpoint", description: "Permit only approved executables to run on sensitive endpoints/servers." },
-    { ref_id: "DAT-01", title: "Encryption at rest", category: "Data protection", description: "Encrypt sensitive data on disk, databases and backups." },
-    { ref_id: "DAT-02", title: "Encryption in transit", category: "Data protection", description: "Enforce TLS/mTLS for data moving between systems and users." },
-    { ref_id: "DAT-03", title: "Key management", category: "Data protection", description: "Generate, store, rotate and revoke cryptographic keys under defined control." },
-    { ref_id: "DAT-04", title: "Data classification & handling", category: "Data protection", description: "Label data by sensitivity and apply matching handling and access rules." },
-    { ref_id: "DAT-05", title: "Data loss prevention (DLP)", category: "Data protection", description: "Detect and block unauthorised exfiltration of sensitive data." },
-    { ref_id: "BCK-01", title: "Backups with tested restore", category: "Resilience", description: "Take regular backups and periodically verify restoration end-to-end." },
-    { ref_id: "BCK-02", title: "Offline / immutable backups", category: "Resilience", description: "Keep at least one backup copy isolated or immutable against ransomware." },
-    { ref_id: "BCK-03", title: "Disaster-recovery & continuity plan", category: "Resilience", description: "Document, resource and exercise recovery of critical services within target objectives." },
-    { ref_id: "LOG-01", title: "Centralised logging & monitoring (SIEM)", category: "Detection", description: "Collect security-relevant logs centrally and monitor for suspicious activity." },
-    { ref_id: "LOG-02", title: "Alerting & 24/7 detection coverage", category: "Detection", description: "Define detection use-cases and ensure alerts are triaged around the clock." },
-    { ref_id: "LOG-03", title: "File integrity & configuration monitoring", category: "Detection", description: "Detect unauthorised changes to critical files and configuration." },
-    { ref_id: "IR-01", title: "Incident response plan", category: "Response", description: "Maintain a documented, role-assigned plan for detecting and handling incidents." },
-    { ref_id: "IR-02", title: "Incident response exercises", category: "Response", description: "Run tabletop or live exercises to validate the plan and team readiness." },
-    { ref_id: "EML-01", title: "Email authentication (SPF/DKIM/DMARC)", category: "Email & web", description: "Publish and enforce sender-authentication records to reduce spoofing." },
-    { ref_id: "EML-02", title: "Email & web content filtering", category: "Email & web", description: "Filter malicious attachments, links and known-bad destinations." },
-    { ref_id: "PPL-01", title: "Security awareness training", category: "People", description: "Train staff on phishing, handling and reporting on a recurring basis." },
-    { ref_id: "PPL-02", title: "Phishing simulation", category: "People", description: "Run simulated phishing campaigns and coach on results." },
-    { ref_id: "APP-01", title: "Secure development lifecycle", category: "Application", description: "Integrate security requirements, review and testing across development." },
-    { ref_id: "APP-02", title: "Application & dependency scanning", category: "Application", description: "Scan code, containers and dependencies for known vulnerabilities in CI." },
+    { ref_id: "IAM-01", title: "Multi-factor authentication", category: "Identity & access", description: "Enforce MFA for remote access, admin and privileged accounts.", effect: "Preventive" },
+    { ref_id: "IAM-02", title: "Least-privilege access", category: "Identity & access", description: "Grant the minimum rights needed; remove standing admin where possible.", effect: "Preventive" },
+    { ref_id: "IAM-03", title: "Privileged access management", category: "Identity & access", description: "Vault, broker and session-record privileged credentials; just-in-time elevation.", effect: "Preventive" },
+    { ref_id: "IAM-04", title: "Periodic access reviews & timely offboarding", category: "Identity & access", description: "Recertify entitlements; revoke access promptly on role change or departure.", effect: "Preventive" },
+    { ref_id: "IAM-05", title: "Single sign-on / centralised identity", category: "Identity & access", description: "Federate authentication to reduce credential sprawl and enforce policy centrally.", effect: "Preventive" },
+    { ref_id: "NET-01", title: "Network segmentation", category: "Network", description: "Separate sensitive systems into isolated zones to limit lateral movement.", effect: "Preventive" },
+    { ref_id: "NET-02", title: "Firewall & egress filtering", category: "Network", description: "Restrict inbound and outbound traffic to what is explicitly required.", effect: "Preventive" },
+    { ref_id: "NET-03", title: "Secure remote access (VPN / ZTNA)", category: "Network", description: "Terminate remote sessions through authenticated, encrypted, policy-checked gateways.", effect: "Preventive" },
+    { ref_id: "END-01", title: "Endpoint detection & response (EDR)", category: "Endpoint", description: "Deploy EDR/anti-malware with central telemetry and containment.", effect: "Detective" },
+    { ref_id: "END-02", title: "Patch & vulnerability management", category: "Endpoint", description: "Identify, prioritise and remediate vulnerabilities on a defined cadence.", effect: "Preventive" },
+    { ref_id: "END-03", title: "Secure configuration / hardening baseline", category: "Endpoint", description: "Apply and monitor a hardened baseline; disable unused services and defaults.", effect: "Preventive" },
+    { ref_id: "END-04", title: "Application allow-listing", category: "Endpoint", description: "Permit only approved executables to run on sensitive endpoints/servers.", effect: "Preventive" },
+    { ref_id: "DAT-01", title: "Encryption at rest", category: "Data protection", description: "Encrypt sensitive data on disk, databases and backups.", effect: "Preventive" },
+    { ref_id: "DAT-02", title: "Encryption in transit", category: "Data protection", description: "Enforce TLS/mTLS for data moving between systems and users.", effect: "Preventive" },
+    { ref_id: "DAT-03", title: "Key management", category: "Data protection", description: "Generate, store, rotate and revoke cryptographic keys under defined control.", effect: "Preventive" },
+    { ref_id: "DAT-04", title: "Data classification & handling", category: "Data protection", description: "Label data by sensitivity and apply matching handling and access rules.", effect: "Preventive" },
+    { ref_id: "DAT-05", title: "Data loss prevention (DLP)", category: "Data protection", description: "Detect and block unauthorised exfiltration of sensitive data.", effect: "Detective" },
+    { ref_id: "BCK-01", title: "Backups with tested restore", category: "Resilience", description: "Take regular backups and periodically verify restoration end-to-end.", effect: "Corrective" },
+    { ref_id: "BCK-02", title: "Offline / immutable backups", category: "Resilience", description: "Keep at least one backup copy isolated or immutable against ransomware.", effect: "Corrective" },
+    { ref_id: "BCK-03", title: "Disaster-recovery & continuity plan", category: "Resilience", description: "Document, resource and exercise recovery of critical services within target objectives.", effect: "Corrective" },
+    { ref_id: "LOG-01", title: "Centralised logging & monitoring (SIEM)", category: "Detection", description: "Collect security-relevant logs centrally and monitor for suspicious activity.", effect: "Detective" },
+    { ref_id: "LOG-02", title: "Alerting & 24/7 detection coverage", category: "Detection", description: "Define detection use-cases and ensure alerts are triaged around the clock.", effect: "Detective" },
+    { ref_id: "LOG-03", title: "File integrity & configuration monitoring", category: "Detection", description: "Detect unauthorised changes to critical files and configuration.", effect: "Detective" },
+    { ref_id: "IR-01", title: "Incident response plan", category: "Response", description: "Maintain a documented, role-assigned plan for detecting and handling incidents.", effect: "Corrective" },
+    { ref_id: "IR-02", title: "Incident response exercises", category: "Response", description: "Run tabletop or live exercises to validate the plan and team readiness.", effect: "Corrective" },
+    { ref_id: "EML-01", title: "Email authentication (SPF/DKIM/DMARC)", category: "Email & web", description: "Publish and enforce sender-authentication records to reduce spoofing.", effect: "Preventive" },
+    { ref_id: "EML-02", title: "Email & web content filtering", category: "Email & web", description: "Filter malicious attachments, links and known-bad destinations.", effect: "Preventive" },
+    { ref_id: "PPL-01", title: "Security awareness training", category: "People", description: "Train staff on phishing, handling and reporting on a recurring basis.", effect: "Preventive" },
+    { ref_id: "PPL-02", title: "Phishing simulation", category: "People", description: "Run simulated phishing campaigns and coach on results.", effect: "Preventive" },
+    { ref_id: "APP-01", title: "Secure development lifecycle", category: "Application", description: "Integrate security requirements, review and testing across development.", effect: "Preventive" },
+    { ref_id: "APP-02", title: "Application & dependency scanning", category: "Application", description: "Scan code, containers and dependencies for known vulnerabilities in CI.", effect: "Preventive" },
     { ref_id: "ASM-01", title: "Asset inventory", category: "Governance", description: "Maintain an accurate inventory of hardware, software and data assets." },
     { ref_id: "ASM-02", title: "Third-party / supply-chain risk assessment", category: "Governance", description: "Assess and monitor the security of suppliers and integrations." },
     { ref_id: "ASM-03", title: "Change & configuration management", category: "Governance", description: "Review, approve and record changes to production systems." },
-    { ref_id: "PHY-01", title: "Physical access control", category: "Physical", description: "Restrict and log physical access to facilities and equipment." },
+    { ref_id: "PHY-01", title: "Physical access control", category: "Physical", description: "Restrict and log physical access to facilities and equipment.", effect: "Preventive" },
   ],
 };
 
@@ -150,7 +155,12 @@ export function requirementValues(fw: Framework, it: FrameworkItem): Record<stri
  *  start as "Recommended" for the user to adopt and refine. */
 export function measureValues(fw: Framework, it: FrameworkItem): Record<string, FieldValue> {
   const prov = fw.key === "measure-library" ? "" : ` (${fw.name} ${it.ref_id})`;
-  return { name: it.title, description: (it.description ?? "") + prov, status: "Recommended" };
+  return {
+    name: it.title, description: (it.description ?? "") + prov, status: "Recommended",
+    // Carried only when the catalog states it; otherwise the measure stays unclassified
+    // and the linter asks for a decision rather than a default being seeded silently.
+    ...(it.effect ? { measure_type: it.effect } : {}),
+  };
 }
 
 /** Parse a user-imported catalog (JSON): a Framework object, or a bare array of
@@ -165,5 +175,11 @@ function normItem(o: any): FrameworkItem | null {
   const ref_id = String(o?.ref_id ?? o?.id ?? o?.control ?? "").trim();
   const title = String(o?.title ?? o?.name ?? o?.label ?? "").trim();
   if (!ref_id && !title) return null;
-  return { ref_id, title: title || ref_id, category: o?.category ? String(o.category) : undefined, description: o?.description ? String(o.description) : undefined };
+  const effect = String(o?.effect ?? o?.measure_type ?? "").trim();
+  return {
+    ref_id, title: title || ref_id,
+    category: o?.category ? String(o.category) : undefined,
+    description: o?.description ? String(o.description) : undefined,
+    effect: (EFFECT_CLASSES as string[]).includes(effect) ? (effect as EffectClass) : undefined,
+  };
 }

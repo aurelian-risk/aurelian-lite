@@ -811,24 +811,74 @@ select { cursor: pointer; }
 .chart-center { display: flex; justify-content: center; }
 
 /* Coverage overview: ring + tactic heatmap */
-.mc-body { display: flex; flex-wrap: wrap; gap: 26px; align-items: flex-start; }
-.mc-ring { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: none; }
-.mc-ring-legend { display: flex; gap: 14px; font-size: 12px; color: var(--fg-muted); }
+/* .panel-body has no horizontal padding (tables are meant to run full-bleed), so any
+   panel body that is NOT a table has to inset itself to line up with the panel header. */
+.mc-body { display: flex; flex-wrap: wrap; gap: 26px; align-items: flex-start; padding: 6px 18px 12px; }
+/* Keep the ring block narrow: it is the fixed-size element, and letting its legend
+   stretch it pushes the heatmap onto its own row for no reason. */
+.mc-ring { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: none; max-width: 240px; }
+.mc-ring-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px;
+  font-size: 12px; color: var(--fg-muted); }
 .mc-ring-legend span { display: inline-flex; align-items: center; gap: 6px; }
-.mc-ring-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
-.mc-heat { flex: 1; min-width: 300px; }
+.mc-ring-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
+.mc-heat { flex: 1 1 420px; min-width: 0; }
 .mc-heat-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+/* The grid keeps its columns readable and scrolls instead of squeezing them: at narrow
+   widths the tactic labels were breaking mid-word ("Persistenc/e") and the last columns
+   were clipped by the panel edge. */
+.hm-scroll { overflow-x: auto; padding-bottom: 4px; }
 
+/* No `min-width: max-content` here: that would size every column to its label on ONE
+   line ("Credential Access" ≈ 100px) and push the last tactics past the panel edge. The
+   columns get a readable minimum instead and two-word labels wrap at the space. */
 .hm-grid { display: grid; gap: 4px; grid-template-rows: auto; grid-auto-rows: 34px; }
 .hm-grid > * { min-width: 0; }
-.hm-col { font-size: 10px; color: var(--fg-muted); text-align: center; line-height: 1.14;
-  align-self: end; padding-bottom: 4px; overflow-wrap: break-word; hyphens: auto; }
+.hm-col { font-size: 10px; color: var(--fg-muted); text-align: center; line-height: 1.2;
+  align-self: end; padding: 0 2px 4px; overflow-wrap: normal; hyphens: none; word-break: keep-all; }
 .hm-rowlbl { font-size: 12px; color: var(--fg-muted); display: flex; align-items: center;
-  padding-right: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  padding-right: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hm-rowlbl.strong { color: var(--fg); font-weight: 600; }
-.hm-cell { border-radius: 6px; display: grid; place-items: center;
+.hm-cell { border-radius: 6px; display: grid; place-items: center; padding: 0;
   font-size: 11px; font-family: var(--font-mono); color: var(--fg); border: 1px solid transparent; }
+button.hm-cell { cursor: pointer; transition: transform .12s var(--ease), box-shadow .12s var(--ease); }
+button.hm-cell:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm, 0 2px 6px rgb(0 0 0 / 0.18)); }
 .hm-cell.empty { background: var(--bg-hover); border-color: var(--hairline); }
+/* Colour key - without it the shades are just decoration. */
+.hm-key { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 10px;
+  font-size: 10.5px; color: var(--fg-subtle); }
+.hm-key-bar { display: inline-flex; border-radius: 4px; overflow: hidden; border: 1px solid var(--hairline); }
+.hm-key-bar i { width: 22px; height: 10px; display: block; }
+.hm-key-note { color: var(--fg-subtle); opacity: 0.85; }
+/* A measure chip inside an explanation popup: a button that does not look like one. */
+.link-plain { border: none; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.link-plain:hover { text-decoration: underline; }
+
+/* Tactic explanation: the working, laid out as a calculation rather than described in a
+   paragraph. Name on the left, value right-aligned in a fixed column so the figures line
+   up under each other and the closing average reads as a sum. */
+.tx-rows { display: flex; flex-direction: column; gap: 2px; }
+.tx-row { display: grid; grid-template-columns: minmax(0, 1fr) 58px; align-items: baseline;
+  padding: 9px 2px; border-bottom: 1px solid var(--hairline); }
+.tx-row:last-child { border-bottom: none; }
+.tx-name { font-size: 12.5px; font-weight: 600; color: var(--fg); min-width: 0; }
+.tx-scn { display: block; font-size: 11px; font-weight: 500; color: var(--fg-subtle);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tx-val { text-align: right; font-size: 14px; font-weight: 700; color: var(--color-state-success); }
+.tx-val.zero { color: var(--color-state-error); }
+.tx-parts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 3px 14px; margin-top: 5px;
+  font-size: 11.5px; color: var(--fg-muted); }
+.tx-parts b { color: var(--fg); font-weight: 650; }
+.tx-none { color: var(--color-state-error); }
+.tx-chips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.tx-chips:empty { display: none; }
+.tx-sum { border-top: 2px solid var(--border); border-bottom: none; margin-top: 4px; padding-top: 11px; }
+.tx-sum .tx-name { color: var(--fg-muted); font-weight: 600; }
+.tx-sum .tx-val { color: var(--fg); font-size: 17px; }
+/* The formula gets its own line - inline it wrapped mid-expression and read as noise. */
+.tx-formula { margin: 16px 0 10px; padding: 9px 12px; border-radius: 8px; text-align: center;
+  background: var(--bg-hover); border: 1px solid var(--hairline); font-size: 12px; color: var(--fg-muted); }
+.tx-note { margin: 0 0 7px; font-size: 11.5px; line-height: 1.55; color: var(--fg-muted); }
+.tx-note b { color: var(--fg); }
 
 /* Radar / spider */
 .radar-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
@@ -954,6 +1004,44 @@ select { cursor: pointer; }
 .qt-ctrl-note:hover { border-color: var(--border-strong); color: var(--fg); }
 .qt-ctrl-note b { color: var(--fg); font-weight: 650; }
 .qt-ctrl-more { color: var(--primary); white-space: nowrap; }
+/* Where the attempts die: a stacked bar along the chain + the biggest stopping points.
+   The blocked segments share the accent (fading as they get deeper into the chain), the
+   share that gets through is the warning colour - the only part that costs money. */
+.qt-break { margin-top: 10px; }
+.qt-break-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.qt-break-sum { font-size: 11.5px; color: var(--color-state-warning); font-weight: 650; }
+.qt-break-caught { font-style: normal; color: var(--color-state-info, var(--primary)); }
+/* Ring legend footnote + the effect class on a measure chip in the per-step breakdown.
+   A class shown "off" acts somewhere other than on reaching this step. */
+.mc-ring-sub { color: var(--fg-subtle); font-size: 10.5px; margin-top: 2px; }
+.dd-cls { margin-left: 6px; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em;
+  font-weight: 700; color: var(--fg-muted); }
+.dd-cls.off { opacity: 0.55; text-decoration: line-through; text-decoration-thickness: 1px; }
+.qt-break-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--bg-hover);
+  border: 1px solid var(--hairline); }
+.qt-break-seg { display: block; height: 100%; min-width: 1px; transition: width .25s var(--ease); }
+.qt-break-seg.through { opacity: 0.9; }
+/* One line per outcome, percentage in a fixed left column so the figures line up and the
+   list reads as "of 100 attempts, this many end here" - a run of inline numbers did not. */
+.qb-scale { font-size: 11px; color: var(--fg-subtle); }
+.qb-rows { display: flex; flex-direction: column; margin-top: 8px; }
+.qb-row { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; align-items: baseline;
+  padding: 4px 0; font-size: 12px; color: var(--fg-muted); }
+.qb-p { text-align: right; font-weight: 700; color: var(--fg); }
+.qb-row.through { border-top: 1px solid var(--hairline); margin-top: 3px; padding-top: 7px; }
+.qb-row.through .qb-p, .qb-row.through .qb-l { color: var(--color-state-warning); }
+.qb-row.through .qb-l { font-weight: 600; }
+.qb-foot { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-top: 10px;
+  font-size: 11.5px; color: var(--fg-subtle); }
+.qt-break-trace { margin-left: auto; padding: 0; border: none; background: none; font: inherit; font-size: 11.5px;
+  color: var(--primary); cursor: pointer; white-space: nowrap; }
+.qt-break-trace:hover { text-decoration: underline; }
+/* Chain steps in the factor popup: the measures behind a hurdle, with their effect class. */
+.ft-step-join { color: var(--fg-subtle); font-style: normal; font-weight: 500; }
+.ft-step-m { display: inline-flex; align-items: baseline; gap: 5px; margin-left: 8px; color: var(--fg-muted); }
+.ft-cls { font-style: normal; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;
+  padding: 1px 5px; border-radius: 5px; color: var(--fg-subtle);
+  background: color-mix(in oklch, var(--fg-subtle) 14%, transparent); }
 .qv-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px 16px; margin-top: 14px; max-width: 440px; }
 .qv-stat { display: flex; flex-direction: column; gap: 1px; }
 .qv-stat.big { grid-column: 1 / -1; }
@@ -1029,9 +1117,10 @@ select { cursor: pointer; }
   background: color-mix(in oklch, var(--color-state-success) 8%, transparent); border-left: 2px solid var(--color-state-success); }
 .ft-step.gap { background: color-mix(in oklch, var(--color-state-error) 8%, transparent); border-left-color: var(--color-state-error); }
 .ft-step-n { font-size: 12px; font-weight: 600; color: var(--fg); }
-.ft-step-c { font-size: 11px; }
-.ft-step-c.ok { color: var(--color-state-success); }
-.ft-step-c.bad { color: var(--color-state-error); }
+.ft-step-c { font-size: 11px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 10px; }
+.ft-step-c .ok { color: var(--color-state-success); }
+.ft-step-c .watch { color: var(--color-state-info, var(--primary)); }
+.ft-step-c .bad { color: var(--color-state-error); }
 .ft-dist-t { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--fg-subtle); margin-bottom: 5px; }
 .ft-density { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px 6px; background: var(--bg-input); }
 .ft-density svg { width: 100%; height: 46px; display: block; }
@@ -1098,7 +1187,7 @@ select { cursor: pointer; }
 .lint-pass { font-size: 12.5px; color: var(--color-state-success); }
 
 /* Defense-in-depth per-step breakdown (WS5 coverage overview) */
-.dd-wrap { border-top: 1px solid var(--hairline); padding-top: 14px; }
+.dd-wrap { border-top: 1px solid var(--hairline); padding: 14px 18px 6px; }
 .dd-scn { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; overflow: hidden; }
 .dd-scn-h { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; background: var(--bg-raised); border: none; cursor: pointer; font: inherit; text-align: left; }
 .dd-scn-h:hover { background: var(--bg-hover); }

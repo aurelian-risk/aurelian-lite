@@ -61,7 +61,10 @@ export interface GroupDef {
 }
 
 export interface Taxonomy {
-  schemaVersion: 2;
+  /** Vocabulary generation of the default taxonomy this one descends from. Read by
+   *  reconcileTaxonomy to apply additive vocabulary migrations exactly once. Older
+   *  stored taxonomies carry 2 (or nothing at all). */
+  schemaVersion: number;
   name: string;
   description?: string;
   groups: GroupDef[];

@@ -6,11 +6,20 @@
 // Model per simulated year (the standard frequency/magnitude quantitative-risk
 // Monte-Carlo, matching the common open-source risk engines):
 //   threat events   = Poisson( contact_frequency x probability_of_action )
-//   per threat event: it becomes a LOSS event iff adversary_strength > control_strength
-//                     (each compared as an independent draw - this is Vulnerability
-//                      = P(threat capability > resistance strength))
+//   per threat event: the attacker draws ONE capability and has to beat the scenario's
+//                     baseline resistance; where a kill chain is modelled he then has to
+//                     walk it (see below). Getting through is a LOSS event - Vulnerability
+//                     = P(threat capability > resistance strength) falls out empirically.
 //   per loss event:  loss = direct_impact + (rand < cascading_likelihood ? cascading_impact : 0)
 //   annual loss     = sum of the per-loss-event losses
+//
+// Chain traversal (optional `chain` argument): the steps are walked in topological
+// order, honouring each step's AND/OR join over its predecessors. A step only stops the
+// attacker if something DEFENDS it - undefended steps are transparent and cost no roll,
+// so splitting a scenario into more steps does not by itself make it more resistant.
+// The attacker's capability is drawn once per attempt and reused for every gate: a
+// capable attacker gets through all of them, which is the correlation a naive
+// per-gate redraw would miss. A loss event requires reaching a terminal step.
 // Aggregated over N iterations -> annual-loss distribution (ALE), percentiles, a
 // loss-exceedance curve and a histogram. Every 3-point estimate is drawn as a
 // smooth PERT (beta) distribution whose peakedness (lambda) is user-adjustable.
@@ -33,6 +42,26 @@ export interface QuantInputs {
   cascadingImpact: Range;      // currency of the follow-on loss
 }
 
+/** One kill-chain step as the simulation sees it. The array is TOPOLOGICALLY ORDERED:
+ *  `preds` are indices into the same array and always point at earlier entries. */
+export interface ChainStep {
+  id: string;
+  preds: number[];
+  /** "all" = every predecessor is required (AND), "any" = one route suffices (OR). */
+  join: "all" | "any";
+  /** Resistance of this step, or null when nothing defends it - an undefended step is
+   *  transparent and costs no roll (that is what keeps the result independent of how
+   *  finely the analyst chose to decompose the chain). */
+  gate: Range | null;
+  /** Probability that the attempt is spotted AND acted on here, ending the intrusion
+   *  before it reaches the objective. Already includes the responders' readiness -
+   *  detection nobody acts on stops nothing. Zero on terminal steps: detecting the
+   *  impact itself no longer prevents the loss, it only shortens it, which is handled
+   *  on the magnitude side instead. */
+  interrupt: number;
+  terminal: boolean;
+}
+
 export interface QuantResult {
   iterations: number;
   ale: { mean: number; min: number; max: number; p10: number; p50: number; p90: number; p99: number };
@@ -43,6 +72,15 @@ export interface QuantResult {
   tef: number;                                    // mean threat events / yr
   vuln: number;                                   // Vulnerability = P(adversary > control), empirical
   lef: number;                                    // mean loss events / yr (= tef x vuln)
+  /** Where attempts died: share of all threat events stopped by the scenario baseline
+   *  before any specific control, and the share stopped at each chain step (deepest
+   *  step the attacker reached). `blockedAtBaseline + sum(breaks.p) + vuln === 1`. */
+  blockedAtBaseline: number;
+  breaks: { id: string; p: number }[];
+  /** Share of all threat events that were stopped by being detected and responded to,
+   *  rather than by resistance. Part of `breaks`, reported separately because "we caught
+   *  them in the act" is a different capability from "they could not get in". */
+  detected: number;
 }
 
 const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
@@ -114,11 +152,16 @@ function poisson(rand: () => number, lambda: number): number {
   return k - 1;
 }
 
-/** Run the simulation. Deterministic for a given (inputs, iterations, seed). */
-export function simulate(inp: QuantInputs, iterations = 50000, seed = 0x9e3779b9): QuantResult {
+/** Run the simulation. Deterministic for a given (inputs, iterations, chain, seed).
+ *  Without a `chain` the attempt is decided by the scenario baseline alone - the
+ *  behaviour for taxonomies that do not model kill chains at all. */
+export function simulate(inp: QuantInputs, iterations = 50000, chain?: ChainStep[], seed = 0x9e3779b9): QuantResult {
   const rand = mulberry32(seed);
   const losses = new Float64Array(iterations);
-  let sum = 0, zero = 0, threatTot = 0, lossTot = 0;
+  const steps = chain?.length ? chain : null;
+  const reached = steps ? new Uint8Array(steps.length) : null;   // reused per attempt
+  const breakCount = steps ? new Float64Array(steps.length) : null;
+  let sum = 0, zero = 0, threatTot = 0, lossTot = 0, blockedBase = 0, caughtTot = 0;
   for (let i = 0; i < iterations; i++) {
     const ta = Math.max(0, pert(rand, inp.threatActivity));
     const ap = clamp01(pert(rand, inp.attackProbability));
@@ -128,7 +171,29 @@ export function simulate(inp: QuantInputs, iterations = 50000, seed = 0x9e3779b9
     for (let k = 0; k < nThreat; k++) {
       const adv = clamp01(pert(rand, inp.adversaryStrength));
       const ctl = clamp01(pert(rand, inp.controlStrength));
-      if (adv > ctl) lossEvents++;                     // threat capability beats resistance
+      if (adv <= ctl) { blockedBase++; continue; }     // stopped before reaching any step
+      if (!steps || !reached || !breakCount) { lossEvents++; continue; }
+      // Walk the chain with this attacker's single capability draw.
+      let deepestBlocked = -1, hit = 0, caught = 0;
+      for (let s = 0; s < steps.length; s++) {
+        const st = steps[s];
+        let open = true;
+        if (st.preds.length) {
+          open = st.join === "any"
+            ? st.preds.some((p) => reached[p] === 1)
+            : st.preds.every((p) => reached[p] === 1);
+        }
+        if (open && st.gate) {
+          const rs = clamp01(pert(rand, st.gate));
+          if (adv <= rs) { open = false; deepestBlocked = s; }   // this control held
+        }
+        // Got past the barrier, but was seen doing it - and someone acted on it.
+        if (open && st.interrupt > 0 && rand() < st.interrupt) { open = false; deepestBlocked = s; caught = 1; }
+        reached[s] = open ? 1 : 0;
+        if (open && st.terminal) hit = 1;
+      }
+      if (hit) lossEvents++;
+      else if (deepestBlocked >= 0) { breakCount[deepestBlocked]++; caughtTot += caught; }
     }
     lossTot += lossEvents;
     let loss = 0;                                      // sum of independent per-event losses
@@ -172,5 +237,13 @@ export function simulate(inp: QuantInputs, iterations = 50000, seed = 0x9e3779b9
   const hist = bins.map((c, k) => ({ loss: Math.pow(10, Llo + ((k + 0.5) / HB) * Lspan), p: c / iterations }));
   const tef = threatTot / iterations, lef = lossTot / iterations;
   const vuln = threatTot > 0 ? lossTot / threatTot : 0;
-  return { iterations, ale, curve, hist, histRange: { lo: histLo, hi: histHi }, zeroShare: zero / iterations, tef, vuln, lef };
+  const breaks = steps && breakCount && threatTot > 0
+    ? steps.map((s, k) => ({ id: s.id, p: breakCount[k] / threatTot }))
+    : [];
+  return {
+    iterations, ale, curve, hist, histRange: { lo: histLo, hi: histHi },
+    zeroShare: zero / iterations, tef, vuln, lef,
+    blockedAtBaseline: threatTot > 0 ? blockedBase / threatTot : 0, breaks,
+    detected: threatTot > 0 ? caughtTot / threatTot : 0,
+  };
 }

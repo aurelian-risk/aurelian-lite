@@ -3,6 +3,7 @@
 import type {
   EntityRecord, EntityTypeDef, FieldDef, FieldValue, Taxonomy,
 } from "./types";
+import { EFFECT_CLASSES } from "./controls";
 
 const SCALE = ["low", "moderate", "high", "critical"];
 const LIKELIHOOD = ["low", "possible", "likely", "near-certain"];
@@ -16,8 +17,12 @@ const TACTICS = [
   "Collection", "Command and Control", "Exfiltration", "Impact",
 ];
 
+/** Bumped whenever the default taxonomy's vocabulary grows in a way stored studies
+ *  should pick up (see reconcileTaxonomy). 3 added the "Avoidance" measure effect class. */
+export const TAXONOMY_SCHEMA_VERSION = 3;
+
 export const DEFAULT_TAXONOMY: Taxonomy = {
-  schemaVersion: 2,
+  schemaVersion: TAXONOMY_SCHEMA_VERSION,
   name: "EBIOS RM-inspired",
   description: "Default risk-analysis taxonomy: foundation, risk sources, strategic and operational scenarios, treatment.",
   groups: [
@@ -132,7 +137,8 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
       fields: [
         { key: "name", label: "Name", type: "text", required: true },
         { key: "description", label: "Description", type: "textarea" },
-        { key: "measure_type", label: "Type", type: "enum", options: ["Preventive", "Detective", "Corrective", "Deterrent"] },
+        { key: "measure_type", label: "Type", type: "enum", options: [...EFFECT_CLASSES],
+          help: "What the measure actually does - the quantification derives its effect from this. Preventive: blocks the attacker at the step it covers. Detective: catches him, breaking the chain before the objective. Corrective: damage control - cuts the loss once the attack succeeds. Deterrent: fewer attempts are made. Avoidance: removes the exposure, so contact is rarer." },
         { key: "status", label: "Status", type: "enum", options: ["Implemented", "Planned", "Missing", "Recommended"] },
         { key: "priority", label: "Priority", type: "scale", scaleLabels: SCALE },
         { key: "implementation_level", label: "Implementation", type: "scale", scaleLabels: ["none", "partial", "substantial", "full"], polarity: "positive" },
@@ -230,4 +236,38 @@ export function scaleMax(f: FieldDef): number {
 
 export function scaleLabel(f: FieldDef, value: number): string {
   return f.scaleLabels?.[value - 1] ?? String(value);
+}
+
+/** Additively bring a stored taxonomy in line with the default one: enum fields whose
+ *  vocabulary the default has since grown gain the missing options. Applied on load and
+ *  on import, so an existing study picks up a new option (e.g. a further measure effect
+ *  class) without the user having to reset the taxonomy and lose their customisations.
+ *
+ *  Runs at most once per stored taxonomy, gated on `schemaVersion` - so an option the
+ *  user deliberately deleted is not resurrected on every load. Only enum vocabularies
+ *  that still overlap the default one are extended; a taxonomy whose options were
+ *  replaced wholesale is treated as user-owned and left alone. Nothing else is touched:
+ *  no types, fields, labels or orders are added, removed or reordered.
+ *
+ *  Returns the input unchanged when there is nothing to do. */
+export function reconcileTaxonomy(tax: Taxonomy): Taxonomy {
+  if ((tax.schemaVersion ?? 0) >= TAXONOMY_SCHEMA_VERSION) return tax;
+  const entityTypes = tax.entityTypes.map((t) => {
+    const def = DEFAULT_TAXONOMY.entityTypes.find((d) => d.key === t.key);
+    if (!def) return t;
+    let typeChanged = false;
+    const fields = t.fields.map((f) => {
+      const opts = f.options;
+      if (f.type !== "enum" || !opts) return f;
+      const defOpts = def.fields.find((d) => d.key === f.key && d.type === "enum")?.options;
+      // No overlap at all = the user replaced this vocabulary with their own.
+      if (!defOpts || !opts.some((o) => defOpts.includes(o))) return f;
+      const missing = defOpts.filter((o) => !opts.includes(o));
+      if (!missing.length) return f;
+      typeChanged = true;
+      return { ...f, options: [...opts, ...missing] };
+    });
+    return typeChanged ? { ...t, fields } : t;
+  });
+  return { ...tax, schemaVersion: TAXONOMY_SCHEMA_VERSION, entityTypes };
 }

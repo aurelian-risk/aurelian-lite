@@ -425,7 +425,7 @@ function quantSection(tax: Taxonomy, study: Study): string[] | null {
     const ov = study.quant?.[op.id]?.overrides as Partial<QuantInputs> | undefined;
     const dW = deriveInputs(study, tax, op, true), dWo = deriveInputs(study, tax, op, false);
     const inW: QuantInputs = { ...dW.inputs, ...ov }, inWo: QuantInputs = { ...dWo.inputs, ...ov };
-    const rW = simulate(inW, 40000), rWo = simulate(inWo, 40000);
+    const rW = simulate(inW, 40000, dW.chain), rWo = simulate(inWo, 40000, dWo.chain);
     const lm = meanOf(inW.directImpact) + meanOf(inW.cascadingLikelihood) * meanOf(inW.cascadingImpact);
     const benefit = rWo.ale.mean - rW.ale.mean;
     const benefitPct = rWo.ale.mean > 0 ? Math.round((benefit / rWo.ale.mean) * 100) : 0;

@@ -59,13 +59,13 @@ const shotEl = async (sel, name) => {
 
 // Frame the region spanning two elements (top → bottom of `botSel`), so a tall
 // card can be cropped to just the interesting band before it is window-framed.
-const shotClip = async (topSel, botSel, name) => {
+const shotClip = async (topSel, botSel, name, padBottom = 16) => {
   const top = await app.locator(topSel).first().boundingBox();
   const bot = await app.locator(botSel).first().boundingBox();
   const x = Math.max(0, Math.round(top.x) - 4);
   const y = Math.max(0, Math.round(top.y) - 14);
   const width = Math.min(W - x, Math.round(Math.max(top.width, bot.width)) + 8);
-  const height = Math.round(bot.y + bot.height) - y + 16;
+  const height = Math.round(bot.y + bot.height) - y + padBottom;
   await frame(await app.screenshot({ clip: { x, y, width, height } }), name, width);
 };
 
@@ -96,10 +96,15 @@ try {
   await shotClip(".panel:has(.mc-ring) .panel-head", ".panel:has(.mc-ring) .mc-body", "coverage");
   await app.setViewportSize({ width: W, height: H });
 
-  // Monte-Carlo risk quantification — frame just the loss-distribution card so the
-  // curve (with vs without controls) and the annual-loss headline read clearly.
+  // Monte-Carlo risk quantification — the annual-loss headline, the distribution with
+  // vs without controls, and where the attempts on the chain are stopped. A clip is
+  // taken within the viewport, so it has to be tall enough for the whole card.
   await tab("Risk Quantification", 800);
-  await shotClip(".qt-top", ".qt-dist", "quant");
+  await app.setViewportSize({ width: W, height: 1400 });
+  await app.evaluate(() => window.scrollTo(0, 0));
+  await app.waitForTimeout(400);
+  await shotClip(".qt-top", ".qt-dist", "quant", 2);   // tight: the factor tree starts right below
+  await app.setViewportSize({ width: W, height: H });
 } catch (e) {
   console.log("screenshot run failed:", e?.message ?? e);
   process.exitCode = 1;

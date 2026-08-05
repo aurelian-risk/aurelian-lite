@@ -6,6 +6,7 @@ import { Fragment, useState } from "react";
 import type { EntityRecord, Study, Taxonomy } from "../domain/types";
 import { getType, recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
 import { useStore } from "../domain/store";
+import { effectClassOf, EFFECT_CHANNEL } from "../domain/controls";
 import { statusColor } from "../domain/viz";
 import { EntityModal } from "./EntityModal";
 import { MultiSelect, Icon } from "./ui";
@@ -61,14 +62,22 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
   const chipExtra = (id: string) => {
     const m = measures.find((x) => x.id === id);
     const s = statusF && m ? String(m.values[statusF.key] ?? "") : "";
+    const cls = m ? effectClassOf(m) : null;
     return (
       <>
+        {cls && <span className={"dd-cls" + (m && defends(m) ? "" : " off")}
+          title={`${cls}: ${EFFECT_CHANNEL[cls]}`}>{cls.slice(0, 4).toLowerCase()}</span>}
         {s && <span className="status-dot" title={`Status: ${s}`} style={{ background: statusColor(s) }} />}
         {implBar(id)}
       </>
     );
   };
   const stepMeasures = (stepId: string) => measures.filter((m) => Array.isArray(m.values[coversF.key]) && (m.values[coversF.key] as string[]).includes(stepId));
+  // A step is DEFENDED only by measures that resist or watch it. A corrective or
+  // deterrent measure attached here is real work, but it does not stop the attacker
+  // reaching this step - so it must not make the step look handled.
+  const defends = (m: EntityRecord) => { const c = effectClassOf(m); return c === "Preventive" || c === "Detective"; };
+  const isDefended = (stepId: string) => stepMeasures(stepId).some(defends);
   const assign = (stepId: string, ids: string[]) => {
     for (const m of measures) {
       const cur = Array.isArray(m.values[coversF.key]) ? (m.values[coversF.key] as string[]) : [];
@@ -99,9 +108,11 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
               <tbody>
                 {ops.map((op) => {
                   const steps = stepsOf(op.id);
-                  const covered = steps.filter((s) => stepMeasures(s.id).length).length;
+                  const covered = steps.filter((s) => isDefended(s.id)).length;
                   const isOpen = open.has(op.id);
-                  const sc = steps.length === 0 ? "var(--fg-subtle)" : covered === steps.length ? "var(--color-state-success)" : "var(--color-state-warning)";
+                  const sc = steps.length === 0 ? "var(--fg-subtle)"
+                    : covered === 0 ? "var(--color-state-error)"
+                    : covered === steps.length ? "var(--color-state-success)" : "var(--color-state-warning)";
                   return (
                     <Fragment key={op.id}>
                       <tr className={"row-clickable" + (isOpen ? " expanded" : "")} onClick={() => toggle(op.id)}>
@@ -110,7 +121,7 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
                         </td>
                         <td>
                           <span className="badge" style={{ background: `color-mix(in oklch, ${sc} 20%, transparent)`, color: "var(--fg)" }}>
-                            {steps.length === 0 ? "no steps" : `${covered}/${steps.length} mitigated`}
+                            {steps.length === 0 ? "no steps" : `${covered}/${steps.length} defended`}
                           </span>
                         </td>
                         <td />
@@ -124,7 +135,8 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
                                 <div className="kcc-lane">
                                   {steps.map((s, i) => {
                                     const mit = stepMeasures(s.id);
-                                    const gap = mit.length === 0;
+                                    const gap = !mit.some(defends);
+                                    const otherFactor = gap && mit.length > 0;   // measures here, but none of them stops him
                                     return (
                                       <Fragment key={s.id}>
                                         <div className={"kcc-card" + (gap ? " gap" : "")}>
@@ -135,7 +147,9 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
                                           <button className="kcc-name" onClick={() => setRec(s)}>{recordTitle(stepType, s)}</button>
                                           {techF && s.values[techF.key] ? <span className="kcc-tech mono">{String(s.values[techF.key])}</span> : null}
                                           <div className="kcc-mit">
-                                            <span className="hint">{gap ? "no mitigation" : "mitigations"}</span>
+                                            <span className="hint" title={otherFactor ? "these measures act on the loss or on the number of attacks - none of them prevents or detects an attacker at this step" : undefined}>
+                                              {otherFactor ? "damage control only - nothing prevents or detects here" : gap ? "no mitigation" : "mitigations"}
+                                            </span>
                                             <MultiSelect options={measureOpts} selected={mit.map((m) => m.id)} onChange={(ids) => assign(s.id, ids)}
                                               placeholder="+ measure" emptyHint="no security measures yet"
                                               onClickChip={(id) => { const m = measures.find((x) => x.id === id); if (m) setRec(m); }}

@@ -5,6 +5,41 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.4.0] — 2026-08-05
+
+Security measures no longer all mean the same thing to the quantification, and the kill
+chain is now the calculation rather than documentation beside it. **Risk figures move
+compared with 0.3.x** — this is a method change, not a refactor.
+
+### Changed
+- **A measure now acts through the mechanism it works by.** *Preventive* measures block an
+  attacker at the step they cover, *detective* ones can interrupt the intrusion before it
+  reaches its objective, *corrective* ones are damage control (they reduce the loss, not the
+  chance of it), *deterrent* ones reduce the number of attempts, and the new *avoidance*
+  class removes the exposure itself. Previously every measure was counted as resistance —
+  which claimed, for instance, that backups make ransomware less likely to succeed.
+- **The kill chain is traversed instead of averaged.** Each attempt walks the chain in
+  order, honouring the `all` / `any` prerequisites of every step. Only steps that something
+  defends are hurdles, so describing a chain in more detail never makes it look safer, and a
+  control on a route the attacker does not need is correctly worth nothing.
+- **Recalibrated against reference situations.** Ordinal ratings now map to deliberately wide
+  bands, so a single step on a 1–4 scale shifts the outcome instead of deciding it, and no
+  configuration of controls reduces a capable attacker to zero. The calibration is held in
+  place by automated tests.
+- **Residual risk and the coverage views read the same model** as the risk figures. A
+  treatment that only buys recovery now moves a risk *down* the matrix, not left.
+
+### Added
+- **Where the attempts are stopped** — out of every 100 attacks on a chain, how many are
+  stopped by the scenario itself, how many at each step, and how many reach the objective.
+- **Chain defence ring** — blocked / detected in time / reaches the objective.
+- **Explain any figure** — the tactic tiles open the full working; the factor popup walks the
+  chain step by step with each measure and its effect class.
+- **Seven new quality checks** built on the effect model, including kill chains defended by
+  detection alone and monitored chains with no way to respond.
+- Loss event frequency is also given as a return period ("about one loss event every 32
+  years"), which is the readable form for a rare event.
+
 ## [0.3.7] — 2026-08-04
 
 ### Changed
