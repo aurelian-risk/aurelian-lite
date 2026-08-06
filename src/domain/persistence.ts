@@ -168,7 +168,10 @@ export function parseBundle(text: string): Bundle {
 }
 
 /** Pick a file and return its raw text (may be an encrypted envelope). */
-export function pickTextFile(): Promise<string> {
+/** Pick a text file and read it. The NAME comes back too: an import is recorded in the
+ *  study log, and "imported from <file>" is the part of that record an auditor cares
+ *  about. */
+export function pickTextFile(): Promise<{ text: string; name: string }> {
   return new Promise((resolve, reject) => {
     const input = document.createElement("input");
     input.type = "file";
@@ -177,7 +180,7 @@ export function pickTextFile(): Promise<string> {
       const file = input.files?.[0];
       if (!file) return reject(new Error("No file selected"));
       const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
+      reader.onload = () => resolve({ text: String(reader.result), name: file.name });
       reader.onerror = () => reject(reader.error);
       reader.readAsText(file);
     };

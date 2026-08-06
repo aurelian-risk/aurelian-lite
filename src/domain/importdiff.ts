@@ -3,7 +3,7 @@
 // is applied. Deterministic and offline; matching is by entity id.
 import type { EntityRecord, FieldChange, FieldValue, Study, Taxonomy } from "./types";
 import { getType, recordTitle } from "./taxonomy";
-import { appendChange, diffValues } from "./audit";
+import { appendAll, diffValues, hashValues } from "./audit";
 
 export interface FieldDelta { field: string; label: string; from: FieldValue; to: FieldValue }
 export interface LastChange { ts: string; editor: string; comment?: string }
@@ -15,29 +15,32 @@ export function diffBundle(tax: Taxonomy, current: Study[], incoming: Study[]): 
   const typeLabel = (t: string) => getType(tax, t)?.label ?? t;
   const flabel = (t: string, k: string) => getType(tax, t)?.fields.find((f) => f.key === k)?.label ?? k;
   const elabel = (e: EntityRecord) => { const t = getType(tax, e.type); return t ? recordTitle(t, e) : e.id; };
-  const lastOf = (e: EntityRecord): LastChange | undefined => {
-    const h = e.history?.[e.history.length - 1];
+  // The incoming metadata now lives in the study's own log; fall back to the legacy
+  // per-entity history so a file written by an older build still shows who changed what.
+  const lastOf = (s: Study, e: EntityRecord): LastChange | undefined => {
+    const fromLog = (s.log ?? []).filter((x) => x.entity === e.id).pop();
+    const h = fromLog ?? e.history?.[e.history.length - 1];
     return h ? { ts: h.ts, editor: h.editor, comment: h.comment } : undefined;
   };
-  const mk = (e: EntityRecord, kind: EntityDiff["kind"], fields?: FieldDelta[]): EntityDiff =>
-    ({ id: e.id, type: e.type, typeLabel: typeLabel(e.type), label: elabel(e), kind, fields, last: lastOf(e) });
+  const mk = (s: Study, e: EntityRecord, kind: EntityDiff["kind"], fields?: FieldDelta[]): EntityDiff =>
+    ({ id: e.id, type: e.type, typeLabel: typeLabel(e.type), label: elabel(e), kind, fields, last: lastOf(s, e) });
 
   return incoming.map((inc) => {
     const cur = curById.get(inc.id);
     const added: EntityDiff[] = [], changed: EntityDiff[] = [], removed: EntityDiff[] = [];
     if (!cur) {
-      for (const e of inc.entities) added.push(mk(e, "added"));
+      for (const e of inc.entities) added.push(mk(inc, e, "added"));
       return { id: inc.id, name: inc.name, isNew: true, added, changed, removed };
     }
     const curEnts = new Map(cur.entities.map((e) => [e.id, e]));
     for (const e of inc.entities) {
       const c = curEnts.get(e.id);
-      if (!c) { added.push(mk(e, "added")); continue; }
+      if (!c) { added.push(mk(inc, e, "added")); continue; }
       const fd = diffValues(c.values, e.values);
-      if (fd.length) changed.push(mk(e, "changed", fd.map((x) => ({ ...x, label: flabel(e.type, x.field) }))));
+      if (fd.length) changed.push(mk(inc, e, "changed", fd.map((x) => ({ ...x, label: flabel(e.type, x.field) }))));
     }
     const incIds = new Set(inc.entities.map((e) => e.id));
-    for (const e of cur.entities) if (!incIds.has(e.id)) removed.push(mk(e, "removed"));
+    for (const e of cur.entities) if (!incIds.has(e.id)) removed.push(mk(cur, e, "removed"));
     return { id: inc.id, name: inc.name, isNew: false, added, changed, removed };
   });
 }
@@ -52,6 +55,7 @@ export function demoRevision(study: Study): Study {
   const ts = new Date().toISOString();
   const ents = study.entities.map((e) => ({ ...e, values: { ...e.values } }));
   const notes = ["Adjusted after peer review.", "Refined wording following the workshop."];
+  const edits: Array<{ rec: EntityRecord; change: FieldChange; note: string }> = [];
   let n = 0;
   for (const e of ents) {
     if (n >= 2) break;
@@ -59,12 +63,27 @@ export function demoRevision(study: Study): Study {
     let change: FieldChange | null = null;
     if (numKey) { const v = e.values[numKey] as number, nv = v > 1 ? v - 1 : v + 1; e.values[numKey] = nv; change = { field: numKey, from: v, to: nv }; }
     else if (typeof e.values.description === "string") { const from = e.values.description as string, to = from + " (updated by a colleague)"; e.values.description = to; change = { field: "description", from, to }; }
-    if (change) { e.history = appendChange(e.history, { editor: "Analyst B", kind: "update", ts, changes: [change], comment: notes[n] }); n++; }
+    if (change) { edits.push({ rec: e, change, note: notes[n] }); n++; }
   }
   const first = ents[0];
-  if (first) ents.push({ ...first, id: "demo-" + Math.random().toString(36).slice(2, 10), source: undefined,
-    values: { ...first.values, name: String(first.values.name ?? "Item") + " (added by a colleague)" },
-    history: appendChange(undefined, { editor: "Analyst B", kind: "create", ts, comment: "New item proposed by a colleague." }) });
+  const added = first
+    ? { ...first, id: "demo-" + Math.random().toString(36).slice(2, 10), source: undefined,
+        values: { ...first.values, name: String(first.values.name ?? "Item") + " (added by a colleague)" } }
+    : null;
+  if (added) ents.push(added);
   if (ents.length > 3) ents.splice(ents.length - 2, 1);   // remove one original (not the just-added copy)
-  return { ...study, entities: ents };
+  // The colleague's edits continue the study's own chain, exactly as they would in a file
+  // that came back from someone else's copy of the app.
+  const log = appendAll(study.log, [
+    ...edits.map(({ rec, change, note }) => ({
+      ts, editor: "Analyst B", kind: "update" as const, entity: rec.id, entityType: rec.type,
+      title: String(rec.values.name ?? rec.id), changes: [change], comment: note, state: hashValues(rec.values),
+    })),
+    ...(added ? [{
+      ts, editor: "Analyst B", kind: "create" as const, entity: added.id, entityType: added.type,
+      title: String(added.values.name ?? added.id), comment: "New item proposed by a colleague.",
+      state: hashValues(added.values),
+    }] : []),
+  ]);
+  return { ...study, entities: ents, log };
 }

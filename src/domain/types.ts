@@ -81,11 +81,24 @@ export interface FieldChange { field: string; from: FieldValue; to: FieldValue }
 /** A hash-chained change-history entry (see domain/audit.ts). `editor` is a
  *  self-declared name — there is no authentication (single-user desktop). */
 export interface ChangeEntry {
+  /** Position in the study log, starting at 1. Consecutive by construction, so a log
+   *  truncated at the end is detectable - a bare hash chain alone would still verify. */
+  seq: number;
   ts: string;
   editor: string;
-  kind: "create" | "update";
+  kind: "create" | "update" | "delete" | "import";
+  /** The record this entry is about. */
+  entity: ID;
+  /** Type key and title AS OF this entry, so a deleted record stays readable in the
+   *  timeline after the record itself is gone. */
+  entityType: string;
+  title: string;
   changes?: FieldChange[];
   comment?: string;
+  /** Fingerprint of the record's values AFTER this change; absent for a delete. This is
+   *  what binds the log to the data: editing a value outside the app leaves the log
+   *  intact but no longer matching, and verification says so. */
+  state?: string;
   prevHash: string;
   hash: string;
 }
@@ -99,7 +112,8 @@ export interface EntityRecord {
   /** Provenance for extracted entities: where they came from (e.g. a document name
    *  and chunk). Meta, not a taxonomy field - shown as a source badge. */
   source?: string;
-  /** Hash-chained change log (who/when/what + comment). Persisted with the study. */
+  /** LEGACY: per-entity history of studies written before the study-wide log. Read on
+   *  load and folded into `Study.log`, never written any more. */
   history?: ChangeEntry[];
 }
 
@@ -111,6 +125,11 @@ export interface Study {
   createdAt: string;
   updatedAt: string;
   entities: EntityRecord[];
+  /** Hash-chained log of every change to this study's records - creates, updates,
+   *  deletes and confirmed imports alike. One chain for the whole study, because a
+   *  delete removes its record and the entry has to outlive it. A record's own history
+   *  is this log filtered by entity id. */
+  log?: ChangeEntry[];
   /** Persisted canvas positions per entity id (shared with the graph view). */
   layout?: Record<ID, { x: number; y: number }>;
   /** Persisted quantification tunings per operational-scenario id. The factors

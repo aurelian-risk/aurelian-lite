@@ -3,6 +3,7 @@ import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue, Study, Taxonomy
 import { columnFields, getType, recordTitle, refFields, scaleLabel, scaleMax, titleField } from "../domain/taxonomy";
 import { useStore } from "../domain/store";
 import { ChangeHistoryModal, IntegrityBadge } from "./ChangeHistoryModal";
+import { entryOf } from "../domain/audit";
 import { EntityModal } from "./EntityModal";
 import { Icon, ScaleBadge, ScaleBars } from "./ui";
 
@@ -238,14 +239,17 @@ function EntityDetail({ type, record, tax, study, color, onEdit, onDelete, onOpe
           </div>
         </div>
       )}
-      {record.history && record.history.length > 0 && (
-        <button className="hist-btn" onClick={() => setHistOpen(true)}>
-          <span className="d-sub" style={{ margin: 0 }}>Change history</span>
-          <span className="hist-count">{record.history.length}</span>
-          <IntegrityBadge history={record.history} />
-          <span className="hist-view">View →</span>
-        </button>
-      )}
+      {(() => {
+        const hist = entryOf(study.log, record.id);
+        return hist.length > 0 && (
+          <button className="hist-btn" onClick={() => setHistOpen(true)}>
+            <span className="d-sub" style={{ margin: 0 }}>Change history</span>
+            <span className="hist-count">{hist.length}</span>
+            <IntegrityBadge study={study} entityId={record.id} />
+            <span className="hist-view">View →</span>
+          </button>
+        );
+      })()}
       {histOpen && <ChangeHistoryModal tax={tax} study={study} record={record} onClose={() => setHistOpen(false)} />}
       <div className="detail-meta mono">updated {new Date(record.updatedAt).toLocaleString()}</div>
     </div>

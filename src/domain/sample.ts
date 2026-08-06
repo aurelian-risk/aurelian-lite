@@ -1,7 +1,7 @@
 // A realistic sample study (hospital) to populate and exercise the data view.
 // Uses the default EBIOS taxonomy field keys and wires relationships by id.
 import type { EntityRecord, FieldValue, Study } from "./types";
-import { sealChain } from "./audit";
+import { hashValues, sealLog, type LogInput } from "./audit";
 
 function uid(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
@@ -100,35 +100,46 @@ export function makeSampleStudy(): Study {
   // no manual assessment entity to seed. Quantification is opt-in per scenario; the
   // sample opts both operational scenarios in so the demo shows figures out of the box.
 
-  // Illustrative, hash-chained change history on a few entities, so the Timeline
-  // and per-entity audit trail demo out of the box. Editors are made-up analysts.
+  // Illustrative, hash-chained change log so the Timeline and the per-record audit trail
+  // demo out of the box. Editors are made-up analysts. EVERY record gets a create entry -
+  // the log has to account for the whole study, or the untracked ones would read as
+  // having been added to the file from outside.
   const day = 86400000, now = Date.now();
   const at = (d: number) => new Date(now - d * day).toISOString();
-  const seed = (id: string, entries: Array<{ editor: string; kind: "create" | "update"; ts: string; changes?: { field: string; from: FieldValue; to: FieldValue }[]; comment?: string }>) => {
-    const e = entities.find((x) => x.id === id);
-    if (!e || !entries.length) return;
-    e.history = sealChain(entries);
-    e.createdAt = entries[0].ts;
-    e.updatedAt = entries[entries.length - 1].ts;
-  };
-  seed(baRecords, [
-    { editor: "Analyst A", kind: "create", ts: at(9) },
-    { editor: "Analyst B", kind: "update", ts: at(4), changes: [{ field: "criticality", from: 3, to: 4 }], comment: "Raised to critical after the DPIA — leakage triggers mandatory breach notification." },
-  ]);
-  seed(feDisclosure, [{ editor: "Analyst A", kind: "create", ts: at(9) }]);
-  seed(roRansom, [
-    { editor: "Analyst A", kind: "create", ts: at(8) },
-    { editor: "Analyst C", kind: "update", ts: at(3), changes: [{ field: "activity", from: 3, to: 4 }], comment: "Threat-intel: active ransomware campaigns targeting hospitals this quarter." },
-  ]);
-  seed(ssRansom, [
-    { editor: "Analyst B", kind: "create", ts: at(7) },
-    { editor: "Analyst B", kind: "update", ts: at(2), changes: [{ field: "gravity", from: 3, to: 4 }], comment: "Gravity raised — encryption of the HIS halts emergency care." },
-  ]);
-  seed(os, [{ editor: "Analyst A", kind: "create", ts: at(6), comment: "Modelled the end-to-end kill chain from the maintenance-access vector." }]);
-  seed(trRansom, [
-    { editor: "Reviewer", kind: "create", ts: at(5) },
-    { editor: "Analyst C", kind: "update", ts: at(1), changes: [{ field: "status", from: "Proposed", to: "In progress" }], comment: "MFA rollout kicked off; treatment now in progress." },
-  ]);
+  type Edit = { id: string; editor: string; ts: string; changes?: { field: string; from: FieldValue; to: FieldValue }[]; comment?: string };
+  const edits: Edit[] = [
+    { id: baRecords, editor: "Analyst B", ts: at(4), changes: [{ field: "criticality", from: 3, to: 4 }], comment: "Raised to critical after the DPIA - leakage triggers mandatory breach notification." },
+    { id: roRansom, editor: "Analyst C", ts: at(3), changes: [{ field: "activity", from: 3, to: 4 }], comment: "Threat-intel: active ransomware campaigns targeting hospitals this quarter." },
+    { id: ssRansom, editor: "Analyst B", ts: at(2), changes: [{ field: "gravity", from: 3, to: 4 }], comment: "Gravity raised - encryption of the HIS halts emergency care." },
+    { id: trRansom, editor: "Analyst C", ts: at(1), changes: [{ field: "status", from: "Proposed", to: "In progress" }], comment: "MFA rollout kicked off; treatment now in progress." },
+  ];
+  // Creates are spread over the first days in the order the workshops were run.
+  const createdBy = (i: number) => (i % 3 === 0 ? "Analyst A" : i % 3 === 1 ? "Analyst B" : "Analyst C");
+  const createTs = (i: number) => at(9 - Math.min(8, Math.floor((i / Math.max(1, entities.length)) * 8)));
+  const pending: Array<LogInput & { _s: string }> = [];
+  entities.forEach((e, i) => {
+    const ts0 = createTs(i);
+    e.createdAt = ts0; e.updatedAt = ts0;
+    pending.push({ _s: ts0 + String(i).padStart(4, "0"), ts: ts0, editor: createdBy(i), kind: "create",
+      entity: e.id, entityType: e.type, title: String(e.values.name ?? e.id),
+      ...(e.id === os ? { comment: "Modelled the end-to-end kill chain from the maintenance-access vector." } : {}) });
+  });
+  for (const ed of edits) {
+    const e = entities.find((x) => x.id === ed.id);
+    if (!e) continue;
+    e.updatedAt = ed.ts;
+    pending.push({ _s: ed.ts + "zzzz", ts: ed.ts, editor: ed.editor, kind: "update", entity: e.id,
+      entityType: e.type, title: String(e.values.name ?? e.id), changes: ed.changes, comment: ed.comment });
+  }
+  pending.sort((a, b) => (a._s < b._s ? -1 : a._s > b._s ? 1 : 0));
+  // Only the newest entry per record carries the state fingerprint (see audit.ts).
+  const lastIdx = new Map<string, number>();
+  pending.forEach((p, i) => lastIdx.set(p.entity, i));
+  const byId = new Map(entities.map((e) => [e.id, e]));
+  const log = sealLog(pending.map(({ _s, ...p }, i) => {
+    void _s;
+    return lastIdx.get(p.entity) === i ? { ...p, state: hashValues(byId.get(p.entity)!.values) } : p;
+  }));
 
   return {
     id: uid(),
@@ -138,6 +149,7 @@ export function makeSampleStudy(): Study {
     createdAt: ts,
     updatedAt: ts,
     entities,
+    log,
     quantScenarios: [os, os2],
   };
 }

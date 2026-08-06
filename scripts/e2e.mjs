@@ -312,6 +312,42 @@ try {
   ok("import diff summary shows counts", (await page.locator(".idiff-summary .idiff-c").count()) >= 3);
   ok("import diff lists entity changes", (await page.locator(".idiff-ent").count()) > 0);
   ok("import diff offers additive + destructive apply", (await page.locator(".modal-lg-foot .import-modes-inline .seg-btn").count()) === 2);
+  ok("a sound incoming file is vouched for before it is confirmed",
+    /change log is complete and matches its data/i.test(await page.locator(".modal-lg").innerText()));
+  // A file whose chain does not hold up must say so BEFORE it is confirmed - confirming
+  // re-establishes the chain, so a blind confirmation would launder a tampered file.
+  await page.locator(".modal-lg-foot .btn.ghost", { hasText: "Back" }).click().catch(() => {});
+  await page.waitForTimeout(200);
+  await page.locator(".modal-lg textarea").first().fill(JSON.stringify({
+    kind: "ebios-data", version: 2, studies: [{
+      id: "peer-study", name: "Peer review copy", organization: "", scope: "",
+      createdAt: "2026-02-01T10:00:00.000Z", updatedAt: "2026-02-01T10:00:00.000Z",
+      entities: [{ id: "x1", type: "business_asset", values: { name: "Payroll", criticality: 3 },
+        createdAt: "2026-02-01T10:00:00.000Z", updatedAt: "2026-02-01T10:00:00.000Z" }],
+      log: [{ seq: 1, ts: "2026-02-01T10:00:00.000Z", editor: "Analyst X", kind: "create", entity: "x1",
+        entityType: "business_asset", title: "Payroll", state: "deadbeef", prevHash: "", hash: "not-a-real-hash" }],
+    }],
+  }));
+  await page.locator(".modal-lg button", { hasText: "Preview pasted" }).click();
+  await page.waitForTimeout(400);
+  const audit = await page.locator(".modal-lg .guide.warn").first().innerText();
+  ok("a tampered incoming file is flagged before confirmation", /does not hold up/i.test(audit));
+  ok("...naming where the chain fails", /broken at entry 1/i.test(audit));
+  ok("...and stating what the chosen mode does with the chain", /folded into this study's chain/i.test(audit));
+  // The verdict must be there in BOTH modes, and say what each one does.
+  await page.locator(".import-modes-inline .seg-btn", { hasText: "Destructive" }).click();
+  await page.waitForTimeout(200);
+  const destr = await page.locator(".modal-lg .guide.warn").first().innerText();
+  ok("the chain verdict is shown for a destructive import too", /does not hold up/i.test(destr));
+  ok("...saying the study's own chain is kept and continues", /own chain is kept and continues/i.test(destr));
+  ok("...and that missing records become deletions", /recorded as deletions/i.test(destr));
+  await page.locator(".import-modes-inline .seg-btn", { hasText: "Additive" }).click();
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: `${shots}/ImportAudit.png` });
+  await page.locator(".modal-lg-foot .btn.ghost", { hasText: "Back" }).click().catch(() => {});
+  await page.waitForTimeout(200);
+  await page.locator(".modal-lg button", { hasText: "Preview a demo revision" }).click();
+  await page.waitForTimeout(300);
   await page.screenshot({ path: `${shots}/Import.png` });
   await page.locator(".modal-lg-foot .btn.ghost", { hasText: "Back" }).click().catch(() => {});
   await page.waitForTimeout(100);
@@ -394,12 +430,47 @@ try {
   await page.waitForTimeout(250);
   ok("timeline grouped by day with entries", (await page.locator(".tl-day-h").count()) > 0 && (await page.locator(".tl-item").count()) >= 5);
   ok("timeline shows change stats", (await page.locator(".tl-stats strong").count()) >= 3);
+  // The log has to account for the WHOLE study, not just the records someone happened to
+  // annotate - otherwise the untracked ones read as having been added from outside.
+  const tlItems = await page.locator(".tl-item").count();
+  ok("every record in the study is accounted for in the log", tlItems >= 55);
+  ok("the study log verifies as a whole", /integrity verified/i.test(await page.locator(".tl-stats").innerText()));
+  ok("no drift warning on an untouched sample", (await page.locator(".tl-warn").count()) === 0);
   await page.screenshot({ path: `${shots}/Timeline.png` });
   await page.locator(".tl-item").first().click();
   await page.waitForSelector(".modal-lg .hist-item");
   ok("timeline item opens change-history popup", (await page.locator(".modal-lg .hist-item").count()) > 0);
   await page.locator('.modal-lg .btn.ghost[aria-label="Close"]').click();
   await page.waitForTimeout(120);
+
+  // A deletion has to survive the record it removed: the entry outlives it, keeps its
+  // title, and shows up in the timeline. Delete a leaf type nothing else depends on.
+  await page.locator(".sidebar .nav-item", { hasText: "Studies" }).click();
+  await page.waitForTimeout(150);
+  // "Studies" lands on the dashboard - re-open the study to get the workshop tabs back.
+  if (!(await page.locator(".ws-tabs").count())) {
+    await page.getByText("Riverside General Hospital").first().click();
+    await page.waitForSelector(".ws-tabs", { timeout: 10000 });
+  }
+  await page.locator(".ws-tab", { hasText: "Compliance" }).click();
+  await page.waitForTimeout(250);
+  const reqRow = page.locator(".tbl tbody tr.row-clickable").first();
+  const reqName = (await reqRow.locator(".name").innerText()).trim();
+  await reqRow.click();
+  await page.waitForTimeout(200);
+  page.once("dialog", (d) => d.accept());
+  await page.locator(".detail-actions button", { hasText: "Delete" }).first().click();
+  await page.waitForTimeout(300);
+  ok("the deleted record is gone from its table",
+    (await page.locator(".tbl .name", { hasText: reqName }).count()) === 0);
+  await page.locator(".sidebar .nav-item", { hasText: "Timeline" }).click();
+  await page.waitForTimeout(300);
+  ok("the deletion is recorded in the timeline", (await page.locator(".tl-kind.del").count()) >= 1);
+  ok("...naming the record that no longer exists",
+    (await page.locator(".tl-item.tl-gone").first().innerText()).includes(reqName));
+  ok("the log still verifies after a deletion", /integrity verified/i.test(await page.locator(".tl-stats").innerText())
+    && (await page.locator(".tl-warn").count()) === 0);
+  await page.screenshot({ path: `${shots}/TimelineDelete.png` });
   await page.locator(".sidebar .nav-item", { hasText: "Studies" }).click();
   await page.waitForTimeout(150);
 

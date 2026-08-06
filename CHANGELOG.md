@@ -5,6 +5,34 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.4.1] — 2026-08-06
+
+The change history becomes one hash-chained log per study instead of a separate history
+per record. Studies written by earlier versions are migrated on load.
+
+### Changed
+- **Deletions are recorded.** A per-record history died with the record it described, so a
+  deletion could not be logged anywhere. The log now belongs to the study; a record's
+  history is that log filtered by id. Deleted records keep their name and type in the
+  timeline, and a cascade also records the references it cleared on the records that
+  survive.
+- **The log is bound to the data.** Each entry carries a fingerprint of the record's values
+  after the change, and entries are consecutively numbered. Editing a value in an exported
+  file, adding a record to it, or truncating the log now shows up as *changed outside the
+  app* / *not in the log* rather than passing unnoticed.
+- **Imports continue the chain rather than replacing it.** Both the additive and the
+  destructive mode append to the receiving study's log. A destructive import records the
+  records it drops as deletions instead of discarding the history that shows the
+  replacement happened.
+
+### Added
+- **An imported file is verified before you confirm it.** The preview says whether the
+  file's own log is complete and matching, broken at a given entry, or leaves records
+  unaccounted for - and what the selected mode will do with it. The verdict is written into
+  the entry that records the import, so a chain that had to be re-established is never
+  mistaken later for one that was always intact.
+- Incoming entries are **adopted**, so a colleague's history stays visible after an import.
+
 ## [0.4.0] — 2026-08-05
 
 Security measures no longer all mean the same thing to the quantification, and the kill
