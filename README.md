@@ -99,15 +99,21 @@ control that mitigates it.
   untreated risks, kill chains defended by detection alone, monitored chains with nothing to
   respond with, and more.
 
-> **How the numbers are produced** is written up in [docs/method.md](docs/method.md) - where each
-> factor comes from, how the chain is traversed, how the model was calibrated, and what it does
-> not claim.
+- **Tamper-evident change log** - every create, update, deletion and confirmed import goes into
+  one hash-chained log per study, with who, when and what changed. Each entry is bound to the
+  record's values, so editing an exported file outside the app is reported rather than passing
+  unnoticed; importing the file again and confirming the changes puts the chain back on a
+  defensible footing and records that it happened.
 - **Word / PDF corpus import** - extract document text fully offline (PDF via a bundled PDF.js,
   `.docx` via the browser's own decompression) to seed a study, with automatic source attribution
   on every extracted entity.
 - **Portable, private data** - export and import a complete study as JSON or YAML to move it
   between machines, optionally under **strong AES-256 encryption**. It is the only way your data
   ever travels.
+
+> **How the numbers are produced** is written up in [docs/method.md](docs/method.md) - where each
+> factor comes from, how the chain is traversed, how the model was calibrated, and what it does
+> not claim.
 
 ## Assisted extraction - a model that runs on your machine
 

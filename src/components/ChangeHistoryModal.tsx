@@ -3,7 +3,7 @@
 import { createPortal } from "react-dom";
 import type { ChangeEntry, EntityRecord, FieldValue, Study, Taxonomy } from "../domain/types";
 import { getType, recordTitle, scaleLabel } from "../domain/taxonomy";
-import { verifyChain } from "../domain/audit";
+import { entryOf, verifyLog } from "../domain/audit";
 import { Icon } from "./ui";
 
 function fmtVal(tax: Taxonomy, study: Study, e: EntityRecord, key: string, v: FieldValue): string {
@@ -18,14 +18,18 @@ function fmtVal(tax: Taxonomy, study: Study, e: EntityRecord, key: string, v: Fi
   return String(v).length > 44 ? String(v).slice(0, 44) + "…" : String(v);
 }
 
-/** Human-readable action for a change entry ("created" / "changed X: a → b"). */
-export function changeActionText(tax: Taxonomy, study: Study, e: EntityRecord, entry: ChangeEntry): string {
+/** Human-readable action for a change entry ("created" / "changed X: a → b"). Works for
+ *  a record that no longer exists: the entry carries its own type and title. */
+export function changeActionText(tax: Taxonomy, study: Study, e: EntityRecord | undefined, entry: ChangeEntry): string {
   if (entry.kind === "create") return "created";
+  if (entry.kind === "delete") return "deleted";
   const ch = entry.changes ?? [];
-  const label = (k: string) => getType(tax, e.type)?.fields.find((x) => x.key === k)?.label ?? k;
-  if (!ch.length) return "updated";
-  if (ch.length === 1) {
-    const c = ch[0], f = getType(tax, e.type)?.fields.find((x) => x.key === c.field);
+  const typeKey = e?.type ?? entry.entityType;
+  const label = (k: string) => getType(tax, typeKey)?.fields.find((x) => x.key === k)?.label ?? k;
+  const verb = entry.kind === "import" ? "imported" : "updated";
+  if (!ch.length) return verb;
+  if (ch.length === 1 && e) {
+    const c = ch[0], f = getType(tax, typeKey)?.fields.find((x) => x.key === c.field);
     if (f && f.type !== "textarea" && f.type !== "multiref")
       return `changed ${label(c.field)}: ${fmtVal(tax, study, e, c.field, c.from)} → ${fmtVal(tax, study, e, c.field, c.to)}`;
     return `changed ${label(c.field)}`;
@@ -33,19 +37,30 @@ export function changeActionText(tax: Taxonomy, study: Study, e: EntityRecord, e
   return "changed " + ch.map((c) => label(c.field)).join(", ");
 }
 
-/** Verified / altered integrity label (no icon). */
-export function IntegrityBadge({ history }: { history?: ChangeEntry[] }) {
-  const ok = verifyChain(history);
-  return <span className={"hist-chain " + (ok ? "ok" : "bad")}
-    title={ok ? "Hash chain intact — history is unmodified" : "Hash chain broken — a past entry was altered"}>
-    {ok ? "integrity verified" : "integrity altered"}
-  </span>;
+/** Integrity of the whole study log, and of this record's place in it. Three separate
+ *  statements, because they fail for different reasons: the log was altered, the record
+ *  was edited outside the app, or it is not in the log at all. */
+export function IntegrityBadge({ study, entityId }: { study: Study; entityId?: string }) {
+  const v = verifyLog(study.log, study.entities);
+  const state: "ok" | "chain" | "drift" | "untracked" =
+    v.chainBroken ? "chain"
+      : entityId && v.drifted.includes(entityId) ? "drift"
+        : entityId && v.untracked.includes(entityId) ? "untracked"
+          : !entityId && !v.ok ? "drift" : "ok";
+  const text = { ok: "integrity verified", chain: "log altered", drift: "changed outside the app", untracked: "not in the log" }[state];
+  const title = {
+    ok: "Hash chain intact and matching the data",
+    chain: `Hash chain broken at entry ${v.brokenAt ?? "?"} — an entry was altered, removed or reordered`,
+    drift: "The values no longer match what the log last recorded — the file was edited outside the application. Re-import it and confirm the changes to re-establish the chain.",
+    untracked: "The log knows nothing about this record — it was added to the file from outside. Re-import it and confirm to take it into the log.",
+  }[state];
+  return <span className={"hist-chain " + (state === "ok" ? "ok" : "bad")} title={title}>{text}</span>;
 }
 
 export function ChangeHistoryModal({ tax, study, record, onClose }:
   { tax: Taxonomy; study: Study; record: EntityRecord; onClose: () => void }) {
   const type = getType(tax, record.type);
-  const history = record.history ?? [];
+  const history = entryOf(study.log, record.id);
   return createPortal(
     <div className="overlay" onMouseDown={onClose}>
       <div className="modal-lg" style={{ maxWidth: 560 }} onMouseDown={(e) => e.stopPropagation()}>
@@ -59,7 +74,7 @@ export function ChangeHistoryModal({ tax, study, record, onClose }:
         <div className="modal-lg-body">
           <div className="hist-head" style={{ marginBottom: 10 }}>
             <span className="d-sub" style={{ margin: 0 }}>{history.length} change{history.length === 1 ? "" : "s"}</span>
-            <IntegrityBadge history={history} />
+            <IntegrityBadge study={study} entityId={record.id} />
           </div>
           {history.length === 0 ? (
             <div className="hint">No changes recorded yet.</div>

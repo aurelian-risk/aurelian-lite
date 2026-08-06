@@ -9,6 +9,7 @@ import { isEncrypted, decryptText } from "../domain/crypto";
 import { importDocs } from "../domain/documents";
 import { setModelId } from "../domain/embeddings";
 import { diffBundle, diffTotals, demoRevision, type StudyDiff, type FieldDelta } from "../domain/importdiff";
+import { verifyLog, verdictText, type LogVerdict } from "../domain/audit";
 import type { Bundle, FieldValue } from "../domain/types";
 import { Icon } from "./ui";
 
@@ -30,11 +31,18 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
   const [text, setText] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState<{ bundle: Bundle; diff: StudyDiff[]; note?: string } | null>(null);
+  const [pending, setPending] = useState<{
+    bundle: Bundle; diff: StudyDiff[]; note?: string; source?: string;
+    audit?: Array<{ name: string; verdict: LogVerdict }>;
+  } | null>(null);
 
-  const preview = (bundle: Bundle, note?: string) => {
+  const preview = (bundle: Bundle, note?: string, source?: string) => {
     const diff = diffBundle(tax, store.studies, bundle.studies ?? []);
-    setPending({ bundle, diff, note });
+    // Verify the incoming file BEFORE it is confirmed. Confirming an import re-establishes
+    // the chain, so without this the analyst would vouch for the content blind - and a
+    // file somebody had edited would end up looking as sound as one that never was.
+    const audit = (bundle.studies ?? []).map((s) => ({ name: s.name, verdict: verifyLog(s.log, s.entities) }));
+    setPending({ bundle, diff, note, source, audit });
     setStatus("");
   };
 
@@ -48,7 +56,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
 
   const fromFile = async () => {
     setBusy(true); setStatus("");
-    try { preview(parseBundle(await resolveText(await pickTextFile()))); }
+    try { const f = await pickTextFile(); preview(parseBundle(await resolveText(f.text)), undefined, f.name); }
     catch (e) { if (e instanceof Error && e.message !== "No file selected" && e.message !== "cancelled") setStatus("Import failed: " + e.message); }
     setBusy(false);
   };
@@ -68,7 +76,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
     const b = pending.bundle;
     if (b.taxonomy && store.studies.length > 0 && mode === "replace"
       && !confirm("This file replaces the taxonomy (data model). Existing entities may no longer match. Continue?")) return;
-    store.applyBundle(b, { studiesMode: mode });
+    store.applyBundle(b, { studiesMode: mode, source: pending.source });
     if (b.documents?.length) await importDocs(b.documents);
     if (b.settings) {
       if (b.settings.modelId) setModelId(b.settings.modelId);
@@ -109,6 +117,19 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
         ) : (
           <div className="modal-lg-body">
             {pending.note && <div className="guide" style={{ marginBottom: 12 }}>{pending.note}</div>}
+            {pending.audit?.map((a, i) => (
+              <div key={i} className={"guide " + (a.verdict.ok ? "" : "warn")} style={{ marginBottom: 12 }}>
+                <strong>{a.name}</strong> — {a.verdict.ok
+                  ? <>the file's own change log is <strong>complete and matches its data</strong>.</>
+                  : <>this file's change log <strong>does not hold up: {verdictText(a.verdict)}</strong>. Its history is
+                    taken over as it stands, and whatever it leaves unaccounted for is recorded as such.</>}
+                {" "}
+                {mode === "replace"
+                  ? <>Destructive: the file decides this study's contents, and records it does not contain are recorded
+                    as deletions. This study's own chain is kept and continues{a.verdict.ok ? "" : " - the import, and what the file's log was worth, are written into it"}.</>
+                  : <>Additive: the file's records and entries are folded into this study's chain{a.verdict.ok ? "" : ", and the import notes what the file's log was worth"}.</>}
+              </div>
+            ))}
             <div className="idiff-summary">
               <span className="idiff-c add">+{totals!.added} added</span>
               <span className="idiff-c chg">~{totals!.changed} changed</span>

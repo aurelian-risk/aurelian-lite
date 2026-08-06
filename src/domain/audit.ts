@@ -58,33 +58,49 @@ export function sha256hex(msg: string): string {
   return out;
 }
 
-// ── Change-history chain ─────────────────────────────────────────────────────
+// ── Change log ───────────────────────────────────────────────────────────────
 const EDITOR_KEY = "aurelian.editor";
 /** The self-declared editor name (persisted in localStorage). */
 export function getEditor(): string { try { return localStorage.getItem(EDITOR_KEY) || ""; } catch { return ""; } }
 export function setEditor(name: string): void { try { localStorage.setItem(EDITOR_KEY, name.trim()); } catch { /* ignore */ } }
 
-// The exact bytes covered by an entry's hash (previous hash included → chain).
-const payloadOf = (e: Pick<ChangeEntry, "ts" | "editor" | "kind" | "changes" | "comment">, prev: string): string =>
-  JSON.stringify({ ts: e.ts, editor: e.editor, kind: e.kind, changes: e.changes ?? null, comment: e.comment ?? null, prev });
-
-/** Append a change to a (possibly empty) history, linking it to the prior hash. */
-export function appendChange(
-  history: ChangeEntry[] | undefined,
-  base: { editor: string; kind: ChangeEntry["kind"]; ts: string; changes?: FieldChange[]; comment?: string },
-): ChangeEntry[] {
-  const prevHash = history && history.length ? history[history.length - 1].hash : "";
-  const entry: ChangeEntry = { ...base, prevHash, hash: sha256hex(payloadOf(base, prevHash)) };
-  return [...(history ?? []), entry];
+/** Key-sorted JSON, so a fingerprint does not depend on property order. */
+function stable(v: unknown): string {
+  if (v === null || typeof v !== "object") return JSON.stringify(v ?? null);
+  if (Array.isArray(v)) return "[" + v.map(stable).join(",") + "]";
+  const o = v as Record<string, unknown>;
+  return "{" + Object.keys(o).sort().map((k) => JSON.stringify(k) + ":" + stable(o[k])).join(",") + "}";
 }
 
-/** Build a valid hash chain from bare (hash-less) entries - used to seal a
- *  pre-authored history (e.g. the sample study) so it verifies correctly. */
-export function sealChain(entries: Array<Omit<ChangeEntry, "hash" | "prevHash">>): ChangeEntry[] {
-  let h: ChangeEntry[] = [];
-  for (const e of entries) h = appendChange(h, e);
-  return h;
+/** Fingerprint of a record's values - what the log binds itself to. */
+export const hashValues = (values: Record<string, FieldValue>): string => sha256hex(stable(values ?? {}));
+
+/** What an entry's hash covers. The previous hash is included, so the entries form a
+ *  chain; `seq` is included, so entries cannot be renumbered to hide a gap. */
+const payloadOf = (e: Omit<ChangeEntry, "hash" | "prevHash">, prev: string): string =>
+  stable({
+    seq: e.seq, ts: e.ts, editor: e.editor, kind: e.kind, entity: e.entity,
+    entityType: e.entityType, title: e.title,
+    changes: e.changes ?? null, comment: e.comment ?? null, state: e.state ?? null, prev,
+  });
+
+/** Everything an entry needs except its position and hashes. */
+export type LogInput = Omit<ChangeEntry, "seq" | "hash" | "prevHash">;
+
+/** Append one entry to a (possibly empty) log. */
+export function appendLog(log: ChangeEntry[] | undefined, base: LogInput): ChangeEntry[] {
+  const prev = log?.length ? log[log.length - 1] : undefined;
+  const body = { ...base, seq: (prev?.seq ?? 0) + 1 };
+  return [...(log ?? []), { ...body, prevHash: prev?.hash ?? "", hash: sha256hex(payloadOf(body, prev?.hash ?? "")) }];
 }
+
+/** Append several entries in one go (a cascade delete, or an applied import). */
+export const appendAll = (log: ChangeEntry[] | undefined, bases: LogInput[]): ChangeEntry[] =>
+  bases.reduce<ChangeEntry[]>((acc, b) => appendLog(acc, b), log ?? []);
+
+/** Re-seal a list of entries into a valid chain, renumbering from 1. Used to author a
+ *  log (the sample study) and to re-establish one after a confirmed import. */
+export const sealLog = (entries: LogInput[]): ChangeEntry[] => appendAll(undefined, entries);
 
 /** Field-level diff between two value maps (only changed keys). */
 export function diffValues(oldV: Record<string, FieldValue>, newV: Record<string, FieldValue>): FieldChange[] {
@@ -97,13 +113,66 @@ export function diffValues(oldV: Record<string, FieldValue>, newV: Record<string
   return out;
 }
 
-/** Verify a hash chain: true if every entry links correctly and is unmodified. */
-export function verifyChain(history: ChangeEntry[] | undefined): boolean {
-  if (!history?.length) return true;
+export interface LogVerdict {
+  ok: boolean;
+  /** An entry was altered, removed from the middle, reordered or renumbered. */
+  chainBroken: boolean;
+  /** `seq` of the first entry that does not check out. */
+  brokenAt?: number;
+  /** Live records whose values no longer match what the log last recorded - the
+   *  signature of an edit made outside the application. */
+  drifted: string[];
+  /** Live records the log knows nothing about - added to the file from outside. */
+  untracked: string[];
+}
+
+/** Verify a study log against the records it describes.
+ *
+ *  Three separate questions, because they fail for different reasons and the analyst
+ *  needs to tell them apart: is the log itself intact, does it still describe the data,
+ *  and does it cover all of it. */
+export function verifyLog(
+  log: ChangeEntry[] | undefined,
+  entities: Array<{ id: string; values: Record<string, FieldValue> }> = [],
+): LogVerdict {
+  const last = new Map<string, ChangeEntry>();
   let prev = "";
-  for (const e of history) {
-    if (e.prevHash !== prev || e.hash !== sha256hex(payloadOf(e, prev))) return false;
+  for (let i = 0; i < (log?.length ?? 0); i++) {
+    const e = log![i];
+    if (e.seq !== i + 1 || e.prevHash !== prev || e.hash !== sha256hex(payloadOf(e, prev)))
+      return { ok: false, chainBroken: true, brokenAt: e.seq, drifted: [], untracked: [] };
     prev = e.hash;
+    last.set(e.entity, e);
   }
-  return true;
+  const drifted: string[] = [], untracked: string[] = [];
+  for (const rec of entities) {
+    const e = last.get(rec.id);
+    if (!e || e.kind === "delete") untracked.push(rec.id);
+    else if (e.state !== hashValues(rec.values)) drifted.push(rec.id);
+  }
+  return { ok: !drifted.length && !untracked.length, chainBroken: false, drifted, untracked };
+}
+
+/** A single record's history: the study log, filtered. */
+export const entryOf = (log: ChangeEntry[] | undefined, entityId: string): ChangeEntry[] =>
+  (log ?? []).filter((e) => e.entity === entityId);
+
+/** Entries that describe the study itself rather than one record - an import, for
+ *  instance. They carry no record id, so they never make a record look tracked. */
+export const STUDY_SCOPE = "";
+
+/** Identity of an entry by CONTENT, ignoring its position and hashes. Used to fold a
+ *  colleague's entries into our chain without duplicating what we already have. */
+export const entryKey = (e: Pick<ChangeEntry, "ts" | "editor" | "kind" | "entity" | "changes" | "comment">): string =>
+  stable({ ts: e.ts, editor: e.editor, kind: e.kind, entity: e.entity, changes: e.changes ?? null, comment: e.comment ?? null });
+
+/** Plain-language summary of a verdict, for the import preview and for the entry that
+ *  records the import. */
+export function verdictText(v: LogVerdict): string {
+  if (v.ok) return "change log complete and matching";
+  if (v.chainBroken) return `change log broken at entry ${v.brokenAt ?? "?"}`;
+  const parts: string[] = [];
+  if (v.drifted.length) parts.push(`${v.drifted.length} record${v.drifted.length === 1 ? "" : "s"} edited outside the app`);
+  if (v.untracked.length) parts.push(`${v.untracked.length} record${v.untracked.length === 1 ? "" : "s"} missing from the log`);
+  return parts.join(", ");
 }

@@ -252,8 +252,19 @@ select { cursor: pointer; }
 .tl-line1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .tl-ent { font-weight: 600; font-size: 13.5px; color: var(--fg); }
 .tl-type { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; border: 1px solid; border-radius: 5px; padding: 1px 6px; }
-.tl-altered { font-size: 10.5px; color: var(--color-state-error); font-weight: 600;
-  background: color-mix(in oklch, var(--color-state-error) 14%, transparent); border-radius: 999px; padding: 1px 8px; }
+/* What happened to the record, where it is not obvious from the text: a deletion, or an
+   entry that came in with a confirmed import. */
+.tl-kind { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;
+  border-radius: 999px; padding: 1px 8px; }
+.tl-kind.del { color: var(--color-state-error); background: color-mix(in oklch, var(--color-state-error) 14%, transparent); }
+.tl-kind.imp { color: var(--color-state-info, var(--primary)); background: color-mix(in oklch, var(--color-state-info, var(--primary)) 14%, transparent); }
+/* A record that no longer exists: its entries stay, but there is nothing to open. */
+/* An entry about the study itself (an import), not about one record. */
+.tl-item.tl-scope { cursor: default; background: color-mix(in oklch, var(--fg-subtle) 6%, transparent); }
+.tl-item.tl-scope .tl-ent { font-style: italic; }
+.tl-item.tl-gone { cursor: default; }
+.tl-item.tl-gone .tl-ent { text-decoration: line-through; text-decoration-thickness: 1px; color: var(--fg-muted); }
+.tl-warn { margin-bottom: 14px; }
 .tl-line2 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
 .tl-who { font-weight: 600; color: var(--fg); }
 .tl-what { color: var(--fg-muted); }

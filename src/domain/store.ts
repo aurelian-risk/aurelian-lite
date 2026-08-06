@@ -3,11 +3,11 @@
 // migration from the legacy v1 fixed-schema format. Auto-persists (debounced).
 import { create } from "zustand";
 import type {
-  AppState, Bundle, EntityRecord, FieldValue, ID, QuantTuning, Study, Taxonomy,
+  AppState, Bundle, ChangeEntry, EntityRecord, FieldValue, ID, QuantTuning, Study, Taxonomy,
 } from "./types";
-import { DEFAULT_TAXONOMY, getType, reconcileTaxonomy, refFields } from "./taxonomy";
+import { DEFAULT_TAXONOMY, getType, recordTitle, reconcileTaxonomy, refFields } from "./taxonomy";
 import { loadRaw, saveState } from "./persistence";
-import { appendChange, diffValues, getEditor } from "./audit";
+import { appendAll, appendLog, diffValues, entryKey, getEditor, hashValues, sealLog, STUDY_SCOPE, verdictText, verifyLog, type LogInput } from "./audit";
 
 function uid(): ID {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
@@ -20,9 +20,30 @@ export function emptyStudy(name: string, organization = "", scope = ""): Study {
   return { id: uid(), name, organization, scope, createdAt: ts, updatedAt: ts, entities: [], layout: {} };
 }
 
+// ── Log helpers ───────────────────────────────────────────────────────────
+const titleOf = (tax: Taxonomy, rec?: EntityRecord): string => {
+  if (!rec) return "a record";
+  const t = getType(tax, rec.type);
+  return t ? recordTitle(t, rec) : rec.id;
+};
+/** The identifying part of a log entry: who, when, and which record (typed and named,
+ *  so the entry still reads properly once the record itself is gone). */
+const stamp = (tax: Taxonomy, rec: EntityRecord, ts: string) => ({
+  ts, editor: getEditor() || "anonymous",
+  entity: rec.id, entityType: rec.type, title: titleOf(tax, rec),
+});
+
 // ── Cascade delete across ref fields ──────────────────────────────────────
-function cascadeDelete(tax: Taxonomy, study: Study, removeId: ID): Study {
+/** Deleting a record also removes whatever required it, and clears references to it on
+ *  the records that survive. Both have to be reported: the removals become delete
+ *  entries in the log, and the cleared references are real value changes that need
+ *  update entries - without them those records would immediately read as edited
+ *  outside the application. */
+function cascadeDelete(tax: Taxonomy, study: Study, removeId: ID, ts: string): {
+  study: Study; removed: EntityRecord[]; touched: Array<{ before: EntityRecord; after: EntityRecord }>;
+} {
   const toRemove = new Set<ID>([removeId]);
+  const before = new Map(study.entities.map((e) => [e.id, e]));
   let changed = true;
   let entities = study.entities;
 
@@ -46,11 +67,15 @@ function cascadeDelete(tax: Taxonomy, study: Study, removeId: ID): Study {
         }
       }
       if (toRemove.has(r.id)) { changed = true; continue; }
-      next.push(dirty ? { ...r, values, updatedAt: nowISO() } : r);
+      next.push(dirty ? { ...r, values, updatedAt: ts } : r);
     }
     entities = next;
   }
-  return { ...study, entities };
+  const removed = [...toRemove].map((id) => before.get(id)!).filter(Boolean);
+  const touched = entities
+    .filter((r) => before.get(r.id) && before.get(r.id) !== r)
+    .map((r) => ({ before: before.get(r.id)!, after: r }));
+  return { study: { ...study, entities }, removed, touched };
 }
 
 // ── Legacy v1 → v2 migration ──────────────────────────────────────────────
@@ -69,12 +94,13 @@ function migrate(raw: unknown): AppState {
   if (!raw || typeof raw !== "object") return fresh;
   const obj = raw as Record<string, unknown>;
   if (obj.version === 2) {
+    // Stored taxonomies predate later additions to the default vocabulary; pick
+    // those up additively instead of forcing a reset (see reconcileTaxonomy).
+    const taxonomy = reconcileTaxonomy((obj.taxonomy as Taxonomy) ?? DEFAULT_TAXONOMY);
     return {
       version: 2,
-      // Stored taxonomies predate later additions to the default vocabulary; pick
-      // those up additively instead of forcing a reset (see reconcileTaxonomy).
-      taxonomy: reconcileTaxonomy((obj.taxonomy as Taxonomy) ?? DEFAULT_TAXONOMY),
-      studies: (obj.studies as Study[]) ?? [],
+      taxonomy,
+      studies: ((obj.studies as Study[]) ?? []).map((s) => migrateStudyLog(taxonomy, s)),
       activeStudyId: (obj.activeStudyId as ID) ?? null,
     };
   }
@@ -102,6 +128,98 @@ function migrate(raw: unknown): AppState {
     } satisfies Study;
   });
   return { ...fresh, studies, activeStudyId: (obj.activeStudyId as ID) ?? null };
+}
+
+/** Bring a study onto the study-wide log.
+ *
+ *  Studies written before it carry a per-entity `history`; those entries are folded into
+ *  one chain in timestamp order. Records that never had a history at all still have to be
+ *  accounted for, or they would read as "added from outside" - they get a create entry
+ *  from their own createdAt, attributed to nobody, which is the honest statement: the
+ *  record predates the log. Idempotent - a study that already has a log is left alone. */
+function migrateStudyLog(tax: Taxonomy, study: Study): Study {
+  if (study.log) return study;
+  type Pending = LogInput & { _sort: string };
+  const pending: Pending[] = [];
+  for (const rec of study.entities) {
+    const base = { entity: rec.id, entityType: rec.type, title: titleOf(tax, rec) };
+    const hist = rec.history ?? [];
+    if (!hist.length) {
+      pending.push({ ...base, ts: rec.createdAt, editor: "unknown", kind: "create", _sort: rec.createdAt,
+        comment: "Recorded before this study kept a change log." });
+      continue;
+    }
+    hist.forEach((h, i) => pending.push({
+      ...base, ts: h.ts, editor: h.editor, kind: h.kind === "delete" ? "update" : h.kind,
+      changes: h.changes, comment: h.comment, _sort: h.ts + String(i).padStart(4, "0"),
+    }));
+  }
+  pending.sort((a, b) => (a._sort < b._sort ? -1 : a._sort > b._sort ? 1 : 0));
+  // Only the newest entry per record carries a state fingerprint - earlier states cannot
+  // be reconstructed, and verification only ever compares against the newest one.
+  const lastIdx = new Map<string, number>();
+  pending.forEach((p, i) => lastIdx.set(p.entity, i));
+  const now = new Map(study.entities.map((e) => [e.id, e]));
+  const entries: LogInput[] = pending.map(({ _sort, ...p }, i) => {
+    void _sort;
+    const rec = now.get(p.entity);
+    return rec && lastIdx.get(p.entity) === i ? { ...p, state: hashValues(rec.values) } : p;
+  });
+  return { ...study, log: sealLog(entries), entities: study.entities.map(({ history, ...e }) => { void history; return e; }) };
+}
+
+/** The entries to write when a study arrives in a file and the analyst confirms it.
+ *
+ *  The incoming entries are ADOPTED, not discarded: taking on external data means taking
+ *  on its history too, so a colleague's work stays visible. They are re-hashed as part of
+ *  our chain and de-duplicated against what we already hold.
+ *
+ *  Whatever the file's own log did not cover - records edited outside their app, or never
+ *  logged at all - gets an entry that states so and fixes the fingerprint. A closing
+ *  study-level entry records the import and what the source's log was worth, so a chain
+ *  that had to be re-established never looks like one that was always sound.
+ *
+ *  `known` is the receiving study's existing log, if we are merging into one. */
+function importEntries(
+  tax: Taxonomy, incoming: Study, result: EntityRecord[], removed: EntityRecord[],
+  ts: string, from: string, mode: "replace" | "merge", known?: ChangeEntry[],
+): LogInput[] {
+  const base = migrateStudyLog(tax, incoming);
+  // The verdict shown to the analyst is about the FILE, and only about the file - that is
+  // what they are being asked to vouch for.
+  const verdict = verifyLog(base.log, base.entities);
+  const editor = getEditor() || "anonymous";
+  const seen = new Set((known ?? []).map(entryKey));
+  const strip = ({ seq, hash, prevHash, ...rest }: ChangeEntry): LogInput => {
+    void seq; void hash; void prevHash;
+    return rest;
+  };
+  const adopted = (base.log ?? []).map(strip).filter((e) => !seen.has(entryKey(e)));
+
+  // Which records are STILL unaccounted for once the file's entries have been folded in -
+  // measured against the resulting study, not against the file on its own. When we are
+  // merging, our own log already covers most of it, and writing "not covered by that
+  // file's log" for records we have tracked all along would be noise, not evidence.
+  const tentative = appendAll(known, adopted);
+  const after = verifyLog(tentative, result);
+  const gaps = new Set([...after.drifted, ...after.untracked]);
+  const fixes: LogInput[] = result.filter((e) => gaps.has(e.id)).map((e) => ({
+    ts, editor, kind: "import" as const, entity: e.id, entityType: e.type, title: titleOf(tax, e),
+    comment: `Taken over from ${from}; not accounted for by that file's change log.`,
+    state: hashValues(e.values),
+  }));
+  // Records a destructive import drops. They are a consequence of the import like any
+  // other, so they belong IN the chain - the alternative would be to discard the chain
+  // that is supposed to prove the replacement happened.
+  const drops: LogInput[] = removed.map((e) => ({
+    ts, editor, kind: "delete" as const, entity: e.id, entityType: e.type, title: titleOf(tax, e),
+    comment: `Not present in ${from}; dropped when that file replaced this study.`,
+  }));
+  return [...adopted, ...drops, ...fixes, {
+    ts, editor, kind: "import" as const, entity: STUDY_SCOPE, entityType: "", title: base.name,
+    comment: `${mode === "replace" ? "Replaced by" : "Merged with"} ${from} - ${verdictText(verdict)}. `
+      + `Confirmed, and the chain continues from here.`,
+  }];
 }
 
 // ── Persistence scheduling ────────────────────────────────────────────────
@@ -134,8 +252,11 @@ export interface StoreState {
 
   setTaxonomy: (tax: Taxonomy) => void;
   resetTaxonomy: () => void;
-  /** Apply an imported bundle. studiesMode: replace|merge (ignored if no studies). */
-  applyBundle: (b: Bundle, opts: { studiesMode: "replace" | "merge" }) => void;
+  /** Apply an imported bundle. studiesMode: replace|merge (ignored if no studies).
+   *  `source` names the file: confirming an import re-seals the affected study's log and
+   *  records the import in it, which is how a chain broken by an outside edit is put
+   *  back on a defensible footing. */
+  applyBundle: (b: Bundle, opts: { studiesMode: "replace" | "merge"; source?: string }) => void;
   mergeStudies: (studies: Study[]) => number;
 
   createStudy: (name: string, organization?: string, scope?: string) => ID;
@@ -145,7 +266,7 @@ export interface StoreState {
 
   addEntity: (type: string, values: Record<string, FieldValue>, source?: string, comment?: string) => ID;
   updateEntity: (id: ID, values: Record<string, FieldValue>, comment?: string) => void;
-  deleteEntity: (id: ID) => void;
+  deleteEntity: (id: ID, comment?: string) => void;
   setNodePos: (id: ID, x: number, y: number) => void;
   setLayout: (layout: Record<ID, { x: number; y: number }>) => void;
   /** Persist (or clear, when tuning is null) the quantification tuning of an op scenario. */
@@ -176,23 +297,37 @@ export const useStore = create<StoreState>((set, get) => ({
 
   applyBundle: (b, opts) => {
     const patch: Partial<StoreState> = {};
-    if (b.taxonomy) patch.taxonomy = reconcileTaxonomy(b.taxonomy);
+    const tax = b.taxonomy ? reconcileTaxonomy(b.taxonomy) : get().taxonomy;
+    if (b.taxonomy) patch.taxonomy = tax;
     if (b.studies) {
+      const ts = nowISO();
+      const from = opts.source ? `“${opts.source}”` : "an imported file";
+      // Both modes CONTINUE the receiving study's chain rather than replacing it. The
+      // difference is what happens to the records: additive folds the incoming ones in,
+      // destructive lets the file decide the contents and records the dropped records as
+      // deletions. Throwing the chain away on a destructive import would destroy the very
+      // evidence that the replacement took place.
+      const known = new Map(get().studies.map((s) => [s.id, s]));
+      const built = b.studies.map((inc) => {
+        const cur = known.get(inc.id);
+        const keepOwn = opts.studiesMode === "merge" && !!cur;
+        const ents = new Map(keepOwn ? cur!.entities.map((e) => [e.id, e]) : []);
+        for (const e of inc.entities) ents.set(e.id, e);
+        const entities = [...ents.values()];
+        const dropped = cur && !keepOwn ? cur.entities.filter((e) => !ents.has(e.id)) : [];
+        return {
+          ...(cur ?? {}), ...inc, entities, updatedAt: ts,
+          log: appendAll(cur?.log, importEntries(tax, inc, entities, dropped, ts, from, opts.studiesMode, cur?.log)),
+        } as Study;
+      });
       if (opts.studiesMode === "merge") {
-        // Additive: fold incoming studies into existing ones sharing an id
-        // (merging their entities, incoming overrides by entity id); append the rest.
-        const byId = new Map(get().studies.map((s) => [s.id, s]));
-        for (const inc of b.studies) {
-          const cur = byId.get(inc.id);
-          if (cur) {
-            const ents = new Map(cur.entities.map((e) => [e.id, e]));
-            for (const e of inc.entities) ents.set(e.id, e);
-            byId.set(inc.id, { ...cur, ...inc, entities: [...ents.values()], updatedAt: nowISO() });
-          } else byId.set(inc.id, inc);
-        }
-        patch.studies = [...byId.values()];
+        const all = new Map(known);
+        for (const s of built) all.set(s.id, s);
+        patch.studies = [...all.values()];
       } else {
-        patch.studies = b.studies;
+        // Studies the file does not mention are dropped wholesale, logs and all - there is
+        // no app-wide chain for them to be recorded in.
+        patch.studies = built;
         patch.activeStudyId = null;
       }
     }
@@ -230,31 +365,55 @@ export const useStore = create<StoreState>((set, get) => ({
   addEntity: (type, values, source, comment) => {
     const id = uid();
     const ts = nowISO();
-    const history = appendChange(undefined, { editor: getEditor() || "anonymous", kind: "create", ts, comment });
-    mutateActive(get, set, (study) => ({
-      ...study, entities: [...study.entities, { id, type, values, createdAt: ts, updatedAt: ts, ...(source ? { source } : {}), history }],
-    }));
+    const tax = get().taxonomy;
+    mutateActive(get, set, (study) => {
+      const rec: EntityRecord = { id, type, values, createdAt: ts, updatedAt: ts, ...(source ? { source } : {}) };
+      return {
+        ...study,
+        entities: [...study.entities, rec],
+        log: appendLog(study.log, { ...stamp(tax, rec, ts), kind: "create", comment, state: hashValues(values) }),
+      };
+    });
     return id;
   },
   updateEntity: (id, values, comment) => {
-    mutateActive(get, set, (study) => ({
-      ...study,
-      entities: study.entities.map((e) => {
-        if (e.id !== id) return e;
-        const changes = diffValues(e.values, values);
-        if (!changes.length && !comment) return e;   // no-op edit: don't touch the record or its history
-        const ts = nowISO();
-        const history = appendChange(e.history, { editor: getEditor() || "anonymous", kind: "update", ts, changes, comment });
-        return { ...e, values, updatedAt: ts, history };
-      }),
-    }));
-  },
-  deleteEntity: (id) => {
     const tax = get().taxonomy;
     mutateActive(get, set, (study) => {
-      const layout = { ...(study.layout ?? {}) };
-      delete layout[id];
-      return cascadeDelete(tax, { ...study, layout }, id);
+      const cur = study.entities.find((e) => e.id === id);
+      if (!cur) return study;
+      const changes = diffValues(cur.values, values);
+      if (!changes.length && !comment) return study;   // no-op edit: leave record and log alone
+      const ts = nowISO();
+      const next = { ...cur, values, updatedAt: ts };
+      return {
+        ...study,
+        entities: study.entities.map((e) => (e.id === id ? next : e)),
+        log: appendLog(study.log, { ...stamp(tax, next, ts), kind: "update", changes, comment, state: hashValues(values) }),
+      };
+    });
+  },
+  deleteEntity: (id, comment) => {
+    const tax = get().taxonomy;
+    mutateActive(get, set, (study) => {
+      const ts = nowISO();
+      const { study: pruned, removed, touched } = cascadeDelete(tax, study, id, ts);
+      const layout = { ...(pruned.layout ?? {}) };
+      for (const r of removed) delete layout[r.id];
+      // One entry per removed record - the primary one and everything the cascade took
+      // with it - plus an update for every record whose references were cleared.
+      const entries: LogInput[] = [
+        ...removed.map((r) => ({
+          ...stamp(tax, r, ts), kind: "delete" as const,
+          comment: r.id === id ? comment : `Removed with “${titleOf(tax, study.entities.find((e) => e.id === id))}”.`,
+        })),
+        ...touched.map((t) => ({
+          ...stamp(tax, t.after, ts), kind: "update" as const,
+          changes: diffValues(t.before.values, t.after.values),
+          comment: "Reference cleared by a deletion.",
+          state: hashValues(t.after.values),
+        })),
+      ];
+      return { ...pruned, layout, log: appendAll(study.log, entries) };
     });
   },
   setNodePos: (id, x, y) => {
