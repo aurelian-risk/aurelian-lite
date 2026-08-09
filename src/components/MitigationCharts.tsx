@@ -17,6 +17,7 @@ import { effectClassOf, EFFECT_CHANNEL, type EffectClass } from "../domain/contr
 import { arcPath, heatColor } from "../domain/viz";
 import { EntityModal } from "./EntityModal";
 import { Icon } from "./ui";
+import { DEFAULT_CALIBRATION } from "../domain/calibration";
 
 /** Iterations behind the ring. Enough for a stable percentage, far below what the
  *  quantification view needs for a loss curve - this only has to fill three arcs. */
@@ -31,6 +32,8 @@ export function MitigationCharts({ tax, study, color }: { tax: Taxonomy; study: 
   const [perScenario, setPerScenario] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggle = (id: string) => setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const cal = study.calibration ?? DEFAULT_CALIBRATION;
 
   const model = useMemo(() => {
     const stepType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
@@ -50,9 +53,9 @@ export function MitigationCharts({ tax, study, color }: { tax: Taxonomy; study: 
     // this: a backup does not stop an attacker reaching the step, it pays for it later.
     const defenceOf = (st: StepCov) => 1 - (1 - st.prevention) * (1 - st.detection);
     const scenarios = ops.map((op) => {
-      const cov = coverageOf(study, tax, op);
+      const cov = coverageOf(study, tax, op, cal);
       // What becomes of an attempt on this chain, from the traversal itself.
-      const d = deriveInputs(study, tax, op, true);
+      const d = deriveInputs(study, tax, op, true, cal);
       const r = simulate(d.inputs, RING_ITER, d.chain);
       const outcome = { caught: r.detected, through: r.vuln, resisted: Math.max(0, 1 - r.detected - r.vuln) };
       return {
@@ -85,14 +88,14 @@ export function MitigationCharts({ tax, study, color }: { tax: Taxonomy; study: 
       for (const m of sorted) {
         const cls = effectClassOf(m);
         const defends = cls === "Preventive" || cls === "Detective";
-        const eff = measureEfficacyOf(tax, m);
+        const eff = measureEfficacyOf(tax, m, cal);
         segs.push({ m, cls, contrib: defends ? eff * remaining : 0, impl: implFrac(m), status: String(m.values.status ?? "") });
         if (defends) remaining *= (1 - eff);
       }
       return segs;
     };
     return { scenarios, flat, present, covFor, stepsFor, layersOf, tacticF, measureType, stepType };
-  }, [tax, study]);
+  }, [tax, study, cal]);
 
   if (!model) return null;
   const { scenarios, flat, present, covFor, stepsFor, layersOf, measureType, stepType } = model;

@@ -5,22 +5,25 @@
 // curve) recomputes live; an inherent<->residual toggle shows what the controls buy.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { EntityRecord, Study, Taxonomy } from "../domain/types";
-import { getType, recordTitle } from "../domain/taxonomy";
+import { getType, recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
 import { useStore } from "../domain/store";
+import { DEFAULT_CALIBRATION } from "../domain/calibration";
 import { simulate, type QuantInputs, type QuantResult, type Range } from "../domain/montecarlo";
 import { deriveInputs, meanOf, type Derived, type Prov } from "../domain/quantModel";
+import { likelihoodCheck } from "../domain/frequency";
 import { DistInput, fmtVal, type Unit } from "./DistInput";
 import { FactorTrace } from "./FactorTrace";
 import { EntityModal } from "./EntityModal";
 import { Icon } from "./ui";
+import { copyText, quantLlmMarkdown } from "../domain/clipboard";
 
 const UNIT: Record<keyof QuantInputs, Unit> = {
-  threatActivity: "rate", attackProbability: "prob", adversaryStrength: "prob", controlStrength: "prob",
+  attemptRate: "rate", adversaryStrength: "prob", controlStrength: "prob",
   directImpact: "money", cascadingLikelihood: "prob", cascadingImpact: "money",
 };
 export interface FConf { lo: number; hi: number; log: boolean }
 const FCONF: Record<keyof QuantInputs, FConf> = {
-  threatActivity: { lo: 0.05, hi: 100, log: true }, attackProbability: { lo: 0, hi: 1, log: false },
+  attemptRate: { lo: 0.005, hi: 100, log: true },
   adversaryStrength: { lo: 0, hi: 1, log: false }, controlStrength: { lo: 0, hi: 1, log: false },
   directImpact: { lo: 1e3, hi: 5e7, log: true }, cascadingLikelihood: { lo: 0, hi: 1, log: false },
   cascadingImpact: { lo: 1e3, hi: 5e7, log: true },
@@ -97,12 +100,14 @@ const ITER = 50000;   // Monte-Carlo iterations per run (both with- and without-
 
 function QuantTree({ tax, study, op, color }: { tax: Taxonomy; study: Study; op: EntityRecord; color: string }) {
   const [residual, setResidual] = useState(true);
+  const [copied, setCopied] = useState<string | null>(null);
   const [trace, setTrace] = useState<keyof QuantInputs | null>(null);
   const [modal, setModal] = useState<EntityRecord | null>(null);
   // Two derivations: with controls (residual) and without (inherent). They differ
   // ONLY in control strength - that is exactly what the controls buy.
-  const derivedWith = useMemo(() => deriveInputs(study, tax, op, true), [study, tax, op]);
-  const derivedWithout = useMemo(() => deriveInputs(study, tax, op, false), [study, tax, op]);
+  const cal = study.calibration ?? DEFAULT_CALIBRATION;
+  const derivedWith = useMemo(() => deriveInputs(study, tax, op, true, cal), [study, tax, op, cal]);
+  const derivedWithout = useMemo(() => deriveInputs(study, tax, op, false, cal), [study, tax, op, cal]);
   const derived = residual ? derivedWith : derivedWithout;  // the one the tree shows
   // Every factor is adjustable: derived defaults + per-factor user overrides.
   // Overrides are study-specific and persisted per op scenario (the derived values
@@ -151,7 +156,7 @@ function QuantTree({ tax, study, op, color }: { tax: Taxonomy; study: Study; op:
   const M = (k: keyof QuantInputs) => meanOf(inputs[k]);
   // TEF / Vulnerability / LEF come from the simulation itself (Vulnerability is the
   // empirical P(adversary > control)); fall back to a rough estimate until it runs.
-  const tef = result?.tef ?? M("threatActivity") * M("attackProbability");
+  const tef = result?.tef ?? M("attemptRate");
   const vuln = result?.vuln ?? c01(M("adversaryStrength") - M("controlStrength") + 0.5);
   const lef = result?.lef ?? tef * vuln;
   const primary = M("directImpact");
@@ -161,6 +166,13 @@ function QuantTree({ tax, study, op, color }: { tax: Taxonomy; study: Study; op:
   // What the controls buy. NOT a higher control strength any more - that is the
   // scenario baseline and is the same either way. The controls sit ON the chain, so
   // what they buy is measured by where the attempts now die.
+  // The likelihood rating is no longer an input, which makes it usable as a check: the
+  // model reaches its own answer and the two can be compared without circularity.
+  const lkF = getType(tax, op.type)?.fields.find((f) => f.key === "likelihood");
+  const lkCheck = lkF && residual && result
+    ? likelihoodCheck(lef, typeof op.values.likelihood === "number" ? op.values.likelihood : null, cal.frequency, scaleMax(lkF))
+    : null;
+
   const benefit = resWith && resWithout ? resWithout.ale.mean - resWith.ale.mean : 0;
   const benefitPct = resWithout && resWithout.ale.mean > 0 ? Math.round((benefit / resWithout.ale.mean) * 100) : 0;
 
@@ -176,6 +188,21 @@ function QuantTree({ tax, study, op, color }: { tax: Taxonomy; study: Study; op:
             <button className={"seg-btn" + (residual ? " on" : "")} onClick={() => setResidual(true)}>Residual (with controls)</button>
           </div>
           {benefit > 0 && <div className="qt-delta">controls cut the mean annual loss by {fmtVal(benefit, "money")} → -{benefitPct}%</div>}
+          <button className="btn sm qt-llm" onClick={() => {
+            void copyText(quantLlmMarkdown(tax, study)).then((okd) => setCopied(okd ? "copied" : "copy failed"));
+            setTimeout(() => setCopied(null), 2500);
+          }} title="The full quantification as text: the rules, the parameters in force, every derived term, the chain, the results and the stated limits">
+            {copied ?? "Copy for an LLM"}
+          </button>
+          {lkCheck?.diverges && (
+            <div className="qt-crosscheck">
+              You rated this scenario <b>{scaleLabel(lkF!, lkCheck.ratedLevel!)}</b>; working from the
+              actor and the chain, the model arrives at <b>{scaleLabel(lkF!, lkCheck.modelLevel)}</b>
+              {" "}({lef > 0 ? `about one loss event every ${Math.round(1 / lef)} years` : "no loss events"}).
+              The rating is not used in the calculation, so this is a genuine second opinion -
+              worth resolving in one direction or the other.
+            </div>
+          )}
         </div>
       </div>
       {resWith && resWithout && <LossDistribution resultWith={resWith} resultWithout={resWithout} active={residual ? "with" : "without"} accent={color}
@@ -184,15 +211,11 @@ function QuantTree({ tax, study, op, color }: { tax: Taxonomy; study: Study; op:
       <div className="qt-tree">
         <NodeRow op="×" title="Loss event frequency" value={fmtVal(lef, "rate")} />
         <div className="qt-sub">
-          <NodeRow op="×" title="Threat event frequency" value={fmtVal(tef, "rate")} />
-          <div className="qt-sub">
-            <LeafRow title="Contact frequency" value={fmtVal(M("threatActivity"), "rate")} prov={derived.prov.threatActivity} onTrace={() => setTrace("threatActivity")} />
-            <LeafRow title="Probability of action" value={fmtVal(M("attackProbability"), "prob")} prov={derived.prov.attackProbability} onTrace={() => setTrace("attackProbability")} />
-          </div>
+          <LeafRow title="Attempts per year" value={fmtVal(M("attemptRate"), "rate")} prov={derived.prov.attemptRate} onTrace={() => setTrace("attemptRate")} />
           <NodeRow op="vs" title="Vulnerability" value={fmtVal(vuln, "prob")} />
           <div className="qt-sub">
-            <LeafRow title="Adversary strength" value={fmtVal(M("adversaryStrength"), "prob")} prov={derived.prov.adversaryStrength} onTrace={() => setTrace("adversaryStrength")} />
-            <LeafRow title="Control strength" value={fmtVal(M("controlStrength"), "prob")} prov={derived.prov.controlStrength} onTrace={() => setTrace("controlStrength")} />
+            <LeafRow title="Attacker capability" value={fmtVal(M("adversaryStrength"), "prob")} prov={derived.prov.adversaryStrength} onTrace={() => setTrace("adversaryStrength")} />
+            <LeafRow title="What an attempt has to beat" value={fmtVal(M("controlStrength"), "prob")} prov={derived.prov.controlStrength} onTrace={() => setTrace("controlStrength")} />
           </div>
         </div>
         <NodeRow op="+" title="Loss magnitude" value={fmtVal(primary + secondary, "money")} />
@@ -210,7 +233,7 @@ function QuantTree({ tax, study, op, color }: { tax: Taxonomy; study: Study; op:
         {" · "}drag any curve to tune a factor - saved with the study · derived values come from the study inputs
       </div>
       {trace && <FactorTrace fkey={trace} range={inputs[trace]} vals={{
-        contact: M("threatActivity"), prob: M("attackProbability"), adv: M("adversaryStrength"), ctl: M("controlStrength"),
+        rate: M("attemptRate"), adv: M("adversaryStrength"), ctl: M("controlStrength"),
         tef, vuln, lef, direct: primary, cascL: M("cascadingLikelihood"), cascI: M("cascadingImpact"),
         secondary, lm: primary + secondary, ale: nodes.ale,
       }} derived={derived} tax={tax} unit={UNIT[trace]} conf={FCONF[trace]} accent={color}
@@ -221,12 +244,17 @@ function QuantTree({ tax, study, op, color }: { tax: Taxonomy; study: Study; op:
   );
 }
 
+// The icon sits in its own fixed-width slot and the text in a separate one, so the
+// icons line up in a single column down the tree rather than starting wherever the
+// preceding label happened to end. The full text stays in the tooltip, because the
+// text slot truncates when a provenance line is long.
 function ProvChip({ prov, onClick }: { prov: Prov; onClick?: () => void }) {
-  const cls = "chip" + (onClick ? " link" : "") + (prov.estimated ? " qt-prov-est" : "");
-  const inner = <>{prov.icon} {prov.source}{prov.label && prov.label !== "estimate" ? ` · ${prov.label}` : ""}</>;
+  const cls = "chip qt-prov-chip" + (onClick ? " link" : "") + (prov.estimated ? " qt-prov-est" : "");
+  const text = `${prov.source}${prov.label && prov.label !== "estimate" ? ` · ${prov.label}` : ""}`;
+  const inner = <><i className="qt-prov-ico">{prov.icon}</i><span className="qt-prov-txt">{text}</span></>;
   return onClick
-    ? <button type="button" className={cls} onClick={onClick} title="Trace / adjust this factor">{inner}</button>
-    : <span className={cls} title={`${prov.source}: ${prov.label}`}>{inner}</span>;
+    ? <button type="button" className={cls} onClick={onClick} title={`${text}\n\nTrace / adjust this factor`}>{inner}</button>
+    : <span className={cls} title={text}>{inner}</span>;
 }
 
 // A composed node: the operator badge shows how its children combine (× / + / vs).
@@ -347,7 +375,7 @@ function ChainBreak({ result, derived, tax, accent, benefit, onTrace }: {
   // The bar must account for every attempt, so it keeps even the slivers; only the
   // written-out list below is trimmed to the ones worth naming.
   const segs = [
-    ...(result.blockedAtBaseline > 0 ? [{ id: "", label: "capability below baseline resistance", p: result.blockedAtBaseline }] : []),
+    ...(result.blockedAtBaseline > 0 ? [{ id: "", label: "not up to what the attack itself demands", p: result.blockedAtBaseline }] : []),
     ...result.breaks.filter((b) => b.p > 0).sort((a, b) => b.p - a.p).map((b) => ({ id: b.id, label: titleOf(b.id), p: b.p })),
   ];
   // Every outcome gets a row: the list is framed as "out of every 100", so dropping the
@@ -382,7 +410,7 @@ function ChainBreak({ result, derived, tax, accent, benefit, onTrace }: {
           style={{ width: `${result.vuln * 100}%`, background: warn }} />
       </div>
       <div className="qb-rows">
-        {named.map((s) => row(s.p, s.id ? `stopped at ${s.label}` : "attacker capability below the scenario's baseline resistance"))}
+        {named.map((s) => row(s.p, s.id ? `stopped at ${s.label}` : "attacker not capable enough for this attack, before any measure of yours"))}
         {row(result.vuln, "reach the objective - these become loss events", "through")}
       </div>
       <div className="qb-foot">

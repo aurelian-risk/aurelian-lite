@@ -5,6 +5,49 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.4.5] — 2026-08-09
+
+Attempt rate and resistance are derived from the modelled scenario instead of being
+rated. The parameters they use are editable in the app.
+
+### Changed
+- **Attempt rate replaces contact frequency × probability of action.** Derived as base
+  rate (actor class × sector) × tempo × throughput × target pull × reachability. The two
+  former factors are not separable from available data: outside exposure-driven attacks
+  one of them is structurally 1. Six previously unread fields now feed the derivation:
+  actor category, resources, relevance, target objectives, entry technique, study sector.
+- **The likelihood rating is no longer an input.** It is compared against the model's own
+  result and flagged where the two differ by more than one level.
+- **The bar an attempt must beat is derived from the kill chain** — entry cost, tooling
+  maturity, count of distinct tactics, dwell requirement — instead of from the difficulty
+  rating. Resistance is therefore contributed only by modelled measures. Access granted by
+  a stakeholder lowers the entry cost. Scenarios without a modelled chain continue to use
+  the difficulty rating.
+- **Splitting a step still leaves results unchanged.** The new terms use a maximum over
+  tooling maturity and a count of distinct tactics.
+- **Parameters revised against published figures.** Sector multipliers 1.4–1.8 → 1.10–1.15:
+  victim counts have no denominator, and incidence among comparable organisations differs
+  by tens of percent rather than by factors. Valid accounts as an entry route 0.8 → 1.2,
+  the most common initial-access vector rather than the rarest. Control strengths
+  unchanged, now with published support.
+
+### Added
+- **Calibration section in the Quantification workshop.** 14 parameter tables, each value
+  on a track with its default marked, reset per table or as a whole. Each table states its
+  question, its effect, its source, and its basis: *measured* (published figure,
+  derivation documented), *derived* (published figure plus a stated assumption) or
+  *judgement* (no published figure). 6 of 14 are measured or derived. Stored on the study
+  and included in its export.
+- **Sector selection in the scope workshop**, with the rate exceptions it triggers.
+- **Text export of the quantification for a language model**: model rules, parameters in
+  force, each derived term, the chain with its measures, results, and stated limits.
+- **Derivations shown in the factor popups**: the attempt rate as its multiplication, the
+  bar as its four contributions.
+- **Three completeness checks**: risk source without a category, risk source without a
+  target objective, chain whose first step names no technique.
+- **`docs/calibration-sources.md`**: the derivation behind each default, the anchors
+  considered and rejected, and the remaining limitations.
+
 ## [0.4.1] — 2026-08-06
 
 The change history becomes one hash-chained log per study instead of a separate history

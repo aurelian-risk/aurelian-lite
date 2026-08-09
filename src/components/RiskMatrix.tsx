@@ -6,6 +6,7 @@ import { Fragment, useState } from "react";
 import type { EntityRecord, EntityTypeDef, Study, Taxonomy } from "../domain/types";
 import { recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
 import { residualPos } from "../domain/treatment";
+import { DEFAULT_CALIBRATION } from "../domain/calibration";
 import { EntityModal } from "./EntityModal";
 
 function risk(r: number) {
@@ -15,6 +16,7 @@ function risk(r: number) {
 export function RiskMatrix({ tax, study, type, color }: { tax: Taxonomy; study: Study; type: EntityTypeDef; color: string }) {
   const [rec, setRec] = useState<EntityRecord | null>(null);
   const [mode, setMode] = useState<"inherent" | "residual">("inherent");
+  const cal = study.calibration ?? DEFAULT_CALIBRATION;
   const scales = type.fields.filter((f) => f.type === "scale");
   const xF = scales[0], yF = scales[1];
   if (!xF || !yF) return null;
@@ -36,7 +38,7 @@ export function RiskMatrix({ tax, study, type, color }: { tax: Taxonomy; study: 
   const inherent = (e: EntityRecord) => ({ x: Number(e.values[xF.key]) || 1, y: Number(e.values[yF.key]) || 1 });
   const residual = (e: EntityRecord) => {
     const t = treatOf.get(e.id);
-    return t ? residualPos(study, tax, e, t, xF.key, yF.key) : inherent(e); // untreated stay put
+    return t ? residualPos(study, tax, e, t, xF.key, yF.key, cal) : inherent(e); // untreated stay put
   };
   // Resolve every position ONCE per render. The residual position now runs the chain
   // traversal (see treatment.ts), so calling it per grid cell - which is what a naive

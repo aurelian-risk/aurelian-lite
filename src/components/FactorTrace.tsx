@@ -16,16 +16,15 @@ import { ScaleBars, Icon } from "./ui";
 type FKey = keyof QuantInputs;
 // Every value needed to spell out the calculation with real numbers.
 export interface Vals {
-  contact: number; prob: number; adv: number; ctl: number;
+  rate: number; adv: number; ctl: number;
   tef: number; vuln: number; lef: number;
   direct: number; cascL: number; cascI: number; secondary: number; lm: number; ale: number;
 }
-interface Meta { title: string; kind: "activity" | "likelihood" | "capability" | "control" | "money" | "prob" }
+interface Meta { title: string; kind: "attempts" | "capability" | "control" | "money" | "prob" }
 const META: Record<FKey, Meta> = {
-  threatActivity: { title: "Contact frequency", kind: "activity" },
-  attackProbability: { title: "Probability of action", kind: "likelihood" },
-  adversaryStrength: { title: "Adversary strength", kind: "capability" },
-  controlStrength: { title: "Control strength", kind: "control" },
+  attemptRate: { title: "Attempts per year", kind: "attempts" },
+  adversaryStrength: { title: "Attacker capability", kind: "capability" },
+  controlStrength: { title: "What an attempt has to beat", kind: "control" },
   directImpact: { title: "Direct impact", kind: "money" },
   cascadingLikelihood: { title: "Cascading likelihood", kind: "prob" },
   cascadingImpact: { title: "Cascading impact", kind: "money" },
@@ -34,20 +33,19 @@ const META: Record<FKey, Meta> = {
 // The chain of result nodes each factor flows through, up to the annual loss.
 type Node = "tef" | "vuln" | "lef" | "secondary" | "lm" | "ale";
 const PATH: Record<FKey, Node[]> = {
-  threatActivity: ["tef", "lef", "ale"],
-  attackProbability: ["tef", "lef", "ale"],
+  attemptRate: ["tef", "lef", "ale"],
   adversaryStrength: ["vuln", "lef", "ale"],
   controlStrength: ["vuln", "lef", "ale"],
   directImpact: ["lm", "ale"],
   cascadingLikelihood: ["secondary", "lm", "ale"],
   cascadingImpact: ["secondary", "lm", "ale"],
 };
-const NODE_NAME: Record<Node, string> = { tef: "Threat event frequency", vuln: "Vulnerability", lef: "Loss event frequency", secondary: "Secondary risk", lm: "Loss magnitude", ale: "Annual loss" };
+const NODE_NAME: Record<Node, string> = { tef: "Attempts per year", vuln: "Vulnerability", lef: "Loss event frequency", secondary: "Secondary risk", lm: "Loss magnitude", ale: "Annual loss" };
 const NODE_UNIT: Record<Node, Unit> = { tef: "rate", vuln: "prob", lef: "rate", secondary: "money", lm: "money", ale: "money" };
 // The factor's own mean value (what the simulation actually uses) - keeps the
 // header, the start node and the equations consistent.
 const FVAL: Record<FKey, keyof Vals> = {
-  threatActivity: "contact", attackProbability: "prob", adversaryStrength: "adv", controlStrength: "ctl",
+  attemptRate: "rate", adversaryStrength: "adv", controlStrength: "ctl",
   directImpact: "direct", cascadingLikelihood: "cascL", cascadingImpact: "cascI",
 };
 
@@ -60,12 +58,15 @@ function Term({ t, hit }: { t: EqTerm; hit: boolean }) {
 // The explicit formula for each result node: which terms combine, by which op.
 function equation(node: Node, v: Vals): { terms: EqTerm[]; op: string; result: number; approx?: boolean; note?: string } {
   switch (node) {
-    case "tef": return { op: "×", result: v.tef, terms: [{ label: "Contact frequency", value: v.contact, unit: "rate" }, { label: "Probability of action", value: v.prob, unit: "prob" }] };
-    case "vuln": return { op: "vs", result: v.vuln, note: "P( capability > resistance ) - the share of threat events in which the drawn capability exceeds the scenario baseline and every defended step on at least one route through the chain, measured over the simulation", terms: [{ label: "Adversary strength", value: v.adv, unit: "prob" }, { label: "Control strength", value: v.ctl, unit: "prob" }] };
+    // One derived quantity now, not a product - how often contact happens and how often
+    // it turns into an attempt are not separable from real data, so they are derived
+    // together. The breakdown that produced this number is shown in the source panel.
+    case "tef": return { op: "", result: v.tef, note: "how often this scenario is attempted, before anyone tries to stop it", terms: [{ label: "Attempts per year", value: v.rate, unit: "rate" }] };
+    case "vuln": return { op: "vs", result: v.vuln, note: "P( capability > the bar ) - the share of attempts in which the drawn capability exceeds the scenario's demand and every defended step on at least one route through the chain, measured over the simulation", terms: [{ label: "Attacker capability", value: v.adv, unit: "prob" }, { label: "What an attempt has to beat", value: v.ctl, unit: "prob" }] };
     // Rates below 1/yr are far easier to judge as a return period, so say it in words too.
     case "lef": return { op: "×", result: v.lef,
       note: v.lef > 0 && v.lef < 1 ? `about one loss event every ${Math.round(1 / v.lef)} years` : undefined,
-      terms: [{ label: "Threat event frequency", value: v.tef, unit: "rate" }, { label: "Vulnerability", value: v.vuln, unit: "prob" }] };
+      terms: [{ label: "Attempts per year", value: v.tef, unit: "rate" }, { label: "Vulnerability", value: v.vuln, unit: "prob" }] };
     case "secondary": return { op: "×", result: v.secondary, terms: [{ label: "Cascading likelihood", value: v.cascL, unit: "prob" }, { label: "Cascading impact", value: v.cascI, unit: "money" }] };
     case "lm": return { op: "+", result: v.lm, terms: [{ label: "Direct impact", value: v.direct, unit: "money" }, { label: "Secondary risk", value: v.secondary, unit: "money" }] };
     case "ale": return { op: "×", result: v.ale, approx: true, note: "mean over the simulated years", terms: [{ label: "Loss event frequency", value: v.lef, unit: "rate" }, { label: "Loss magnitude", value: v.lm, unit: "money" }] };
@@ -89,21 +90,54 @@ export function FactorTrace({ fkey, range, vals, derived, tax, unit, conf, accen
     ? <button className="ft-open" onClick={() => onOpenEntity(rec)}>{label}: <b>{recordTitle(getType(tax, rec.type)!, rec)}</b> <Icon.chevron /></button> : null;
 
   let source: React.ReactNode = null;
-  if (m.kind === "activity" || m.kind === "capability") {
-    const key = m.kind === "activity" ? "activity" : "capability";
-    const s = scaleOf(tax, rs, key);
+  if (m.kind === "attempts") {
+    // Show the multiplication, not a description of it. One evidenced base rate, then
+    // ratios an analyst can argue with one at a time.
+    const f = derived.frequency;
+    const x = (n: number) => `×${n.toPrecision(2)}`;
+    const rows: { label: string; value: string; from: string }[] = [
+      { label: "Base rate", value: `${f.base.toPrecision(2)}/yr`, from: "actor class × sector" },
+      { label: "Tempo", value: x(f.tempo), from: "how active this actor is" },
+      { label: "Throughput", value: x(f.throughput), from: "how much it can run at once" },
+      { label: "Target pull", value: x(f.pull), from: "whether it declared an objective on what this chain goes after" },
+      { label: "Reachability", value: x(f.reachability), from: "how easily contact happens, from the entry technique" },
+    ];
     source = (
       <>
         {openBtn(rs, "Risk source")}
-        {s && <p className="ft-calc">{s.field.label} = <b>{s.label}</b> ({s.value}/{s.max}) → {m.title.toLowerCase()} ≈ {fmtVal(range.min, unit)} · <b>{fmtVal(range.mode, unit)}</b> · {fmtVal(range.max, unit)}</p>}
+        <p className="ft-calc">
+          How often this scenario is attempted. One number, not two: how often contact
+          happens and how often contact turns into an attempt cannot be told apart from
+          real data, so they are derived together.
+        </p>
+        <div className="ft-steps">
+          {rows.map((r) => (
+            <div className="ft-step" key={r.label}>
+              <span className="ft-step-n">{r.label} <em className="ft-step-join">· {r.from}</em></span>
+              <span className="ft-step-c"><b className="ok">{r.value}</b></span>
+            </div>
+          ))}
+          <div className="ft-step">
+            <span className="ft-step-n"><b>Attempts per year</b></span>
+            <span className="ft-step-c"><b className="ok">{fmtVal(f.total, "rate")}</b></span>
+          </div>
+        </div>
+        {f.capped && <p className="ft-est">Capped: the multipliers together produced a rate no single scenario plausibly sees, which usually means one of the ratings is too high.</p>}
         {rs && <div className="ft-ratings">{["capability", "resources", "activity", "relevance"].map((k) => { const sc = scaleOf(tax, rs, k); return sc ? <div className="ft-rating" key={k}><span>{sc.field.label}</span><ScaleBars value={sc.value} max={sc.max} label={sc.label} positive={sc.field.polarity === "positive"} /></div> : null; })}</div>}
       </>
     );
-  } else if (m.kind === "likelihood") {
-    const s = scaleOf(tax, op, "likelihood");
-    source = (<>{openBtn(op, "Operational scenario")}{s && <p className="ft-calc">Likelihood = <b>{s.label}</b> → probability of action ≈ {Math.round(range.min * 100)}% · <b>{Math.round(range.mode * 100)}%</b> · {Math.round(range.max * 100)}%</p>}</>);
+  } else if (m.kind === "capability") {
+    const s = scaleOf(tax, rs, "capability");
+    source = (
+      <>
+        {openBtn(rs, "Risk source")}
+        {s && <p className="ft-calc">{s.field.label} = <b>{s.label}</b> ({s.value}/{s.max}) → this actor out-performs about <b>{Math.round(range.mode * 100)}%</b> of all attackers (range {Math.round(range.min * 100)}-{Math.round(range.max * 100)}%). That is what gets compared against the bar below.</p>}
+        {rs && <div className="ft-ratings">{["capability", "resources", "activity", "relevance"].map((k) => { const sc = scaleOf(tax, rs, k); return sc ? <div className="ft-rating" key={k}><span>{sc.field.label}</span><ScaleBars value={sc.value} max={sc.max} label={sc.label} positive={sc.field.polarity === "positive"} /></div> : null; })}</div>}
+      </>
+    );
   } else if (m.kind === "control") {
     const diff = scaleOf(tax, op, "difficulty");
+    const dm = derived.demand;
     const chain = derived.chain;
     // Walk the chain in TRAVERSAL order (that is what the simulation does), pulling each
     // step's measures from the coverage detail.
@@ -111,13 +145,49 @@ export function FactorTrace({ fkey, range, vals, derived, tax, unit, conf, accen
     source = (
       <>
         {openBtn(op, "Attack chain")}
-        <p className="ft-calc">
-          {diff && <>Difficulty = <b>{diff.label}</b> ({diff.value}/{diff.max}) → </>}
-          a baseline resistance of <b>{Math.round(range.mode * 100)}%</b>, beaten once before the chain starts.
-          {chain?.length
-            ? <> After that, a step is only a further hurdle if something blocks or detects him there. Steps with nothing on them cost him nothing - so splitting the chain into more steps never makes it look safer.</>
-            : <> No kill-chain steps here, so the baseline decides on its own.</>}
-        </p>
+        {dm ? (
+          <>
+            <p className="ft-calc">
+              What the attack itself demands, read off the chain below: an attacker has to
+              out-perform about <b>{Math.round(range.mode * 100)}%</b> of the field before any
+              measure of yours is counted. Each measure then adds to that at the step it sits on.
+            </p>
+            <div className="ft-steps">
+              <div className="ft-step">
+                <span className="ft-step-n">Getting in <em className="ft-step-join">· the entry technique</em></span>
+                <span className="ft-step-c"><b className="ok">{Math.round(dm.entry * 100)}%</b></span>
+              </div>
+              <div className="ft-step">
+                <span className="ft-step-n">Tooling <em className="ft-step-join">· {dm.tooling >= 1 ? "has to be built for the job" : dm.tooling > 0 ? "takes a practitioner" : "downloadable tools are enough"}</em></span>
+                <span className="ft-step-c"><b className="ok">+{Math.round(dm.adds.tooling * 100)}%</b></span>
+              </div>
+              <div className="ft-step">
+                <span className="ft-step-n">Breadth <em className="ft-step-join">· spans {dm.tactics} distinct {dm.tactics === 1 ? "tactic" : "tactics"}</em></span>
+                <span className="ft-step-c"><b className="ok">+{Math.round(dm.adds.depth * 100)}%</b></span>
+              </div>
+              <div className="ft-step">
+                <span className="ft-step-n">Staying in <em className="ft-step-join">· {dm.dwell > 0 ? "needs persistence, evasion or lateral movement" : "one pass, no need to stay"}</em></span>
+                <span className="ft-step-c"><b className="ok">+{Math.round(dm.adds.dwell * 100)}%</b></span>
+              </div>
+              <div className="ft-step">
+                <span className="ft-step-n"><b>What the attack demands</b></span>
+                <span className="ft-step-c"><b className="ok">{Math.round(dm.total * 100)}%</b></span>
+              </div>
+            </div>
+            <p className="ft-calc">
+              A step is only a further hurdle if something blocks or detects him there. Steps
+              with nothing on them cost him nothing - so splitting the chain into more steps
+              never makes it look safer.
+            </p>
+          </>
+        ) : (
+          <p className="ft-calc">
+            No kill-chain steps here, so there is nothing to read the demand off.
+            {diff && <> The difficulty rating stands in: <b>{diff.label}</b> ({diff.value}/{diff.max}) → </>}
+            an attacker has to out-perform about <b>{Math.round(range.mode * 100)}%</b> of the field.
+            Model the chain and this becomes derived instead of rated.
+          </p>
+        )}
         {walk.length > 0 && (
           <div className="ft-steps">
             {walk.map(({ cs, sc }, i) => (

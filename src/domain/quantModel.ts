@@ -8,6 +8,9 @@ import { getType, scaleLabel, scaleMax } from "./taxonomy";
 import { stepFields } from "./killchain";
 import { effectClassOf, type EffectClass } from "./controls";
 import { PERT_LAMBDA, type ChainStep, type QuantInputs, type Range } from "./montecarlo";
+import { DEFAULT_CALIBRATION, type Calibration } from "./calibration";
+import { demandOf, type DemandBreakdown, type DemandStep } from "./demand";
+import { attemptsPerYear, RATE_SPREAD, type FrequencyBreakdown, type Pull } from "./frequency";
 
 export interface Prov { icon: string; source: string; label: string; estimated?: boolean }
 export interface StepCov {
@@ -22,25 +25,18 @@ export interface StepCov {
    *  buys the chance to interrupt the intrusion before it reaches the objective. */
   detection: number;
 }
-// A single fully-implemented control never fully blocks a step; layers stack
-// (defense in depth), so step coverage saturates towards 1 as measures are added.
-export const CONTROL_CEILING = 0.85;
-// A measure only protects to the extent it is actually in place: a planned or
-// recommended control counts far less than an implemented one.
-// `implementation_level` already carries how far a control is rolled out, so the status
-// must not discount the same thing a second time - it says where the control is in its
-// lifecycle. A planned control that is partly in place still stops some attacks; a
-// merely recommended one is little more than an intention.
-export const STATUS_WEIGHT: Record<string, number> = { Implemented: 1, Planned: 0.5, Recommended: 0.15, Missing: 0 };
-/** Per-measure efficacy on a step: implementation level x lifecycle status x ceiling. */
-export function measureEfficacyOf(tax: Taxonomy, m: EntityRecord): number {
+/** Per-measure efficacy on a step: implementation level x lifecycle status x ceiling.
+ *  `implementation_level` already carries how far a control is rolled out, so the
+ *  status must not discount the same thing twice - it says where the control is in its
+ *  lifecycle, not how complete it is. */
+export function measureEfficacyOf(tax: Taxonomy, m: EntityRecord, cal: Calibration = DEFAULT_CALIBRATION): number {
   const mt = getType(tax, m.type);
   const implF = mt?.fields.find((f) => f.key === "implementation_level");
   const statusF = mt?.fields.find((f) => f.key === "status");
   const implMax = implF ? scaleMax(implF) : 4;
   const impl = (implF ? Number(m.values[implF.key] ?? 1) : implMax) / implMax;
-  const sw = STATUS_WEIGHT[statusF ? String(m.values[statusF.key] ?? "") : ""] ?? 1;
-  return c01(impl) * CONTROL_CEILING * sw;
+  const sw = cal.effect.statusWeight[statusF ? String(m.values[statusF.key] ?? "") : ""] ?? 1;
+  return c01(impl) * cal.effect.controlCeiling * sw;
 }
 /** Defense-in-depth step coverage from the layers' efficacies: 1 - product(1-eff). */
 export const stepCoverage = (effs: number[]) => 1 - effs.reduce((p, e) => p * (1 - e), 1);
@@ -56,6 +52,12 @@ export interface Derived {
   refs: Refs;
   scenario: string;
   riskSource: string;
+  /** How the attempt rate was arrived at - one term per factor, so the views can show
+   *  the multiplication instead of describing it. */
+  frequency: FrequencyBreakdown;
+  /** How the bar was arrived at. Absent where the scenario models no chain and the
+   *  `difficulty` rating carried on instead. */
+  demand?: DemandBreakdown;
 }
 
 const R = (min: number, mode: number, max: number): Range => ({ min, mode, max });
@@ -92,79 +94,18 @@ const scaleRatio = (tax: Taxonomy, rec: EntityRecord | undefined, key: string, f
   return max > 1 ? c01((v - 1) / (max - 1)) : 0;
 };
 
-// Calibration anchors (levels 1..4 ≈ ratio 0..1; sampled by sampleRange/sampleNum
-// so any scale length works). Frequencies are deliberately conservative:
-// a specific severe end-to-end scenario is attempted a fraction of a time per year,
-// not several - so the annual loss stays in a realistic range once magnitudes are
-// large. Vulnerability then thins these threat events by P(adversary > control).
-// Contact frequency = how often the actor drives THIS scenario (threat events/yr).
-const ACTIVITY: Range[] = [R(.1, .2, .4), R(.2, .4, .8), R(.4, .8, 1.5), R(.8, 1.5, 3)];
-// Probability of action = a contact turns into an actual attack attempt.
-const PROB_LK: Range[] = [R(.03, .06, .12), R(.06, .12, .25), R(.12, .25, .4), R(.25, .4, .6)];
-// Threat capability, as a share of the overall attacker population that this actor can
-// out-perform. A rating describes a CLASS of actor, not an individual, so each band is
-// deliberately wide: "capable" covers everything from an average operator to the best
-// people that class can field. Narrow bands would be false precision, and they would
-// turn the capability-vs-resistance comparison into an on/off switch.
+// Every number the model runs on now lives in `calibration.ts`, where it can be
+// inspected, edited, reset and exported. Nothing below invents a figure of its own -
+// what remains here is how the figures are COMBINED.
 //
-// Every band reaches close to 1 with a HEAVY MODE (lambda): the mass stays around the
-// rating, but the tail never quite closes. That tail is not decoration - PERT has hard
-// bounds, so a band that stops short of a control's strength yields exactly zero
-// vulnerability, and "this control cannot ever be beaten" is never a true statement.
-// Even an unskilled attacker occasionally walks into an unpatched box with a working
-// public exploit.
-const CAPAB: Range[] = [
-  { min: .01, mode: .12, max: .90, lambda: 7 },
-  { min: .05, mode: .32, max: .93, lambda: 5 },
-  { min: .15, mode: .58, max: .96, lambda: 4 },
-  { min: .35, mode: .82, max: .99, lambda: 4 },
-];
-// Control strength from scenario difficulty. This is the BASELINE the attacker has to
-// beat once per attempt, before any specific control - charging it once (rather than per
-// step) is what keeps the result independent of how finely the chain was decomposed.
-// Difficulty is a coarse ordinal judgement, so its levels sit CLOSE together: a single
-// step may shift the resistance by only a fraction of the spread around it, otherwise
-// one click of a 1..4 scale decides the whole analysis (measured: it used to swing
-// vulnerability by 60 points, which no analyst can justify).
-const DIFF_BASE = [.20, .30, .40, .50];                                                    // control from difficulty
-/** How far a step's own coverage lifts its resistance above the scenario baseline.
- *  Applied PER GATED STEP now, not once to an averaged coverage figure. Sized so that a
- *  single fully implemented control is worth roughly a factor of 2-3 on vulnerability -
- *  real controls shift the odds, none of them settles the matter. */
-export const K_PREV = 0.40;
-/** Deterrence works on the decision to attack, not on the attack: fewer attempts are
- *  started. Modest by nature - it discourages, it does not prevent. */
-export const K_DETER = 0.35;
-/** Avoidance removes the exposure itself, so it works on how often the actor makes
- *  contact at all. The strongest of the frequency-side levers. */
-export const K_AVOID = 0.60;
-/** Share of a primary loss that recovery can actually reach. Regulatory fines, contract
- *  penalties and reputational damage do not go away because the backups were good - so a
- *  fully implemented corrective control must never drive the loss towards zero. */
-export const RECOVERABLE_SHARE = 0.60;
-/** How far containment cuts the chance of follow-on losses. */
-export const K_CONTAIN = 0.50;
-/** Detecting the impact itself no longer prevents the loss; it shortens the event and
- *  therefore trims the bill. Deliberately small. */
-export const K_LATE_DET = 0.25;
-/** How much of a detective control's strength converts into actually breaking off an
- *  intrusion at that step. Well short of 1: alerts are missed, triaged late or not
- *  believed, and the published dwell times show how often a monitored intrusion still
- *  runs its course. Without this factor a single fully implemented detective control
- *  would stop more than half of all attempts where it sits. */
-export const K_DETECT = 0.35;
-/** Detection only stops an intrusion if somebody acts on it, so its effect is gated on
- *  the response capability (derived from the corrective measures of the scenario). The
- *  floor grants that SOME reaction always happens, even where none was planned - without
- *  it, a study with no corrective measures would rate its whole detection stack at zero. */
-export const RESPONSE_FLOOR = 0.20;
-/** Spread around a derived resistance mode. Wide on purpose: we do not know a control's
- *  strength to two decimals, and pretending we do makes the model a threshold detector
- *  instead of a dial. Symmetric, so shifting the mode moves the whole distribution. */
-const around = (mode: number): Range => R(c01(mode - 0.25), c01(mode), c01(mode + 0.25));
-const SEV_LOSS: Range[] = [R(5e3, 2e4, 8e4), R(5e4, 2e5, 8e5), R(2e5, 1e6, 4e6), R(1e6, 5e6, 2e7)];
-const SEV_CASC_L: Range[] = [R(.1, .2, .35), R(.2, .35, .55), R(.3, .5, .7), R(.45, .65, .85)];
-const SEV_CASC: Range[] = [R(2e3, 1e4, 4e4), R(2e4, 1e5, 4e5), R(1e5, 5e5, 2e6), R(5e5, 2.5e6, 1e7)];
+// Bands are anchored at levels 1..4 (≈ ratio 0..1) and sampled by sampleRange/sampleNum,
+// so a scale of any length feeds in: a classic 1..4 scale hits the anchors exactly, a
+// 1..N scale is placed proportionally.
+
+/** Spread either side of a derived bar. Symmetric, so moving the mode moves the whole
+ *  distribution rather than skewing it. */
+const around = (mode: number, spread: number): Range =>
+  R(c01(mode - spread), c01(mode), c01(mode + spread));
 
 /** Kill-chain mitigation coverage of an operational scenario: share of steps
  *  mitigated, weighted by the implementation level of the covering measures. */
@@ -180,7 +121,7 @@ function chainTypes(tax: Taxonomy) {
   return { stepType, parentF, measureType, coversF, implF };
 }
 
-export function coverageOf(study: Study, tax: Taxonomy, op: EntityRecord): Coverage {
+export function coverageOf(study: Study, tax: Taxonomy, op: EntityRecord, cal: Calibration = DEFAULT_CALIBRATION): Coverage {
   const { stepType, parentF, measureType, coversF, implF } = chainTypes(tax);
   if (!stepType || !parentF || !measureType || !coversF) return { mitigated: 0, total: 0, impl: 0, value: 0, steps: [] };
   const steps = study.entities.filter((e) => e.type === stepType.key && e.values[parentF.key] === op.id);
@@ -194,8 +135,8 @@ export function coverageOf(study: Study, tax: Taxonomy, op: EntityRecord): Cover
     // Defense in depth: each layer's efficacy (implementation x status), combined so
     // the step is only breached if every layer fails. Saturates as layers are added.
     // Split by what the measures actually DO - a backup on this step is not a barrier.
-    const effOf = (cls: EffectClass) => stepCoverage(cov.filter((m) => effectClassOf(m) === cls).map((m) => measureEfficacyOf(tax, m)));
-    const sc = stepCoverage(cov.map((m) => measureEfficacyOf(tax, m)));
+    const effOf = (cls: EffectClass) => stepCoverage(cov.filter((m) => effectClassOf(m) === cls).map((m) => measureEfficacyOf(tax, m, cal)));
+    const sc = stepCoverage(cov.map((m) => measureEfficacyOf(tax, m, cal)));
     const avgImpl = cov.length ? cov.reduce((a, m) => a + implFrac(m), 0) / cov.length : 0;
     if (cov.length) { mitigated++; implSum += avgImpl; }
     covSum += sc;
@@ -217,7 +158,7 @@ export function coverageOf(study: Study, tax: Taxonomy, op: EntityRecord): Cover
  *
  *  Returns undefined when the scenario has no steps: the caller then falls back to the
  *  plain baseline comparison, which is also the path for taxonomies without kill chains. */
-export function chainOf(tax: Taxonomy, cov: Coverage, ctlBase: number, readiness: number): ChainStep[] | undefined {
+export function chainOf(tax: Taxonomy, cov: Coverage, ctlBase: number, readiness: number, cal: Calibration = DEFAULT_CALIBRATION): ChainStep[] | undefined {
   if (!cov.steps.length) return undefined;
   const { stepType } = chainTypes(tax);
   const sf = stepType ? stepFields(stepType) : null;
@@ -282,10 +223,10 @@ export function chainOf(tax: Taxonomy, cov: Coverage, ctlBase: number, readiness
     join: n.sc.step.values.join === "any" ? "any" : "all",
     // Only what RESISTS here builds a barrier. A detective or corrective measure on this
     // step is not a wall the attacker has to climb.
-    gate: n.sc.prevention > 0 ? around(c01(ctlBase + K_PREV * n.sc.prevention)) : null,
+    gate: n.sc.prevention > 0 ? around(c01(ctlBase + cal.effect.prevention * n.sc.prevention), cal.demand.spread) : null,
     // Detection buys an interruption, and only as far as somebody responds to it. On the
     // objective itself there is nothing left to interrupt - that value goes to magnitude.
-    interrupt: isPred.has(n.sc.step.id) ? c01(K_DETECT * n.sc.detection * readiness) : 0,
+    interrupt: isPred.has(n.sc.step.id) ? c01(cal.effect.detection * n.sc.detection * readiness) : 0,
     terminal: !isPred.has(n.sc.step.id),
   }));
   if (!chain.some((s) => s.terminal)) chain[chain.length - 1].terminal = true;   // degenerate data
@@ -325,9 +266,58 @@ const scaleFieldLabel = (tax: Taxonomy, rec: EntityRecord | undefined, key: stri
   return f && typeof rec.values[key] === "number" ? scaleLabel(f, rec.values[key] as number) : "-";
 };
 
+/** The chain as the demand derivation sees it: which step the attempt starts at, what
+ *  technique and tactic each step uses, and whether the entry was handed over by a
+ *  stakeholder rather than taken. */
+function demandStepsOf(study: Study, tax: Taxonomy, cov: Coverage, strat: EntityRecord | undefined): DemandStep[] {
+  const { stepType } = chainTypes(tax);
+  const sf = stepType ? stepFields(stepType) : null;
+  const own = new Set(cov.steps.map((s) => s.step.id));
+  const predsOf = (rec: EntityRecord): string[] => {
+    const raw = sf ? rec.values[sf.predField.key] : null;
+    return Array.isArray(raw) ? (raw as unknown[]).filter((id): id is string => typeof id === "string" && id !== rec.id && own.has(id)) : [];
+  };
+  // Entry = no prerequisite inside this scenario. Where the chain declares no edges at
+  // all (legacy or imported data) the lowest step order stands in.
+  const withPreds = cov.steps.map((s) => ({ s, preds: predsOf(s.step) }));
+  const anyEdge = withPreds.some((n) => n.preds.length > 0);
+  const orderKey = sf?.orderField.key;
+  const ordered = orderKey
+    ? [...withPreds].sort((a, b) => Number(a.s.step.values[orderKey] ?? 0) - Number(b.s.step.values[orderKey] ?? 0))
+    : withPreds;
+  const entryIds = new Set(anyEdge
+    ? withPreds.filter((n) => !n.preds.length).map((n) => n.s.step.id)
+    : ordered.slice(0, 1).map((n) => n.s.step.id));
+
+  // Access the organisation itself handed over: the scenario's stakeholder grants
+  // access to the very asset the entry step goes after.
+  const sh = refOne(study, strat, "stakeholder");
+  const granted = new Set<string>();
+  const provides = sh?.values.provides_access_to;
+  if (Array.isArray(provides)) for (const id of provides as unknown[]) if (typeof id === "string") granted.add(id);
+
+  return cov.steps.map((s) => ({
+    technique: s.step.values.technique,
+    tactic: s.step.values.tactic,
+    entry: entryIds.has(s.step.id),
+    granted: entryIds.has(s.step.id) && typeof s.step.values.targets_asset === "string"
+      && granted.has(s.step.values.targets_asset as string),
+  }));
+}
+
+/** Why this organisation, as far as the declared objectives can tell. */
+function pullOf(study: Study, rs: EntityRecord | undefined, fe: EntityRecord | undefined): Pull {
+  if (!rs) return "none";
+  const objectives = study.entities.filter((e) => e.values.risk_origin === rs.id && Array.isArray(e.values.aims_at));
+  if (!objectives.length) return "none";
+  const target = fe?.values.business_asset;
+  if (typeof target !== "string") return "noMatch";
+  return objectives.some((o) => (o.values.aims_at as unknown[]).includes(target)) ? "declared" : "noMatch";
+}
+
 /** Derive all Monte-Carlo inputs for one operational scenario. `withControls`
- *  toggles inherent (false) vs residual (true, coverage lifts the difficulty). */
-export function deriveInputs(study: Study, tax: Taxonomy, op: EntityRecord, withControls = true): Derived {
+ *  toggles inherent (false) vs residual (true, the modelled measures are counted). */
+export function deriveInputs(study: Study, tax: Taxonomy, op: EntityRecord, withControls = true, cal: Calibration = DEFAULT_CALIBRATION): Derived {
   const opT = getType(tax, op.type);
   // op -> strategic -> risk source / feared event
   const stratF = opT?.fields.find((f) => f.type === "ref" && f.refType);
@@ -335,25 +325,43 @@ export function deriveInputs(study: Study, tax: Taxonomy, op: EntityRecord, with
   const rs = refOne(study, strat, "risk_origin");
   const fe = refOne(study, strat, "feared_event");
 
-  const likeR = scaleRatio(tax, op, "likelihood"), diffR = scaleRatio(tax, op, "difficulty");
-  const capR = scaleRatio(tax, rs, "capability"), actR = scaleRatio(tax, rs, "activity"), sevR = scaleRatio(tax, fe, "severity");
-  const cov = coverageOf(study, tax, op);
+  const diffR = scaleRatio(tax, op, "difficulty");
+  const capR = scaleRatio(tax, rs, "capability"), sevR = scaleRatio(tax, fe, "severity");
+  const cov = coverageOf(study, tax, op, cal);
 
   // Each effect class acts on its own factor. Deterrence and avoidance work at the front
   // of the chain (fewer attempts, less contact), recovery at the back (a smaller bill).
   // Nothing here applies to the inherent derivation - "no controls" has to mean none.
   const linked = withControls ? linkedMeasures(study, tax, cov) : [];
   const classEff = (cls: EffectClass) =>
-    stepCoverage(linked.filter((m) => effectClassOf(m) === cls).map((m) => measureEfficacyOf(tax, m)));
+    stepCoverage(linked.filter((m) => effectClassOf(m) === cls).map((m) => measureEfficacyOf(tax, m, cal)));
   const deter = classEff("Deterrent"), avoid = classEff("Avoidance"), corr = classEff("Corrective");
   // Detection is worth what the response makes of it.
-  const readiness = RESPONSE_FLOOR + (1 - RESPONSE_FLOOR) * corr;
+  const readiness = cal.effect.responseFloor + (1 - cal.effect.responseFloor) * corr;
 
-  // Baseline resistance of the scenario. The controls no longer lift it - they sit on
-  // the individual steps of the chain, where the attacker meets them one at a time.
-  const ctlBase = sampleNum(DIFF_BASE, diffR);
-  const control = around(ctlBase);
-  const chain = withControls ? chainOf(tax, cov, ctlBase, readiness) : undefined;
+  // How often the scenario is attempted. ONE derived quantity - the old split into
+  // contact frequency and probability of action was not identifiable from real data,
+  // and its second half echoed the analyst's own likelihood conclusion back at them.
+  const dSteps = demandStepsOf(study, tax, cov, strat);
+  const freq = attemptsPerYear({
+    actor: String(rs?.values.category ?? ""),
+    sector: study.sector ?? "",
+    activity: scaleRatio(tax, rs, "activity"),
+    resources: scaleRatio(tax, rs, "resources"),
+    relevance: scaleRatio(tax, rs, "relevance"),
+    pull: pullOf(study, rs, fe),
+    entryTechnique: dSteps.find((s) => s.entry)?.technique,
+  }, cal.frequency);
+  const rate = R(freq.total / RATE_SPREAD, freq.total, freq.total * RATE_SPREAD);
+
+  // What an attempt is up against, before any measure. Derived from the chain the
+  // analyst already modelled; the `difficulty` rating only carries on where there is no
+  // chain to derive from. The measures are the OTHER side of the comparison - they sit
+  // on the individual steps, where the attacker meets them one at a time.
+  const demand = cov.steps.length ? demandOf(dSteps, cal.demand) : undefined;
+  const ctlBase = demand ? demand.total : sampleNum(cal.demand.difficultyFallback, diffR);
+  const control = around(ctlBase, cal.demand.spread);
+  const chain = withControls ? chainOf(tax, cov, ctlBase, readiness, cal) : undefined;
   const gated = chain?.filter((s) => s.gate).length ?? 0;
   const watched = chain?.filter((s) => s.interrupt > 0).length ?? 0;
   // Detection sitting ON the objective cannot prevent anything - it shortens the event.
@@ -361,34 +369,42 @@ export function deriveInputs(study: Study, tax: Taxonomy, op: EntityRecord, with
     .map((s) => cov.steps.find((c) => c.step.id === s.id)?.detection ?? 0));
 
   const cut = (r: Range, f: number) => (withControls ? scaleRange(r, c01(f)) : r);
+  // Deterrence and avoidance now act on the same factor - both mean fewer attempts -
+  // but they remain distinct in strength and in what they say: avoidance removes the
+  // exposure, deterrence discourages the actor who still has it in reach.
+  const fewer = (1 - cal.effect.avoidance * avoid) * (1 - cal.effect.deterrence * deter);
   const inputs: QuantInputs = {
-    threatActivity: cut(sampleRange(ACTIVITY, actR), 1 - K_AVOID * avoid),
-    attackProbability: cut(sampleRange(PROB_LK, likeR), 1 - K_DETER * deter),
-    adversaryStrength: sampleRange(CAPAB, capR),
+    attemptRate: cut(rate, fewer),
+    adversaryStrength: sampleRange(cal.adversary.capability, capR),
     controlStrength: control,
-    directImpact: cut(sampleRange(SEV_LOSS, sevR), (1 - RECOVERABLE_SHARE * corr) * (1 - K_LATE_DET * termDet)),
-    cascadingLikelihood: cut(sampleRange(SEV_CASC_L, sevR), 1 - K_CONTAIN * corr),
-    cascadingImpact: sampleRange(SEV_CASC, sevR),
+    directImpact: cut(sampleRange(cal.magnitude.loss, sevR), (1 - cal.effect.recoverableShare * corr) * (1 - cal.effect.lateDetection * termDet)),
+    cascadingLikelihood: cut(sampleRange(cal.magnitude.cascadeLikelihood, sevR), 1 - cal.effect.containment * corr),
+    cascadingImpact: sampleRange(cal.magnitude.cascadeLoss, sevR),
   };
   const rsName = rs ? String(rs.values.name ?? "risk source") : "risk source";
   const pct = (x: number) => `${Math.round(x * 100)}%`;
+  const actorLabel = String(rs?.values.category ?? "") || "unclassified actor";
+  const pullWord = freq.pull >= cal.frequency.targetPull.declared ? "declared target"
+    : freq.pull <= cal.frequency.targetPull.noMatch ? "no declared interest" : "no objectives modelled";
   const prov: Record<keyof QuantInputs, Prov> = {
-    threatActivity: { icon: avoid > 0 ? "🛡" : "◆", source: avoid > 0 ? "actor activity - avoidance" : "actor activity",
-      label: avoid > 0 ? `${scaleFieldLabel(tax, rs, "activity")} · exposure cut ${pct(K_AVOID * avoid)}` : scaleFieldLabel(tax, rs, "activity") },
-    attackProbability: { icon: deter > 0 ? "🛡" : "◆", source: deter > 0 ? "scenario likelihood - deterrence" : "scenario likelihood",
-      label: deter > 0 ? `${scaleFieldLabel(tax, op, "likelihood")} · attempts cut ${pct(K_DETER * deter)}` : scaleFieldLabel(tax, op, "likelihood") },
+    attemptRate: { icon: avoid > 0 || deter > 0 ? "🛡" : "◆",
+      source: avoid > 0 || deter > 0 ? `${actorLabel} - fewer attempts` : actorLabel,
+      label: avoid > 0 || deter > 0
+        ? `${pullWord} · attempts cut ${pct(1 - fewer)}`
+        : `${pullWord} · base ${freq.base.toPrecision(2)}/yr` },
     adversaryStrength: { icon: "⚔", source: rsName, label: scaleFieldLabel(tax, rs, "capability") },
-    controlStrength: { icon: "🛡", source: chain ? "scenario difficulty + chain" : "scenario difficulty",
-      label: chain
-        ? `${scaleFieldLabel(tax, op, "difficulty")} · ${gated}/${chain.length} gated${watched ? `, ${watched} watched` : ""}`
+    controlStrength: { icon: "🛡", source: demand ? "chain demand + measures" : "scenario difficulty",
+      label: demand
+        ? `${demand.tactics} tactics · ${gated}/${chain?.length ?? cov.steps.length} gated${watched ? `, ${watched} watched` : ""}`
         : scaleFieldLabel(tax, op, "difficulty") },
     directImpact: corr > 0 || termDet > 0
-      ? { icon: "🛡", source: "recovery & containment", label: `severity ${scaleFieldLabel(tax, fe, "severity")} · loss cut ${pct(1 - (1 - RECOVERABLE_SHARE * corr) * (1 - K_LATE_DET * termDet))}` }
+      ? { icon: "🛡", source: "recovery & containment", label: `severity ${scaleFieldLabel(tax, fe, "severity")} · loss cut ${pct(1 - (1 - cal.effect.recoverableShare * corr) * (1 - cal.effect.lateDetection * termDet))}` }
       : { icon: "✎", source: `severity ${scaleFieldLabel(tax, fe, "severity")}`, label: "estimate", estimated: true },
     cascadingLikelihood: corr > 0
-      ? { icon: "🛡", source: "containment", label: `follow-on cut ${pct(K_CONTAIN * corr)}` }
+      ? { icon: "🛡", source: "containment", label: `follow-on cut ${pct(cal.effect.containment * corr)}` }
       : { icon: "✎", source: "follow-on", label: "estimate", estimated: true },
     cascadingImpact: { icon: "✎", source: "follow-on", label: "estimate", estimated: true },
   };
-  return { inputs, chain, prov, coverage: cov, refs: { op, strategic: strat, riskSource: rs, fearedEvent: fe }, scenario: String(op.values.name ?? "scenario"), riskSource: rsName };
+  return { inputs, chain, prov, coverage: cov, refs: { op, strategic: strat, riskSource: rs, fearedEvent: fe },
+    scenario: String(op.values.name ?? "scenario"), riskSource: rsName, frequency: freq, demand };
 }

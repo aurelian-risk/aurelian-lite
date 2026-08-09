@@ -5,11 +5,11 @@
 //
 // Model per simulated year (the standard frequency/magnitude quantitative-risk
 // Monte-Carlo, matching the common open-source risk engines):
-//   threat events   = Poisson( contact_frequency x probability_of_action )
-//   per threat event: the attacker draws ONE capability and has to beat the scenario's
-//                     baseline resistance; where a kill chain is modelled he then has to
-//                     walk it (see below). Getting through is a LOSS event - Vulnerability
-//                     = P(threat capability > resistance strength) falls out empirically.
+//   attempts        = Poisson( attempt_rate )
+//   per attempt:     the attacker draws ONE capability and has to clear the scenario's
+//                     demand; where a kill chain is modelled he then has to walk it (see
+//                     below). Getting through is a LOSS event - Vulnerability
+//                     = P(capability > the bar) falls out empirically.
 //   per loss event:  loss = direct_impact + (rand < cascading_likelihood ? cascading_impact : 0)
 //   annual loss     = sum of the per-loss-event losses
 //
@@ -33,10 +33,12 @@ export interface Range { min: number; mode: number; max: number; lambda?: number
 export const PERT_LAMBDA = 4;
 
 export interface QuantInputs {
-  threatActivity: Range;       // attack attempts per year
-  attackProbability: Range;    // 0..1 - an attempt becomes an attack
-  adversaryStrength: Range;    // 0..1
-  controlStrength: Range;      // 0..1
+  /** Attempts on this scenario per year. ONE quantity: how often contact happens and
+   *  how often it turns into an attempt are not separable from real data, so they are
+   *  derived together (see domain/frequency.ts). */
+  attemptRate: Range;
+  adversaryStrength: Range;    // 0..1 - share of the attacker population out-performed
+  controlStrength: Range;      // 0..1 - the bar an attempt has to clear
   directImpact: Range;         // currency per loss event
   cascadingLikelihood: Range;  // 0..1 - a loss triggers follow-on loss
   cascadingImpact: Range;      // currency of the follow-on loss
@@ -69,15 +71,15 @@ export interface QuantResult {
   hist: { loss: number; p: number }[];           // distribution of positive annual losses (share per bin, LOG-spaced)
   histRange: { lo: number; hi: number };          // €-range the (log) histogram spans
   zeroShare: number;                              // fraction of years with no loss
-  tef: number;                                    // mean threat events / yr
+  tef: number;                                    // mean attempts / yr
   vuln: number;                                   // Vulnerability = P(adversary > control), empirical
   lef: number;                                    // mean loss events / yr (= tef x vuln)
-  /** Where attempts died: share of all threat events stopped by the scenario baseline
-   *  before any specific control, and the share stopped at each chain step (deepest
+  /** Where attempts died: share of all attempts stopped by what the attack itself
+   *  demands, before any specific measure, and the share stopped at each chain step (deepest
    *  step the attacker reached). `blockedAtBaseline + sum(breaks.p) + vuln === 1`. */
   blockedAtBaseline: number;
   breaks: { id: string; p: number }[];
-  /** Share of all threat events that were stopped by being detected and responded to,
+  /** Share of all attempts that were stopped by being detected and responded to,
    *  rather than by resistance. Part of `breaks`, reported separately because "we caught
    *  them in the act" is a different capability from "they could not get in". */
   detected: number;
@@ -163,9 +165,8 @@ export function simulate(inp: QuantInputs, iterations = 50000, chain?: ChainStep
   const breakCount = steps ? new Float64Array(steps.length) : null;
   let sum = 0, zero = 0, threatTot = 0, lossTot = 0, blockedBase = 0, caughtTot = 0;
   for (let i = 0; i < iterations; i++) {
-    const ta = Math.max(0, pert(rand, inp.threatActivity));
-    const ap = clamp01(pert(rand, inp.attackProbability));
-    const nThreat = poisson(rand, ta * ap);            // threat events this year (TEF)
+    const rate = Math.max(0, pert(rand, inp.attemptRate));
+    const nThreat = poisson(rand, rate);               // attempts this year (TEF)
     threatTot += nThreat;
     let lossEvents = 0;                                // Vulnerability applied per event
     for (let k = 0; k < nThreat; k++) {

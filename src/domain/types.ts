@@ -5,6 +5,8 @@
 // and data — is exportable/importable as a single swappable file.
 // ─────────────────────────────────────────────────────────────────────────
 
+import type { Calibration } from "./calibration";
+
 export type ID = string;
 
 export type FieldType =
@@ -122,6 +124,13 @@ export interface Study {
   name: string;
   organization: string;
   scope: string;
+  /** Selects the base-rate column of the calibration: actor classes go after some
+   *  sectors far more than others. Free of a value = no sector adjustment. */
+  sector?: string;
+  /** The parameters the quantification runs on. Part of the study, so it is exported,
+   *  imported and shared with it - no separate file and no separate mechanism.
+   *  Absent = the defaults. */
+  calibration?: Calibration;
   createdAt: string;
   updatedAt: string;
   entities: EntityRecord[];
