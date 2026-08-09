@@ -145,6 +145,7 @@ export function makeSampleStudy(): Study {
     id: uid(),
     name: "Riverside General Hospital - Core Systems (sample)",
     organization: "Riverside General Hospital Trust",
+    sector: "Healthcare",
     scope: "Patient data, emergency care and billing systems within the main hospital site.",
     createdAt: ts,
     updatedAt: ts,

@@ -6,6 +6,9 @@ import { getType, recordTitle, scaleLabel, scaleMax } from "./taxonomy";
 import { deriveInputs, meanOf } from "./quantModel";
 import { residualPos } from "./treatment";
 import { simulate, type QuantInputs, type QuantResult } from "./montecarlo";
+import { CALIBRATION_DOC, DEFAULT_CALIBRATION } from "./calibration";
+import { effectClassOf } from "./controls";
+import { likelihoodCheck } from "./frequency";
 
 function fieldSpec(f: FieldDef, tax: Taxonomy): string {
   const parts: string[] = [f.type];
@@ -919,4 +922,220 @@ export async function copyText(text: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Quantification dump for a language model
+//
+// A plain-text export of everything behind the monetary figures, meant to be
+// pasted into a chat as grounded context. It is deliberately SELF-DESCRIBING:
+// numbers alone invite a model to invent the method that produced them, so the
+// rules, the parameters and the stated limits travel with the results. Every
+// derived term is broken out rather than only its product, so the model can see
+// which input carries an answer instead of guessing.
+// ─────────────────────────────────────────────────────────────────────────
+
+const n2 = (x: number) => (Math.abs(x) >= 100 ? Math.round(x).toString() : Number(x.toPrecision(3)).toString());
+const pc = (x: number) => `${(x * 100).toFixed(1)}%`;
+const rng = (r: { min: number; mode: number; max: number }) => `${n2(r.min)} / ${n2(r.mode)} / ${n2(r.max)}`;
+
+/** Everything behind the quantification of one study, as grounded context. */
+export function quantLlmMarkdown(tax: Taxonomy, study: Study): string {
+  const cal = study.calibration ?? DEFAULT_CALIBRATION;
+  const opType = tax.entityTypes.find((t) => t.fields.some((f) => f.key === "difficulty"));
+  const stepType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
+  const parentF = stepType?.fields.find((f) => f.type === "ref" && f.refType);
+  const L: string[] = [];
+  const P = (...x: string[]) => L.push(...x);
+
+  P(`# Quantitative risk analysis — ${study.name}`, "");
+  P(`Organisation: ${study.organization || "not stated"}${study.sector ? ` · sector: ${study.sector}` : " · sector: not set"}`);
+  P(`Scope: ${study.scope || "not stated"}`, "");
+  P("This is a complete export of the quantitative model behind one risk study: the rules,",
+    "the parameters they use, the inputs read from the qualitative analysis, and the results.",
+    "It is self-contained — do not assume a standard method, use the definitions in §1.", "");
+
+  // ── 1. how the model works ──────────────────────────────────────────────
+  P("## 1. The model", "",
+    "```",
+    "annual loss   = loss event frequency × loss magnitude",
+    "  loss event frequency = attempts per year × vulnerability",
+    "  vulnerability        = P(attacker capability > the bar), measured over the simulation",
+    "  loss magnitude       = direct loss + follow-on likelihood × follow-on loss",
+    "```", "");
+  P("Every factor is a three-point range (min / most likely / max) sampled as a PERT",
+    "distribution over many simulated years, not a point estimate. Results below are means",
+    "unless labelled otherwise, and the run is seeded, so the figures are reproducible.", "");
+  P("**Attempts per year** is ONE derived quantity. Contact frequency and probability of",
+    "action are not modelled separately: the split is only identifiable for exposure-driven",
+    "attacks, and elsewhere one of the two factors is structurally 1. It is derived as",
+    "base rate × tempo × throughput × target pull × reachability, then reduced by any",
+    "deterrent or avoidance measures.", "");
+  P("**The bar** is what an attempt must beat, derived from the kill chain rather than",
+    "rated: entry cost + tooling maturity + breadth (distinct tactics) + dwell requirement.",
+    "It is charged once per attempt and is included in every defended step's resistance.",
+    "The measures are the OTHER side of the comparison and add to it per step.", "");
+  P("**Chain traversal.** Per attempt the attacker draws ONE capability and keeps it for",
+    "the whole walk. Steps are visited in topological order honouring each step's join",
+    "(`all` = every predecessor required, `any` = one route suffices). A step only costs",
+    "the attacker something if a measure defends it. A loss event requires reaching a",
+    "terminal step — initial compromise alone is not a loss event.", "");
+  P("**Measures act through the mechanism they work by**, each on a different factor:",
+    "preventive raises the bar at its step; detective gives a chance of breaking off the",
+    "intrusion there, scaled by response capability; corrective cuts the loss and the",
+    "follow-on loss; deterrent and avoidance cut the number of attempts. A measure with no",
+    "class stated is treated as preventive.", "");
+  P("**Decomposition invariance.** Describing the same attack in more steps never changes",
+    "the result: undefended steps are transparent, and the bar uses a maximum over tooling",
+    "and a count of DISTINCT tactics.", "");
+
+  // ── 2. parameters ───────────────────────────────────────────────────────
+  P("## 2. Parameters in force", "",
+    `These are settings, not measurements. Each is graded: **measured** = published figure`,
+    `with the derivation documented, **derived** = published figure plus a stated`,
+    `assumption, **judgement** = no published figure answers the question.`,
+    study.calibration ? "\n**This study uses an edited parameterisation** (changed from the shipped defaults)." : "\nThis study uses the shipped defaults unchanged.", "");
+  const f = cal.frequency, d = cal.demand;
+  const g = (k: string) => CALIBRATION_DOC[k]?.grade ?? "judgement";
+  P(`### Base rate, attacks/yr per organisation — *${g("frequency.baseRate")}*`);
+  P(Object.entries(f.baseRate).map(([k, v]) => `${k} ${v}`).join(" · ") + ` · anything else ${f.baseRateDefault}`);
+  P("", `### Sector exceptions — *${g("frequency.sector")}*`);
+  P(f.sector.map((r) => `${r.actor}×${r.sector} ×${r.factor}`).join(" · ") || "none");
+  P("", `### Frequency multipliers — *tempo/throughput/pull: ${g("frequency.tempo")}, reachability: ${g("frequency.reachability")}*`);
+  P(`tempo (by activity): ${f.tempo.join(" · ")}`);
+  P(`throughput (by resources): ${f.throughput.join(" · ")}`);
+  P(`target pull: declared objective ×${f.targetPull.declared} · has objectives, none match ×${f.targetPull.noMatch} · none modelled, by relevance ${f.targetPull.byRelevance.join(" · ")}`);
+  P(`reachability (by entry technique): ${Object.entries(f.reachability).map(([k, v]) => `${k} ×${v}`).join(" · ")} · other ×${f.reachabilityDefault}`);
+  P(`cap: ${f.cap}/yr · likelihood cross-check boundaries: ${f.likelihoodBands.join(" · ")} loss events/yr`);
+  P("", `### The bar — *entry: ${g("demand.entry")}, tooling & weights: ${g("demand.tooling")}*`);
+  P(`entry cost: ${Object.entries(d.entry).map(([k, v]) => `${k} ${v}`).join(" · ")} · other ${d.entryDefault} · granted access −${d.grantedAccess}`);
+  P(`weights: tooling ${d.wTooling} · breadth ${d.wDepth} (full at ${d.depthSaturates} distinct tactics) · dwell ${d.wDwell} (${d.dwellTactics.join(", ")})`);
+  P(`spread ±${d.spread} · floor ${d.floor} · fallback where no chain is modelled, by difficulty: ${d.difficultyFallback.join(" · ")}`);
+  P(`tooling maturity by technique (0 commodity, 0.5 practitioner, 1 bespoke): ${Object.entries(d.tooling).map(([k, v]) => `${k}=${v}`).join(", ")}`);
+  P(`  fallback by tactic: ${Object.entries(d.toolingByTactic).map(([k, v]) => `${k}=${v}`).join(", ")}`);
+  P("", `### Attacker capability, share of the attacker population out-performed — *${g("adversary.capability")}*`);
+  P(cal.adversary.capability.map((b, i) => `level ${i + 1}: ${rng(b)}`).join(" · "));
+  P("", `### What a measure is worth — *${g("effect")}*`);
+  const e = cal.effect;
+  P(`preventive raises the bar by ${e.prevention} · detective converts to interruption at ${e.detection} · response floor ${e.responseFloor}`);
+  P(`deterrent cuts attempts by ${e.deterrence} · avoidance by ${e.avoidance} · recovery reaches ${e.recoverableShare} of the loss · containment ${e.containment} · late detection ${e.lateDetection}`);
+  P(`a single measure never blocks more than ${e.controlCeiling} · counted by status: ${Object.entries(e.statusWeight).map(([k, v]) => `${k} ${v}`).join(", ")}`);
+  P("", `### Loss magnitude by feared-event severity — *${g("magnitude")}*`);
+  P(`direct loss: ${cal.magnitude.loss.map((b) => rng(b)).join("  |  ")}`);
+  P(`follow-on likelihood: ${cal.magnitude.cascadeLikelihood.map((b) => rng(b)).join("  |  ")}`);
+  P(`follow-on loss: ${cal.magnitude.cascadeLoss.map((b) => rng(b)).join("  |  ")}`);
+  P("");
+
+  // ── 3. per scenario ─────────────────────────────────────────────────────
+  const ops = opType && stepType && parentF
+    ? study.entities.filter((x) => x.type === opType.key
+      && study.entities.some((s) => s.type === stepType.key && s.values[parentF.key] === x.id))
+    : [];
+  P("## 3. Scenarios", "");
+  if (!ops.length) P("_No operational scenario models a kill chain, so nothing is quantified._", "");
+
+  for (const op of ops) {
+    const ov = study.quant?.[op.id]?.overrides as Partial<QuantInputs> | undefined;
+    const dW = deriveInputs(study, tax, op, true, cal), dWo = deriveInputs(study, tax, op, false, cal);
+    const inW: QuantInputs = { ...dW.inputs, ...ov }, inWo: QuantInputs = { ...dWo.inputs, ...ov };
+    const rW = simulate(inW, 40000, dW.chain), rWo = simulate(inWo, 40000, dWo.chain);
+    const rs = dW.refs.riskSource, fe = dW.refs.fearedEvent, strat = dW.refs.strategic;
+    const lab = (rec: EntityRecord | undefined, key: string) => {
+      if (!rec) return "—";
+      const fd = getType(tax, rec.type)?.fields.find((x) => x.key === key);
+      const v = rec.values[key];
+      return fd && typeof v === "number" ? `${scaleLabel(fd, v)} (${v}/${scaleMax(fd)})` : String(v ?? "—");
+    };
+
+    P(`### ${recordTitle(opType!, op)}`, "");
+    P(`- Risk: ${strat ? recordTitle(getType(tax, strat.type)!, strat) : "—"}`);
+    P(`- Actor: ${rs ? recordTitle(getType(tax, rs.type)!, rs) : "—"} — category ${String(rs?.values.category ?? "not set")}, capability ${lab(rs, "capability")}, resources ${lab(rs, "resources")}, activity ${lab(rs, "activity")}, relevance ${lab(rs, "relevance")}`);
+    P(`- Feared event: ${fe ? recordTitle(getType(tax, fe.type)!, fe) : "—"} — severity ${lab(fe, "severity")}`);
+    P(`- Analyst ratings on this scenario: likelihood ${lab(op, "likelihood")}, difficulty ${lab(op, "difficulty")} (difficulty is NOT read where a chain is modelled; likelihood is never read — it is only cross-checked)`, "");
+
+    const fr = dW.frequency;
+    P(`**Attempts per year: ${n2(fr.total)}**`,
+      `base ${n2(fr.base)} × tempo ${n2(fr.tempo)} × throughput ${n2(fr.throughput)} × target pull ${n2(fr.pull)} × reachability ${n2(fr.reachability)}${fr.capped ? " — CAPPED, the multipliers together exceeded the plausible ceiling" : ""}`, "");
+
+    if (dW.demand) {
+      const dm = dW.demand;
+      P(`**The bar: ${pc(dm.total)}** — an attempt must out-perform this share of the attacker population before any measure of this organisation is counted`,
+        `entry ${pc(dm.entry)} + tooling ${pc(dm.adds.tooling)} (max maturity ${dm.tooling}) + breadth ${pc(dm.adds.depth)} (${dm.tactics} distinct tactics) + dwell ${pc(dm.adds.dwell)}`);
+      if (dm.unknown.entry || dm.unknown.tooling)
+        P(`_Incomplete input: ${dm.unknown.entry ? "the entry step names no recognised technique" : ""}${dm.unknown.entry && dm.unknown.tooling ? "; " : ""}${dm.unknown.tooling ? `${dm.unknown.tooling} step(s) contribute no tooling because neither technique nor tactic is set` : ""}._`);
+      P("");
+    } else {
+      P(`**The bar: ${pc(meanOf(inW.controlStrength))}** — derived from the difficulty rating, because this scenario models no chain.`, "");
+    }
+
+    P("**Chain**", "");
+    P("| # | step | tactic | technique | join | blocks | detected | measures |");
+    P("|---|---|---|---|---|---|---|---|");
+    (dW.chain ?? []).forEach((cs, i) => {
+      const sc = dW.coverage.steps.find((x) => x.step.id === cs.id);
+      const st = sc?.step;
+      const ms = (sc?.measures ?? []).map((m) => `${recordTitle(getType(tax, m.type)!, m)} [${effectClassOf(m)}, ${String(m.values.status ?? "?")}, level ${String(m.values.implementation_level ?? "?")}]`).join("; ");
+      P(`| ${i + 1}${cs.terminal ? " (objective)" : ""} | ${st ? recordTitle(getType(tax, st.type)!, st) : cs.id} | ${String(st?.values.tactic ?? "—")} | ${String(st?.values.technique ?? "—")} | ${cs.preds.length > 1 ? cs.join : "—"} | ${cs.gate ? pc(cs.gate.mode) : "—"} | ${cs.interrupt > 0 ? pc(cs.interrupt) : "—"} | ${ms || "none"} |`);
+    });
+    P("");
+
+    P("**Factors fed to the simulation** (min / most likely / max)", "");
+    P("| factor | residual | inherent | where it comes from |");
+    P("|---|---|---|---|");
+    for (const k of Object.keys(inW) as (keyof QuantInputs)[]) {
+      const prov = dW.prov[k];
+      P(`| ${k}${ov && k in ov ? " *(overridden by the analyst)*" : ""} | ${rng(inW[k])} | ${rng(inWo[k])} | ${prov.source}${prov.label ? ` · ${prov.label}` : ""} |`);
+    }
+    P("");
+
+    P("**Results**", "");
+    P("| | inherent (no measures) | residual (with measures) |");
+    P("|---|---|---|");
+    P(`| attempts/yr | ${n2(rWo.tef)} | ${n2(rW.tef)} |`);
+    P(`| vulnerability | ${pc(rWo.vuln)} | ${pc(rW.vuln)} |`);
+    P(`| loss events/yr | ${n2(rWo.lef)} | ${n2(rW.lef)} |`);
+    P(`| return period | ${rWo.lef > 0 ? `1 in ${Math.round(1 / rWo.lef)} yr` : "—"} | ${rW.lef > 0 ? `1 in ${Math.round(1 / rW.lef)} yr` : "—"} |`);
+    P(`| mean annual loss | ${fmtMoney(rWo.ale.mean)} | ${fmtMoney(rW.ale.mean)} |`);
+    P(`| P50 / P90 / P99 | ${fmtMoney(rWo.ale.p50)} / ${fmtMoney(rWo.ale.p90)} / ${fmtMoney(rWo.ale.p99)} | ${fmtMoney(rW.ale.p50)} / ${fmtMoney(rW.ale.p90)} / ${fmtMoney(rW.ale.p99)} |`);
+    P(`| years with no loss | ${pc(rWo.zeroShare)} | ${pc(rW.zeroShare)} |`);
+    P("");
+
+    P("**Where attempts stop** (residual, shares of all attempts)", "");
+    P(`- not capable enough for the attack itself, before any measure: ${pc(rW.blockedAtBaseline)}`);
+    for (const b of rW.breaks.filter((x) => x.p > 0.0005).sort((x, y) => y.p - x.p)) {
+      const sc = dW.coverage.steps.find((x) => x.step.id === b.id);
+      P(`- stopped at ${sc ? recordTitle(getType(tax, sc.step.type)!, sc.step) : b.id}: ${pc(b.p)}`);
+    }
+    P(`- reach the objective (become loss events): ${pc(rW.vuln)}`);
+    if (rW.detected > 0.0005) P(`- of those stopped, ${pc(rW.detected)} of all attempts were caught by detection and response rather than blocked`);
+    P("");
+
+    const lk = likelihoodCheck(rW.lef, typeof op.values.likelihood === "number" ? op.values.likelihood : null, cal.frequency,
+      scaleMax(opType!.fields.find((x) => x.key === "likelihood")!));
+    if (lk.ratedLevel != null) {
+      P(`**Cross-check.** The analyst rated likelihood at level ${lk.ratedLevel}; the model, which does not read that rating, arrives at level ${lk.modelLevel}.`
+        + (lk.diverges ? " **These disagree by more than one level** — either the rating or the model is missing something." : " They agree within one level."), "");
+    }
+  }
+
+  // ── 4. limits ───────────────────────────────────────────────────────────
+  P("## 4. What this does not claim", "",
+    "- Most parameters are reasoned rather than measured; each carries its grade in §2.",
+    "  The base rate is the weakest load-bearing number — published surveys of it differ by",
+    "  roughly a factor of six depending on the population surveyed.",
+    "- Published incidence measures NOTICED events, so every rate here is biased downward by",
+    "  an unknown amount. The bias runs the same way for all actor classes, so orderings are",
+    "  sturdier than levels.",
+    "- Correlated control failure is not modelled: two measures sharing an administrator,",
+    "  platform or bypass fail together, but their resistance is treated as independent.",
+    "  Correlation is modelled only on the attacker's side, via the single capability draw.",
+    "- Loss is one figure, not decomposed into productivity, response, replacement, fines and",
+    "  reputation. The cap on recovery stands in for that distinction.",
+    "- Magnitude is scenario-level; routes ending at different assets would strictly be",
+    "  different scenarios.",
+    "- Implementation level × status is a proxy for whether a control really operates, not an",
+    "  assurance measurement.",
+    "- The output is a structured argument about relative magnitude, useful for comparing",
+    "  scenarios and showing what a measure buys. It is not a prediction.", "");
+  return L.join("\n");
 }

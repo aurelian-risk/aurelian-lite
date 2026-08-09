@@ -6,6 +6,7 @@ import type {
   AppState, Bundle, ChangeEntry, EntityRecord, FieldValue, ID, QuantTuning, Study, Taxonomy,
 } from "./types";
 import { DEFAULT_TAXONOMY, getType, recordTitle, reconcileTaxonomy, refFields } from "./taxonomy";
+import { reconcileCalibration, type Calibration } from "./calibration";
 import { loadRaw, saveState } from "./persistence";
 import { appendAll, appendLog, diffValues, entryKey, getEditor, hashValues, sealLog, STUDY_SCOPE, verdictText, verifyLog, type LogInput } from "./audit";
 
@@ -100,7 +101,12 @@ function migrate(raw: unknown): AppState {
     return {
       version: 2,
       taxonomy,
-      studies: ((obj.studies as Study[]) ?? []).map((s) => migrateStudyLog(taxonomy, s)),
+      // A stored study keeps its calibration edits and picks up tables added to the
+      // defaults since it was saved, rather than being reset or left short.
+      studies: ((obj.studies as Study[]) ?? []).map((s) => {
+        const st = migrateStudyLog(taxonomy, s);
+        return st.calibration ? { ...st, calibration: reconcileCalibration(st.calibration) } : st;
+      }),
       activeStudyId: (obj.activeStudyId as ID) ?? null,
     };
   }
@@ -252,6 +258,9 @@ export interface StoreState {
 
   setTaxonomy: (tax: Taxonomy) => void;
   resetTaxonomy: () => void;
+  /** Set (or clear, restoring the defaults) the active study's quantification
+   *  parameters. Part of the study, so it travels with every export of it. */
+  setCalibration: (cal: Calibration | null) => void;
   /** Apply an imported bundle. studiesMode: replace|merge (ignored if no studies).
    *  `source` names the file: confirming an import re-seals the affected study's log and
    *  records the import in it, which is how a chain broken by an outside edit is put
@@ -260,7 +269,7 @@ export interface StoreState {
   mergeStudies: (studies: Study[]) => number;
 
   createStudy: (name: string, organization?: string, scope?: string) => ID;
-  updateStudy: (id: ID, patch: Partial<Pick<Study, "name" | "organization" | "scope">>) => void;
+  updateStudy: (id: ID, patch: Partial<Pick<Study, "name" | "organization" | "scope" | "sector">>) => void;
   deleteStudy: (id: ID) => void;
   setActiveStudy: (id: ID | null) => void;
 
@@ -294,6 +303,11 @@ export const useStore = create<StoreState>((set, get) => ({
 
   setTaxonomy: (tax) => { set({ taxonomy: tax }); schedulePersist(get); },
   resetTaxonomy: () => { set({ taxonomy: DEFAULT_TAXONOMY }); schedulePersist(get); },
+  setCalibration: (cal) => mutateActive(get, set, (st) => {
+    const next = { ...st };
+    if (cal) next.calibration = cal; else delete next.calibration;
+    return next;
+  }),
 
   applyBundle: (b, opts) => {
     const patch: Partial<StoreState> = {};

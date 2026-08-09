@@ -75,7 +75,10 @@ try {
   await page.locator(".qt-break-trace").click();
   await page.waitForSelector(".ft-card", { timeout: 5000 });
   const ft = await page.locator(".ft-card").innerText();
-  ok("the factor popup explains the baseline the attacker must beat", /baseline resistance/i.test(ft));
+  ok("the factor popup shows what the attack itself demands, term by term",
+    /what the attack demands/i.test(ft) && /getting in/i.test(ft) && /tooling/i.test(ft));
+  ok("...and says how many distinct tactics the chain spans", /spans \d+ distinct tactic/i.test(ft));
+  ok("...and no longer presents it as a rated difficulty", !/difficulty = /i.test(ft));
   ok("the factor popup states that undefended steps are free", /never makes it look safer/i.test(ft));
   ok("the factor popup walks the chain step by step", (await page.locator(".ft-card .ft-step").count()) >= 3);
   ok("resisting steps show their hurdle", (await page.locator(".ft-card .ft-step-c .ok").count()) >= 1);
@@ -480,6 +483,116 @@ try {
   const taxBody = await page.locator(".content").innerText();
   ok("taxonomy lists entity types", taxBody.includes("Business Asset") && taxBody.includes("Kill-chain Step"));
   await page.screenshot({ path: `${shots}/Taxonomy.png` });
+
+  // Calibration - now a section of the quantification workshop rather than its own
+  // page, because it is an input to this study like any other. Has to be inspectable,
+  // editable, resettable and persistent.
+  await page.locator(".sidebar .nav-item", { hasText: "Studies" }).click();
+  await page.waitForTimeout(300);
+  if (!(await page.locator(".ws-tabs").count())) {
+    await page.locator(".study-card, .card").first().click();
+    await page.waitForTimeout(400);
+  }
+  await page.locator(".ws-tab", { hasText: "Quantification" }).click();
+  await page.waitForTimeout(400);
+  ok("calibration sits in the quantification workshop", (await page.locator(".cal").count()) === 1);
+  ok("...as the app's standard panel, not a shape of its own",
+    (await page.locator(".cal.panel.ws-accent .panel-head h3").innerText()) === "Calibration");
+  // It belongs above the figures it produces, not below them.
+  const calY = (await page.locator(".cal").boundingBox()).y;
+  const qtY = (await page.locator(".qt-top").boundingBox()).y;
+  ok("...at the top of the workshop, above the results", calY < qtY);
+
+  // The whole quantification as text for a language model: rules, parameters, chain,
+  // results and limits, so a model is not left to invent the method behind the numbers.
+  await page.locator(".qt-llm").click();
+  await page.waitForTimeout(400);
+  ok("the quantification can be copied for an LLM", /copied/i.test(await page.locator(".qt-llm").innerText()));
+  const llm = await page.evaluate(() => navigator.clipboard?.readText?.().catch(() => "") ?? "");
+  if (llm) {
+    ok("...and the dump describes the model, not just the numbers",
+      /## 1\. The model/.test(llm) && /Decomposition invariance/i.test(llm));
+    ok("...names the parameters in force", /## 2\. Parameters in force/.test(llm) && /judgement|measured|derived/i.test(llm));
+    ok("...breaks the derived terms out", /Attempts per year: /.test(llm) && /The bar: /.test(llm));
+    ok("...and states what it does not claim", /## 4\. What this does not claim/.test(llm));
+  }
+
+  ok("...and is shut by default so it does not swamp the figures", !(await page.locator(".cal-body").count()));
+  await page.locator(".cal .panel-head .btn").click();
+  await page.waitForTimeout(250);
+  const calBody = await page.locator(".cal").innerText();
+  ok("calibration lists both sides of the model",
+    /how often a scenario is attempted/i.test(calBody) && /what an attempt is up against/i.test(calBody));
+  ok("every table asks a question in plain words", (await page.locator(".cal-q").count()) >= 8);
+  ok("...and can explain where its numbers came from", (await page.locator(".cal-why").count()) >= 8);
+  ok("it starts out at the defaults", !(await page.locator(".cal .badge").count()));
+  await page.locator(".cal-why").first().click();
+  await page.waitForTimeout(100);
+  const whyBox = await page.locator(".cal-why-box").first().innerText();
+  ok("the explanation says what changes and how the default was arrived at",
+    /what it changes/i.test(whyBox) && /how the default was arrived at/i.test(whyBox));
+  const grades = await page.locator(".cal-grade").allInnerTexts();
+  ok("every table declares how much it rests on", grades.length >= 10
+    && grades.every((g) => /measured|derived|judgement/i.test(g)));
+  ok("...and they are not all the same claim", new Set(grades.map((g) => g.toLowerCase())).size >= 2);
+  ok("a measured or derived table names its source", /source/i.test(
+    await page.locator(".cal-table").first().locator(".cal-why-box").innerText()));
+  await page.screenshot({ path: `${shots}/Calibration.png` });
+
+  // Values are dials with the default marked, not bare number boxes - but an exact
+  // figure still has to be typeable, which is what this drives.
+  const dial = page.locator(".cal-table").first().locator(".dial-v").first();
+  const before = await dial.innerText();
+  ok("every value sits on a track with its default marked",
+    (await page.locator(".cal-table").first().locator(".dial-track").count()) >= 5
+    && (await page.locator(".cal-table").first().locator(".dial-dflt").count()) >= 5);
+  await dial.click();
+  await page.locator(".dial-v.editing").fill("0.9");
+  await page.locator(".dial-v.editing").press("Enter");
+  await page.waitForTimeout(250);
+  ok("an edited value is kept", /0\.9/.test(await page.locator(".cal-table").first().locator(".dial-v").first().innerText()));
+  ok("...and the panel head marks the study as changed",
+    /changed/i.test(await page.locator(".cal .panel-head .badge").innerText()));
+  ok("...and the table itself is marked", (await page.locator(".cal-edited").count()) >= 1);
+  await page.waitForTimeout(700);          // let the debounced write reach storage
+  await page.reload();
+  await page.waitForTimeout(900);
+  if (!(await page.locator(".ws-tabs").count())) {
+    await page.locator(".study-card, .card").first().click();
+    await page.waitForTimeout(400);
+  }
+  await page.locator(".ws-tab", { hasText: "Quantification" }).click();
+  await page.waitForTimeout(400);
+  await page.locator(".cal .panel-head .btn").click();
+  await page.waitForTimeout(250);
+  ok("an edited calibration survives a reload, stored with the study",
+    /0\.9/.test(await page.locator(".cal-table").first().locator(".dial-v").first().innerText()));
+  ok("...and the changed value is marked against its default",
+    (await page.locator(".cal-table").first().locator(".dial-v.moved").count()) >= 1);
+  await page.locator(".cal-reset").first().click();
+  await page.waitForTimeout(250);
+  ok("resetting one table restores its default",
+    (await page.locator(".cal-table").first().locator(".dial-v").first().innerText()) === before);
+
+  // Values that are really a choice between named cases are choices, not numbers, and
+  // the techniques are ranked by what they demand rather than by identifier.
+  const tool = page.locator(".cal-table", { hasText: "Tooling maturity, per technique" });
+  await tool.scrollIntoViewIfNeeded();
+  ok("tooling maturity is a named choice, not a number box", (await tool.locator(".cal-seg").count()) > 40);
+  const caps = await tool.locator(".cal-sub").allInnerTexts();
+  ok("...and the techniques are ranked by what they demand",
+    /bespoke/i.test(caps.join(" ")) && /practitioner/i.test(caps.join(" "))
+    && caps.findIndex((c) => /bespoke/i.test(c)) < caps.findIndex((c) => /commodity/i.test(c)));
+
+  // Sector lives in the scope workshop, with what it actually does to the numbers.
+  await page.locator(".ws-tab", { hasText: "Assets" }).click();
+  await page.waitForTimeout(350);
+  ok("the sector picker sits in workshop 1", (await page.locator(".panel-head select").count()) === 1);
+  ok("...as the app's standard panel", (await page.locator(".panel.ws-accent .panel-head h3").first().innerText()) === "Sector");
+  const sectTxt = await page.locator(".sect-body").innerText();
+  ok("...and explains what is specific about the chosen sector", /clinical systems|availability/i.test(sectTxt));
+  ok("...and names the rate exceptions it actually triggers",
+    /applied to the attack rate/i.test(sectTxt) && /Cybercriminals/.test(sectTxt));
 
   // Documents section
   await page.locator(".sidebar .nav-item", { hasText: "Documents" }).click();

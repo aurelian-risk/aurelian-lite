@@ -13,6 +13,8 @@ import { FrameworkRadar } from "./FrameworkRadar";
 import { ThreatActorRadar } from "./ThreatActorRadar";
 import { AssetHeatmap } from "./AssetHeatmap";
 import { QuantificationView } from "./QuantificationView";
+import { CalibrationView } from "./CalibrationView";
+import { SectorSection } from "./SectorSection";
 import { CatalogAdd } from "./CatalogAdd";
 import { catalogTargets } from "../domain/catalog";
 import { GraphView } from "./GraphView";
@@ -83,7 +85,7 @@ export function StudyView({ onBack }: { onBack: () => void }) {
         <button className="btn ghost sm" onClick={back}>← Studies</button>
         <div>
           <div className="title">{study.name}</div>
-          <div className="sub">{study.organization || "no organization"}</div>
+          <div className="sub">{study.organization || "no organization"}{study.sector ? ` · ${study.sector}` : ""}</div>
         </div>
         <span className="spacer" />
         <ReportMenu tax={tax} study={study} />
@@ -130,6 +132,7 @@ export function StudyView({ onBack }: { onBack: () => void }) {
               )}
               <CopyButton getText={() => workshopMarkdown(tax, study, activeGroup.key)} />
             </div>
+            {activeGroup.key === "ws1" && <SectorSection study={study} color={activeGroup.color} />}
             {(() => {
               // Risk matrix: only for the strategic-scenario workshop (WS3).
               const mt = tax.entityTypes.find((t) => t.group === activeGroup.key
@@ -189,7 +192,12 @@ export function StudyView({ onBack }: { onBack: () => void }) {
             })()}
             {/* Risk Quantification: the derived Monte-Carlo tuner. Purely parametric
                 (from the qualitative model), so the group needs no manual entity. */}
-            {activeGroup.key === "quant" && <QuantificationView tax={tax} study={study} color={activeGroup.color} />}
+            {activeGroup.key === "quant" && <>
+              {/* The parameters everything below is computed from, at the top of the
+                  workshop: they are inputs to this study like any other. */}
+              <CalibrationView study={study} color={activeGroup.color} />
+              <QuantificationView tax={tax} study={study} color={activeGroup.color} />
+            </>}
             {(() => {
               // WS2: threat-landscape radar over the risk-source actors.
               const actorT = tax.entityTypes.find((t) => t.group === activeGroup.key && t.fields.some((f) => f.type === "scale" && f.key === "capability"));

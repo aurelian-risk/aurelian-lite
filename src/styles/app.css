@@ -1215,3 +1215,156 @@ button.hm-cell:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm,
 .dd-layers { display: flex; flex-wrap: wrap; gap: 6px; }
 .dd-nogap { font-size: 11.5px; color: var(--color-state-error); font-weight: 600; }
 .dd-status { color: var(--color-state-warning); font-weight: 600; }
+
+/* ── Calibration ──────────────────────────────────────────────────────────
+   Every number the quantification runs on, laid out as tables that carry
+   their own question and provenance. Dense but readable: an analyst reads
+   down the left column and edits the right. */
+.cal-body { padding: 16px 18px 22px; }
+.cal-intro > p { margin: 0 0 14px; color: var(--fg-muted); font-size: 13.5px; line-height: 1.6; max-width: 70ch; }
+.cal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
+.cal-state { font-size: 12px; color: var(--fg-muted); }
+.cal-state.edited { color: var(--color-state-warning); font-weight: 600; }
+.cal-fine { margin: 0 0 6px; font-size: 12px; color: var(--fg-muted); line-height: 1.6; max-width: 78ch; }
+.cal-part { margin: 28px 0 14px; font-size: 15px; letter-spacing: 0.02em; text-transform: uppercase;
+  color: var(--fg-muted); border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+
+.cal-table { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-1); padding: 14px 16px; margin-bottom: 12px; }
+.cal-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.cal-head h3 { margin: 0; font-size: 14.5px; }
+.cal-edited { margin-left: 8px; font-size: 11px; font-style: normal; color: var(--color-state-warning); font-weight: 600; }
+.cal-head-act { display: flex; gap: 12px; flex-shrink: 0; }
+.cal-why, .cal-reset { background: none; border: none; padding: 0; cursor: pointer; font-size: 11.5px; color: var(--fg-muted); text-decoration: underline; }
+.cal-why:hover, .cal-reset:hover { color: var(--fg); }
+.cal-q { margin: 6px 0 0; font-size: 13px; color: var(--fg-muted); line-height: 1.6; max-width: 80ch; }
+.cal-why-box { margin-top: 10px; padding: 10px 12px; border-left: 2px solid var(--primary); background: var(--bg-hover); border-radius: 0 8px 8px 0; }
+.cal-why-box p { margin: 0 0 8px; font-size: 12.5px; line-height: 1.6; color: var(--fg-muted); }
+.cal-why-box p:last-child { margin-bottom: 0; }
+.cal-body { margin-top: 12px; }
+.cal-sub { margin: 14px 0 8px; font-size: 12px; color: var(--fg-muted); }
+
+.cal-rows { display: flex; flex-direction: column; gap: 2px; }
+.cal-row { display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 5px 8px; border-radius: 7px; font-size: 13px; }
+.cal-row:hover { background: var(--bg-hover); }
+.cal-row-k { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.cal-row-v { display: flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--fg-muted); font-size: 12px; }
+.cal-x { color: var(--fg-muted); font-size: 11.5px; }
+
+.cal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+.cal-grid.wide { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.cal-cell { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 5px 8px; border-radius: 7px; font-size: 12.5px; }
+.cal-cell:hover { background: var(--bg-hover); }
+.cal-cell > span:first-child { color: var(--fg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-cell-v { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+
+.cal-num { background: var(--bg-0); border: 1px solid var(--border); border-radius: 6px;
+  padding: 3px 6px; color: var(--fg); font-size: 12.5px; text-align: right; }
+.cal-num:focus { outline: none; border-color: var(--primary); }
+.cal-sel { background: var(--bg-0); border: 1px solid var(--border); border-radius: 6px;
+  padding: 3px 6px; color: var(--fg); font-size: 12px; max-width: 190px; }
+.cal-del { background: none; border: none; color: var(--fg-muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 4px; }
+.cal-del:hover { color: var(--color-state-error); }
+.cal-add { align-self: flex-start; margin-top: 6px; background: none; border: 1px dashed var(--border);
+  border-radius: 7px; padding: 5px 10px; color: var(--fg-muted); cursor: pointer; font-size: 12px; }
+.cal-add:hover { border-color: var(--primary); color: var(--fg); }
+
+.cal-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.cal-chip { background: var(--bg-0); border: 1px solid var(--border); border-radius: 999px;
+  padding: 3px 10px; color: var(--fg-muted); cursor: pointer; font-size: 11.5px; }
+.cal-chip.on { background: color-mix(in oklch, var(--primary) 18%, transparent); border-color: var(--primary); color: var(--fg); font-weight: 600; }
+
+.cal-foot { display: flex; align-items: center; gap: 9px; margin-top: 26px; padding-top: 16px;
+  border-top: 1px solid var(--border); font-size: 12.5px; color: var(--fg-muted); }
+.sector-pick { margin-left: 10px; background: transparent; border: 1px solid var(--border);
+  border-radius: 999px; padding: 1px 8px; color: var(--fg-muted); font-size: 11.5px; cursor: pointer; }
+.sector-pick:hover { border-color: var(--primary); color: var(--fg); }
+/* The likelihood rating is no longer an input, so the model's own answer can be shown
+   next to it as a second opinion rather than as an echo. */
+.qt-crosscheck { margin-top: 10px; padding: 9px 12px; border-radius: 9px; font-size: 12.5px; line-height: 1.6;
+  color: var(--fg-muted); background: color-mix(in oklch, var(--color-state-warning) 9%, transparent);
+  border-left: 2px solid var(--color-state-warning); max-width: 72ch; }
+.qt-crosscheck b { color: var(--fg); }
+/* Evidence grade per calibration table. A number that rests on a survey and a number
+   somebody reasoned out should not look the same. */
+.cal-grade { margin-left: 9px; padding: 1px 7px; border-radius: 999px; font-size: 10px;
+  font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; vertical-align: middle; cursor: help; }
+.cal-grade.measured { background: color-mix(in oklch, var(--color-state-success, #3fb950) 20%, transparent); color: var(--color-state-success, #3fb950); }
+.cal-grade.derived { background: color-mix(in oklch, var(--primary) 18%, transparent); color: var(--primary); }
+.cal-grade.judgement { background: var(--bg-hover); color: var(--fg-muted); }
+
+/* Provenance chips in the factor tree, lined up in one column.
+   The rows of the tree share a right edge whatever their nesting depth (indentation
+   only adds padding on the left), so a fixed-width chip pushed to that edge starts at
+   the same x on every row - and with the icon in its own leading slot, the icons form
+   a clean vertical line instead of following wherever each label ended. */
+.qt-row > .qt-prov-chip { flex: 0 0 330px; margin-left: auto; justify-content: flex-start;
+  gap: 0; min-width: 0; overflow: hidden; }
+.qt-prov-ico { flex: none; width: 20px; display: inline-grid; place-items: center;
+  font-style: normal; line-height: 1; }
+.qt-prov-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Money rows are taller than the input beside them; pin the chip to the first line so
+   it sits on the same baseline as the chips of the plain rows above and below. */
+.qt-money-row > .qt-prov-chip { margin-top: 2px; }
+/* Narrow viewports: alignment is worth less than readability, so let it wrap and grow. */
+@media (max-width: 900px) {
+  .qt-row > .qt-prov-chip { flex: 1 1 220px; margin-left: 0; }
+}
+
+
+.qt-llm { margin-top: 12px; }
+
+
+/* Sector + calibration bodies. The box itself is the app's standard panel; only the
+   contents need rules of their own. */
+.sect-body { padding: 14px 18px 16px; }
+.sect-note { margin: 0; font-size: 12.5px; color: var(--fg-muted); line-height: 1.65; max-width: 72ch; }
+.sect-note.muted { color: var(--fg-subtle); }
+.sect-eff { margin: 9px 0 0; font-size: 12.5px; color: var(--fg-muted); }
+.sect-eff-k { color: var(--fg-subtle); }
+/* A <select> inherits .btn for its looks, but .btn is display:flex and a select sizes
+   itself wrongly under it - it stretches to the whole line. Keep it inline. */
+select.btn { display: inline-block; width: auto; flex: none; line-height: 1.4; }
+
+/* Calibration inputs: every value on a track with its default marked, so the size of a
+   change is visible while it is being made rather than only afterwards. */
+.dial-rows { display: flex; flex-direction: column; gap: 3px; }
+.dial-row { display: flex; align-items: center; gap: 14px; padding: 4px 8px; border-radius: 7px; }
+.dial-row:hover { background: var(--bg-hover); }
+.dial-k { flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--fg-muted); }
+.dial-k em { display: block; font-style: normal; font-size: 11px; color: var(--fg-subtle); }
+.dial-k.pair { display: flex; gap: 6px; flex-wrap: wrap; }
+.dial { display: flex; align-items: center; gap: 10px; flex: 0 0 268px; }
+.dial-track { position: relative; flex: 1; height: 20px; cursor: ew-resize; touch-action: none;
+  border-radius: 999px; background: var(--bg-hover); box-shadow: inset 0 0 0 1px var(--border); }
+.dial-track:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.dial-fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px;
+  background: color-mix(in oklch, var(--primary) 30%, transparent); }
+.dial-dflt { position: absolute; top: 3px; bottom: 3px; width: 2px; margin-left: -1px;
+  background: var(--fg-subtle); opacity: 0.35; border-radius: 1px; }
+.dial-dflt.off { opacity: 0.7; background: var(--color-state-warning); }
+.dial-knob { position: absolute; top: 50%; width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px;
+  border-radius: 50%; background: var(--primary); box-shadow: 0 1px 4px rgb(0 0 0 / 0.3); pointer-events: none; }
+.dial-v { flex: none; width: 62px; text-align: right; background: none; border: none; padding: 0;
+  color: var(--fg-muted); font-size: 12px; cursor: text; }
+.dial-v.moved { color: var(--color-state-warning); font-weight: 600; }
+.dial-v.editing { border-bottom: 1px solid var(--primary); color: var(--fg); }
+
+.seg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 2px 22px; }
+.seg-row { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 3px 8px; border-radius: 7px; }
+.seg-row:hover { background: var(--bg-hover); }
+.seg-k { flex: 1 1 auto; min-width: 0; font-size: 12px; color: var(--fg-muted); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.seg-k b { color: var(--fg-subtle); font-weight: 500; margin-right: 4px; }
+.seg-k em { font-style: normal; color: var(--fg-subtle); }
+.cal-seg { flex: none; display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.cal-seg-b { background: none; border: none; padding: 3px 8px; font-size: 10.5px; color: var(--fg-subtle);
+  cursor: pointer; border-right: 1px solid var(--border); }
+.cal-seg-b:last-child { border-right: none; }
+.cal-seg-b:hover { background: var(--bg-hover); color: var(--fg-muted); }
+.cal-seg-b.on { background: color-mix(in oklch, var(--primary) 22%, transparent); color: var(--fg); font-weight: 600; }
+.cal-curves { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.cal-count { display: inline-block; margin-left: 5px; padding: 0 6px; border-radius: 999px;
+  background: var(--bg-hover); color: var(--fg-subtle); font-size: 10.5px; }

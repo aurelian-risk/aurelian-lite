@@ -13,6 +13,14 @@ const { chainOf, coverageOf, deriveInputs } = await import(pathToFileURL(need("M
 const { simulate } = await import(pathToFileURL(need("MOD_MC")).href);
 const { DEFAULT_TAXONOMY } = await import(pathToFileURL(need("MOD_TAX")).href);
 const { treatmentEffect, residualPos } = await import(pathToFileURL(need("MOD_T")).href);
+const { DEFAULT_CALIBRATION } = await import(pathToFileURL(need("MOD_CAL")).href);
+const { demandOf } = await import(pathToFileURL(need("MOD_D")).href);
+const { attemptsPerYear, likelihoodCheck } = await import(pathToFileURL(need("MOD_F")).href);
+
+/** A calibration with one table swapped out. Used to pin the demand explicitly in the
+ *  COMPARISON cases below - those exist to test the arithmetic, not the derivation. */
+const withDemand = (bar) => ({ ...DEFAULT_CALIBRATION,
+  demand: { ...DEFAULT_CALIBRATION.demand, entryDefault: bar } });
 
 let pass = 0, fail = 0;
 const ok = (name, cond, extra = "") => {
@@ -40,8 +48,7 @@ const chainFor = (entities, base = 0.46) => {
 /** Vulnerability under a chain, with everything else held fixed. */
 const R = (min, mode, max) => ({ min, mode, max });
 const BASE_INPUTS = {
-  threatActivity: R(2, 3, 4),          // high frequency so the sample of attempts is large
-  attackProbability: R(0.8, 0.9, 1),
+  attemptRate: R(2, 3, 4),             // high rate so the sample of attempts is large
   adversaryStrength: R(0.3, 0.6, 0.9),
   controlStrength: R(0.31, 0.46, 0.58),
   directImpact: R(1e4, 1e5, 1e6),
@@ -174,6 +181,8 @@ const plain = vulnOf(undefined);
   ok("controls lower the expected annual loss", rW.ale.mean < rWo.ale.mean, `${rW.ale.mean} vs ${rWo.ale.mean}`);
   ok("controls lower vulnerability", rW.vuln < rWo.vuln);
   ok("provenance names the gated steps", /1\/2 gated/.test(withC.prov.controlStrength.label));
+  ok("the bar is derived from the chain, not from the difficulty rating",
+    withC.prov.controlStrength.source === "chain demand + measures");
 }
 
 // ── 4b. effect channels ───────────────────────────────────────────────────
@@ -204,12 +213,12 @@ const plain = vulnOf(undefined);
   const plain = derive(null);
 
   const deterrent = derive(measure("Deterrent", { covers: ["a"] }));
-  ok("a deterrent cuts the number of attempts", mean(deterrent.inputs.attackProbability) < mean(plain.inputs.attackProbability));
+  ok("a deterrent cuts the number of attempts", mean(deterrent.inputs.attemptRate) < mean(plain.inputs.attemptRate));
   ok("...and does NOT build a barrier", deterrent.chain.every((s) => s.gate === null));
   ok("...and does NOT change the loss", mean(deterrent.inputs.directImpact) === mean(plain.inputs.directImpact));
 
   const avoidance = derive(measure("Avoidance", { protects: ["sa"] }));
-  ok("avoidance cuts how often the actor makes contact", mean(avoidance.inputs.threatActivity) < mean(plain.inputs.threatActivity));
+  ok("avoidance cuts how often the actor makes contact", mean(avoidance.inputs.attemptRate) < mean(plain.inputs.attemptRate));
   ok("...and does NOT build a barrier", avoidance.chain.every((s) => s.gate === null));
 
   const corrective = derive(measure("Corrective", { protects: ["sa"] }));
@@ -247,7 +256,7 @@ const plain = vulnOf(undefined);
   const inh = deriveInputs(study([...world, OP, ...chainOf3, measure("Corrective", { protects: ["sa"] })]), tax, OP, false);
   ok("the inherent view ignores every effect channel",
     mean(inh.inputs.directImpact) === mean(plain.inputs.directImpact)
-    && mean(inh.inputs.threatActivity) === mean(plain.inputs.threatActivity));
+    && mean(inh.inputs.attemptRate) === mean(plain.inputs.attemptRate));
 }
 
 // ── 4c. the risk matrix reads the same model ──────────────────────────────
@@ -299,9 +308,15 @@ const plain = vulnOf(undefined);
   ok("a risk with no measures at all does not move", pos(untouched).x === 4 && pos(untouched).y === 4);
 }
 
-// ── 5. calibration guardrails ─────────────────────────────────────────────
+// ── 5. calibration guardrails: THE COMPARISON ─────────────────────────────
 //
-// The constants in quantModel.ts are conventions, not measurements. What can be pinned
+// Two calibrations, held apart on purpose. This block pins the ARITHMETIC: given a bar
+// and a set of measures, what share of attempts gets through. It therefore sets the bar
+// EXPLICITLY (via the calibration) instead of deriving it - otherwise it would be
+// testing the derivation at the same time, and a failure would not say which of the two
+// broke. Section 6 pins the derivation separately.
+//
+// The numbers in the calibration are conventions, not measurements. What can be pinned
 // down is how the model has to BEHAVE, and that is what these assertions hold: they exist
 // so nobody can quietly move a constant back into the regime where the model acted as an
 // on/off switch - where one click of a 1..4 scale swung the answer by 60 points, a single
@@ -312,8 +327,8 @@ const plain = vulnOf(undefined);
 {
   const world = (id, type, values) => rec(id, type, values);
   /** A `n`-step chain, the first `g` steps covered by one measure each. */
-  const situation = ({ cap, diff, n, g, lvl = 4, status = "Implemented", cls = "Preventive", responds = false }) => {
-    const op = world("op", "operational_scenario", { name: "op", strategic_scenario: "ss", likelihood: 3, difficulty: diff });
+  const situation = ({ cap, bar, n, g, lvl = 4, status = "Implemented", cls = "Preventive", responds = false }) => {
+    const op = world("op", "operational_scenario", { name: "op", strategic_scenario: "ss", likelihood: 3, difficulty: 2 });
     const ents = [
       world("ba", "business_asset", { name: "ba", criticality: 4 }),
       world("fe", "feared_event", { name: "fe", business_asset: "ba", severity: 3 }),
@@ -323,53 +338,186 @@ const plain = vulnOf(undefined);
     for (let i = 0; i < n; i++) ents.push(world(`s${i}`, "kill_chain_step", { name: `s${i}`, operational_scenario: "op", step_order: i + 1, predecessors: i ? [`s${i - 1}`] : [] }));
     for (let i = 0; i < g; i++) ents.push(world(`m${i}`, "security_measure", { name: `m${i}`, measure_type: cls, status, implementation_level: lvl, covers: [`s${i}`] }));
     if (responds) ents.push(world("mr", "security_measure", { name: "mr", measure_type: "Corrective", status: "Implemented", implementation_level: 4, covers: [`s${n - 1}`] }));
-    const d = deriveInputs(study(ents), tax, op, true);
+    const d = deriveInputs(study(ents), tax, op, true, withDemand(bar));
     return simulate(d.inputs, 40000, d.chain).vuln;
   };
   const band = (name, v, lo, hi) => ok(name, v >= lo && v <= hi, `${(v * 100).toFixed(1)}% not in ${lo * 100}-${hi * 100}%`);
 
   // Five reference situations whose rough behaviour is not seriously disputed.
-  band("nothing resists a competent crew", situation({ cap: 3, diff: 1, n: 5, g: 0 }), 0.85, 1.00);
-  band("baseline hygiene helps a lot but incidents stay common", situation({ cap: 3, diff: 2, n: 5, g: 3, lvl: 3 }), 0.15, 0.45);
-  band("a mature programme is breached far less often", situation({ cap: 3, diff: 3, n: 5, g: 5 }), 0.03, 0.15);
-  band("a top-tier actor still gets into a mature programme", situation({ cap: 4, diff: 3, n: 5, g: 5 }), 0.20, 0.60);
-  band("basic hygiene mostly, but not entirely, stops an opportunist", situation({ cap: 1, diff: 2, n: 5, g: 3, lvl: 3 }), 0.01, 0.15);
+  band("nothing resists a competent crew", situation({ cap: 3, bar: 0.20, n: 5, g: 0 }), 0.85, 1.00);
+  band("baseline hygiene helps a lot but incidents stay common", situation({ cap: 3, bar: 0.30, n: 5, g: 3, lvl: 3 }), 0.15, 0.45);
+  band("a mature programme is breached far less often", situation({ cap: 3, bar: 0.40, n: 5, g: 5 }), 0.03, 0.15);
+  band("a top-tier actor still gets into a mature programme", situation({ cap: 4, bar: 0.40, n: 5, g: 5 }), 0.20, 0.60);
+  band("basic hygiene mostly, but not entirely, stops an opportunist", situation({ cap: 1, bar: 0.30, n: 5, g: 3, lvl: 3 }), 0.01, 0.15);
   // Watching without blocking: intrusions are seen and often broken off, but a
   // determined actor still finishes often enough - which is why monitoring alone is
   // never called a defence.
   band("monitoring without barriers helps, but is not a wall",
-    situation({ cap: 3, diff: 2, n: 5, g: 3, cls: "Detective", responds: true }), 0.30, 0.70);
+    situation({ cap: 3, bar: 0.30, n: 5, g: 3, cls: "Detective", responds: true }), 0.30, 0.70);
   band("detection nobody can act on is worth far less",
-    situation({ cap: 3, diff: 2, n: 5, g: 3, cls: "Detective" }), 0.55, 0.90);
+    situation({ cap: 3, bar: 0.30, n: 5, g: 3, cls: "Detective" }), 0.55, 0.90);
 
   // Security is never finished: no amount of control removes a capable adversary.
-  const hardened = situation({ cap: 4, diff: 4, n: 5, g: 5 });
+  const hardened = situation({ cap: 4, bar: 0.50, n: 5, g: 5 });
   ok("no configuration of controls reduces a top-tier actor to zero", hardened > 0.02,
     `everything money can buy still leaves ${(hardened * 100).toFixed(2)}%`);
 
   // No inherent situation may come out as impossible - if it did, no measure could ever
   // improve it and the whole scenario would drop out of the analysis.
   let floor = 1;
-  for (const cap of [1, 2, 3, 4]) for (const diff of [1, 2, 3, 4]) floor = Math.min(floor, situation({ cap, diff, n: 5, g: 0 }));
+  for (const cap of [1, 2, 3, 4]) for (const bar of DEFAULT_CALIBRATION.demand.difficultyFallback) floor = Math.min(floor, situation({ cap, bar, n: 5, g: 0 }));
   ok("no inherent situation is written off as impossible", floor > 0.01, `lowest cell ${(floor * 100).toFixed(2)}%`);
 
   // One click on a coarse ordinal scale must not decide the analysis.
-  const byDiff = [1, 2, 3, 4].map((diff) => situation({ cap: 3, diff, n: 5, g: 0 }));
+  const BARS = DEFAULT_CALIBRATION.demand.difficultyFallback;
+  const byDiff = BARS.map((bar) => situation({ cap: 3, bar, n: 5, g: 0 }));
   let worst = 1;
   for (let i = 1; i < byDiff.length; i++) worst = Math.max(worst, byDiff[i - 1] / Math.max(byDiff[i], 1e-6));
-  ok("one difficulty step never swings the result by more than 3x", worst <= 3, `worst ${worst.toFixed(1)}x`);
+  ok("one step on the fallback scale never swings the result by more than 3x", worst <= 3, `worst ${worst.toFixed(1)}x`);
 
   // A control shifts the odds; it does not settle the matter.
-  const bare = situation({ cap: 3, diff: 2, n: 5, g: 0 });
-  const oneCtl = situation({ cap: 3, diff: 2, n: 5, g: 1 });
+  const bare = situation({ cap: 3, bar: 0.30, n: 5, g: 0 });
+  const oneCtl = situation({ cap: 3, bar: 0.30, n: 5, g: 1 });
   const factor = bare / oneCtl;
   ok("a single control is worth a factor of 2-4, not 8", factor >= 2 && factor <= 4, `${factor.toFixed(1)}x`);
 
   // Partly deployed is neither nothing nor everything.
-  const partial = situation({ cap: 3, diff: 2, n: 5, g: 1, lvl: 2, status: "Planned" });
+  const partial = situation({ cap: 3, bar: 0.30, n: 5, g: 1, lvl: 2, status: "Planned" });
   const kept = (bare - partial) / (bare - oneCtl);
   ok("a half-deployed control keeps a visible but clearly partial share of the effect",
     kept > 0.10 && kept < 0.50, `keeps ${(kept * 100).toFixed(1)}%`);
+}
+
+// ── 6. calibration guardrails: THE DERIVATION ─────────────────────────────
+//
+// The other half of the split. Section 5 asks whether the arithmetic is right; this asks
+// whether the CLASSIFICATION is right - does a chain the analyst modelled come out where
+// a practitioner would put it. A failure here means the entry costs, the tooling table or
+// the weights moved, not that the simulation broke.
+{
+  const D = DEFAULT_CALIBRATION.demand;
+  const st = (technique, tactic, extra = {}) => ({ technique, tactic, ...extra });
+  const bar = (steps) => demandOf(steps, D).total;
+  const band = (name, v, lo, hi) => ok(name, v >= lo && v <= hi, `${v.toFixed(3)} not in ${lo}-${hi}`);
+
+  // The two chains of the sample study, as an analyst modelled them.
+  const ransomware = [
+    st("T1566 Phishing", "Initial Access", { entry: true }),
+    st("T1053 Scheduled Task/Job", "Persistence"),
+    st("T1003 OS Credential Dumping", "Credential Access"),
+    st("T1021 Remote Services", "Lateral Movement"),
+    st("T1567 Exfiltration Over Web Service", "Exfiltration"),
+    st("T1486 Data Encrypted for Impact", "Impact"),
+  ];
+  const insider = [
+    st("T1078 Valid Accounts", "Initial Access", { entry: true }),
+    st("T1005 Data from Local System", "Collection"),
+    st("T1052 Exfiltration Over Physical Medium", "Exfiltration"),
+  ];
+
+  band("a phishing-led ransomware campaign demands a capable operator", bar(ransomware), 0.45, 0.65);
+  band("an insider path from valid accounts demands very little", bar(insider), 0.08, 0.20);
+  ok("...and the campaign is the harder of the two by a wide margin", bar(ransomware) > bar(insider) * 2,
+    `${bar(ransomware).toFixed(3)} vs ${bar(insider).toFixed(3)}`);
+
+  // The property that shapes every term: describing the same attack in more detail
+  // must not change the answer.
+  const split = [...ransomware, st("T1021 Remote Services", "Lateral Movement")];
+  ok("DECOMPOSITION INVARIANCE: splitting a step leaves the demand untouched",
+    near(bar(split), bar(ransomware)), `${bar(split)} vs ${bar(ransomware)}`);
+  const reordered = [...ransomware].reverse();
+  ok("...and the order the steps are stored in does not matter", near(bar(reordered), bar(ransomware)));
+
+  // Entry position.
+  const entryOnly = (tech) => bar([st(tech, "Initial Access", { entry: true })]);
+  ok("a supply-chain compromise costs far more to get in than a phish",
+    entryOnly("T1195 Supply Chain Compromise") > entryOnly("T1566 Phishing"));
+  ok("logging in with valid accounts is the cheapest entry of all",
+    entryOnly("T1078 Valid Accounts") < entryOnly("T1566 Phishing"));
+  const granted = [st("T1133 External Remote Services", "Initial Access", { entry: true, granted: true })];
+  const taken = [st("T1133 External Remote Services", "Initial Access", { entry: true })];
+  ok("access a stakeholder grants is cheaper than access taken", bar(granted) < bar(taken));
+
+  // Tooling: maximum, not average - and an unmodelled step must not inflate it.
+  const commodity = [st("T1566 Phishing", "Initial Access", { entry: true }), st("T1204 User Execution", "Execution")];
+  const withCraft = [...commodity, st("T1003 OS Credential Dumping", "Credential Access")];
+  ok("one step needing craft raises the whole chain", bar(withCraft) > bar(commodity));
+  const plusEasy = [...withCraft, st("T1082 System Information Discovery", "Discovery")];
+  ok("...and adding another commodity step does not lower it again",
+    demandOf(plusEasy, D).tooling === demandOf(withCraft, D).tooling);
+
+  // Under-modelled data must not invent a demand it cannot see.
+  const blank = [st(undefined, undefined, { entry: true }), st(undefined, undefined)];
+  ok("steps with neither technique nor tactic contribute no tooling", demandOf(blank, D).tooling === 0);
+  ok("...and the derivation says so rather than hiding it", demandOf(blank, D).unknown.tooling === 2);
+  const byTactic = [st("something in prose", "Lateral Movement", { entry: true })];
+  ok("an unrecognised technique still falls back to its tactic", demandOf(byTactic, D).tooling > 0);
+
+  // Breadth and dwell.
+  const short = [st("T1566 Phishing", "Initial Access", { entry: true }), st("T1005 Data from Local System", "Collection")];
+  const broad = [...short, st("T1021 Remote Services", "Lateral Movement"), st("T1486 Data Encrypted for Impact", "Impact")];
+  ok("a chain spanning more distinct tactics demands more", bar(broad) > bar(short));
+  ok("no chain is free", bar([]) >= D.floor && bar(blank) >= D.floor);
+}
+
+// ── 7. calibration guardrails: HOW OFTEN ──────────────────────────────────
+//
+// The frequency side had no reference cases at all until now - every assertion in this
+// file asked "what share of attempts succeeds", none asked "how often is it attempted".
+// These bands are order-of-magnitude judgements: they exist to catch a multiplier stack
+// that drifts into weekly attacks or into one attack a century, not to claim precision.
+{
+  const F = DEFAULT_CALIBRATION.frequency;
+  const facts = (o) => ({ actor: "", sector: "", activity: 0.67, resources: 0.67, relevance: 0.67, pull: "none", ...o });
+  const rate = (o) => attemptsPerYear(facts(o), F).total;
+  const band = (name, v, lo, hi) => ok(name, v >= lo && v <= hi, `${v.toFixed(3)}/yr not in ${lo}-${hi}`);
+
+  band("an opportunist finds an internet-facing service often",
+    rate({ actor: "Opportunist", entryTechnique: "T1190 Exploit Public-Facing Application" }), 0.8, 5);
+  band("a criminal crew goes after a hospital it has declared an objective on",
+    rate({ actor: "Cybercriminals", sector: "Healthcare", pull: "declared", entryTechnique: "T1566 Phishing" }), 0.4, 3);
+  band("a state actor rarely bothers with an organisation it has no interest in",
+    rate({ actor: "State actor", pull: "noMatch" }), 0.001, 0.1);
+  band("an insider acts rarely, but not never", rate({ actor: "Insider", entryTechnique: "T1078 Valid Accounts" }), 0.01, 0.3);
+
+  // Ordering that has to survive any re-tuning of the tables.
+  const generic = (a) => rate({ actor: a });
+  ok("opportunists attack more often than criminal crews", generic("Opportunist") > generic("Cybercriminals"));
+  ok("criminal crews attack more often than state actors", generic("Cybercriminals") > generic("State actor"));
+
+  // Each lever has to move the rate in the direction it claims, and only that one.
+  ok("a sector a class targets disproportionately raises the rate",
+    rate({ actor: "Cybercriminals", sector: "Healthcare" }) > rate({ actor: "Cybercriminals", sector: "Retail & consumer" }));
+  ok("...and leaves classes it says nothing about alone",
+    rate({ actor: "Opportunist", sector: "Healthcare" }) === rate({ actor: "Opportunist", sector: "Retail & consumer" }));
+  ok("a declared objective on the target raises the rate above no interest at all",
+    rate({ actor: "Cybercriminals", pull: "declared" }) > rate({ actor: "Cybercriminals", pull: "noMatch" }));
+  ok("a busier actor attacks more often",
+    rate({ actor: "Cybercriminals", activity: 1 }) > rate({ actor: "Cybercriminals", activity: 0 }));
+  ok("a better-resourced actor runs more operations",
+    rate({ actor: "Cybercriminals", resources: 1 }) > rate({ actor: "Cybercriminals", resources: 0 }));
+  ok("an exposed entry is reached more often than a supply-chain one",
+    rate({ actor: "Cybercriminals", entryTechnique: "T1190 Exploit Public-Facing Application" })
+    > rate({ actor: "Cybercriminals", entryTechnique: "T1195 Supply Chain Compromise" }));
+
+  // An actor class the calibration does not know must still produce a number.
+  ok("an unclassified actor falls back rather than vanishing", rate({ actor: "Space pirates" }) > 0);
+
+  // The likelihood rating is no longer an input, which is what makes it usable as a
+  // check. Reading it back in would restore exactly the circularity the change removed.
+  const lk = (lef, rated) => likelihoodCheck(lef, rated, F, 4);
+  ok("a rare scenario maps back to the lowest likelihood level", lk(0.005, null).modelLevel === 1);
+  ok("a frequent one maps back to the highest", lk(2, null).modelLevel === 4);
+  ok("agreement within one level is not reported", !lk(0.05, 3).diverges && !lk(0.05, 2).diverges);
+  ok("a rating two levels away from the model is reported", lk(0.005, 3).diverges);
+  ok("...in both directions", lk(2, 1).diverges);
+  ok("an unrated scenario is never reported as diverging", !lk(0.005, null).diverges);
+
+  // No stack of multipliers may turn one scenario into a weekly event.
+  const worst = attemptsPerYear(facts({ actor: "Opportunist", activity: 1, resources: 1, pull: "declared",
+    entryTechnique: "T1190 Exploit Public-Facing Application" }), F);
+  ok("the multipliers together stay inside the cap", worst.total <= F.cap);
+  band("...and the busiest plausible case is still a handful a year, not weekly", worst.total, 1, 12);
 }
 
 console.log(`\n${pass}/${pass + fail} quantification assertions passed · ${fail} failed`);

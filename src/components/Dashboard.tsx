@@ -3,6 +3,7 @@ import { useStore } from "../domain/store";
 import { makeSampleStudy } from "../domain/sample";
 import { clearStorage } from "../domain/persistence";
 import { deleteDocsForStudy } from "../domain/documents";
+import { SECTORS } from "../domain/calibration";
 import { Dialog, Icon } from "./ui";
 import { DataMenu } from "./DataMenu";
 
@@ -10,9 +11,9 @@ const fmt = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "2
 
 export function Dashboard({ onOpen }: { onOpen: () => void }) {
   const studies = useStore((s) => s.studies);
-  const { createStudy, setActiveStudy, deleteStudy, mergeStudies, resetTaxonomy } = useStore();
+  const { createStudy, updateStudy, setActiveStudy, deleteStudy, mergeStudies, resetTaxonomy } = useStore();
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ name: "", organization: "", scope: "" });
+  const [form, setForm] = useState({ name: "", organization: "", scope: "", sector: "" });
 
   const open = (id: string) => { setActiveStudy(id); onOpen(); };
   const loadSample = () => {
@@ -29,8 +30,9 @@ export function Dashboard({ onOpen }: { onOpen: () => void }) {
   };
   const submit = () => {
     if (!form.name.trim()) return;
-    createStudy(form.name.trim(), form.organization.trim(), form.scope.trim());
-    setForm({ name: "", organization: "", scope: "" });
+    const id = createStudy(form.name.trim(), form.organization.trim(), form.scope.trim());
+    if (form.sector) updateStudy(id, { sector: form.sector });
+    setForm({ name: "", organization: "", scope: "", sector: "" });
     setCreating(false);
     onOpen();
   };
@@ -90,6 +92,12 @@ export function Dashboard({ onOpen }: { onOpen: () => void }) {
           <div className="field"><label>Organization</label>
             <input value={form.organization} onChange={(e) => setForm({ ...form, organization: e.target.value })}
               placeholder="e.g. Riverside General Hospital Trust" /></div>
+          <div className="field"><label>Sector</label>
+            <select value={form.sector} onChange={(e) => setForm({ ...form, sector: e.target.value })}>
+              <option value="">Not set — no sector adjustment</option>
+              {SECTORS.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <span className="hint">Some kinds of attacker go after some sectors far more than others. Used by the quantification&apos;s base rates; changeable later in Calibration.</span></div>
           <div className="field"><label>Analysis perimeter / scope</label>
             <textarea value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })}
               placeholder="What is in scope? Which systems, processes, boundaries?" /></div>

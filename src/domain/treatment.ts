@@ -28,6 +28,7 @@
 import type { EntityRecord, Study, Taxonomy } from "./types";
 import { scaleMax } from "./taxonomy";
 import { deriveInputs, meanOf } from "./quantModel";
+import { DEFAULT_CALIBRATION, type Calibration } from "./calibration";
 import { simulate, type QuantInputs } from "./montecarlo";
 
 /** Iterations for the matrix. Far fewer than the quantification view needs: the matrix
@@ -48,7 +49,7 @@ const magnitudeOf = (i: QuantInputs) => meanOf(i.directImpact) + meanOf(i.cascad
 
 /** What the measures on this risk's kill chain(s) actually achieve, per axis. Averaged
  *  over the operational scenarios that implement this strategic scenario. */
-export function treatmentEffect(study: Study, tax: Taxonomy, scenario: EntityRecord): TreatmentEffect {
+export function treatmentEffect(study: Study, tax: Taxonomy, scenario: EntityRecord, cal: Calibration = DEFAULT_CALIBRATION): TreatmentEffect {
   const opType = tax.entityTypes.find((t) => t.fields.some((f) => f.key === "difficulty")
     && t.fields.some((f) => f.type === "ref" && f.refType === scenario.type));
   const refF = opType?.fields.find((f) => f.type === "ref" && f.refType === scenario.type);
@@ -58,7 +59,7 @@ export function treatmentEffect(study: Study, tax: Taxonomy, scenario: EntityRec
 
   let freq = 0, mag = 0;
   for (const op of ops) {
-    const on = deriveInputs(study, tax, op, true), off = deriveInputs(study, tax, op, false);
+    const on = deriveInputs(study, tax, op, true, cal), off = deriveInputs(study, tax, op, false, cal);
     freq += rel(simulate(off.inputs, MATRIX_ITER, off.chain).lef, simulate(on.inputs, MATRIX_ITER, on.chain).lef);
     mag += rel(magnitudeOf(off.inputs), magnitudeOf(on.inputs));
   }
@@ -67,13 +68,13 @@ export function treatmentEffect(study: Study, tax: Taxonomy, scenario: EntityRec
 
 /** How well the risk is mitigated overall (0..1) - the frequency effect, for callers that
  *  do not care which axis it lands on. */
-export function treatmentEffectiveness(study: Study, tax: Taxonomy, scenario: EntityRecord): number {
-  return treatmentEffect(study, tax, scenario).frequency;
+export function treatmentEffectiveness(study: Study, tax: Taxonomy, scenario: EntityRecord, cal: Calibration = DEFAULT_CALIBRATION): number {
+  return treatmentEffect(study, tax, scenario, cal).frequency;
 }
 
 export function residualPos(
   study: Study, tax: Taxonomy, scenario: EntityRecord, treatment: EntityRecord,
-  xKey: string, yKey: string,
+  xKey: string, yKey: string, cal: Calibration = DEFAULT_CALIBRATION,
 ): { x: number; y: number } {
   const inhX = Number(scenario.values[xKey]) || 1;  // likelihood
   const inhY = Number(scenario.values[yKey]) || 1;  // gravity
@@ -85,7 +86,7 @@ export function residualPos(
   // the old fixed factor of 2 silently assumed a 1..4 scale.
   const t = tax.entityTypes.find((e) => e.key === scenario.type);
   const span = (key: string) => Math.max(1, (t?.fields.find((x) => x.key === key) ? scaleMax(t.fields.find((x) => x.key === key)!) : 4) - 1);
-  const eff = treatmentEffect(study, tax, scenario);
+  const eff = treatmentEffect(study, tax, scenario, cal);
   const down = (v: number, share: number, key: string) => Math.max(1, v - Math.round(share * span(key)));
 
   // Transfer moves the impact off the balance sheet on top of whatever recovery achieves,

@@ -179,6 +179,51 @@ export function lintStudy(tax: Taxonomy, study: Study): LintCheck[] {
     }
   }
 
+  // ── What the quantification cannot read ─────────────────────────────────
+  //
+  // The model derives how often a scenario is attempted, and what an attempt is up
+  // against, from fields the analyst fills in. Where one is missing it falls back to a
+  // neutral default rather than guessing - which is honest, but silent. These checks
+  // are what makes the silence visible: each one names a figure that is currently
+  // resting on a default instead of on the analysis.
+
+  // The actor class selects the base rate - the one figure the whole frequency side
+  // hangs off. Without it every actor is charged the same generic rate.
+  if (has("risk_origin")) {
+    add("actor-no-category", "Risk sources with no category", "medium",
+      "The category selects how often an actor of this kind attacks at all - a criminal crew and a state actor differ by more than an order of magnitude. Without it the quantification charges a generic rate.",
+      "risk_origin", ents("risk_origin").filter((r) => !String(r.values.category ?? "").trim()));
+  }
+
+  // Target objectives answer "why us", the strongest study-specific term in the
+  // attempt rate. Without any, the model can only fall back to the relevance rating.
+  if (has("risk_origin") && has("target_objective")) {
+    const pursued = referenced("target_objective", "risk_origin");
+    add("actor-no-objective", "Risk sources with no target objective", "low",
+      "An objective linked to a business asset is what tells the model this actor wants something of yours specifically. Without one, how often it attacks rests on the relevance rating alone.",
+      "risk_origin", ents("risk_origin").filter((r) => !pursued.has(r.id)));
+  }
+
+  // The entry step's technique feeds BOTH sides: how easily contact happens, and how
+  // much skill the first foothold takes. It is the single most valuable field on a chain.
+  if (has("kill_chain_step")) {
+    const steps = ents("kill_chain_step");
+    const isPred = new Set<string>();
+    for (const st of steps) {
+      const v = st.values.predecessors;
+      if (Array.isArray(v)) for (const id of v) { if (typeof id === "string") isPred.add(id); }
+    }
+    const anyEdge = isPred.size > 0;
+    const entries = steps.filter((st) => {
+      const v = st.values.predecessors;
+      const preds = Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+      return anyEdge ? preds.length === 0 : Number(st.values.step_order ?? 0) === 1;
+    });
+    add("entry-no-technique", "Chains whose first step names no technique", "medium",
+      "The entry technique decides two things at once: how often the actor gets into contact, and how much skill the first foothold takes. Naming it (e.g. T1566 Phishing) is the cheapest way to sharpen both.",
+      "kill_chain_step", entries.filter((st) => !/T\d{4}/.test(String(st.values.technique ?? ""))));
+  }
+
   // Risk sources not used by any strategic scenario.
   if (has("risk_origin") && has("strategic_scenario")) {
     const used = referenced("strategic_scenario", "risk_origin");
