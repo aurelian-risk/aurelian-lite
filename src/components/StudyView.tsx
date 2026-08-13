@@ -146,6 +146,9 @@ export function StudyView({ onBack }: { onBack: () => void }) {
               const hasMeasure = tax.entityTypes.some((t) => t.group === activeGroup.key && t.key !== stepT?.key && t.fields.some((f) => f.type === "multiref" && f.refType === stepT?.key));
               return hasMeasure ? <MitigationCharts tax={tax} study={study} color={activeGroup.color} /> : null;
             })()}
+            {/* The parameters that decide what the measures of this workshop are worth,
+                directly below the chart that shows their combined effect. */}
+            {activeGroup.key === "ws5" && <CalibrationView study={study} color={activeGroup.color} scope="measures" />}
             {(() => {
               // WS5: kill-chain mitigation (per-step measure assignment) ABOVE the tables.
               const stepT = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));

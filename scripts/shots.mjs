@@ -82,27 +82,73 @@ try {
   await tab("Strategic Scenarios");
   await shot("risk-matrix");
 
+  // Flow: 12 lanes are ~2400px wide, so at a normal viewport less than half is on
+  // screen. Widen until the whole board fits, then frame the board itself rather than
+  // the window - the point of the picture is the complete set of swimlanes.
   await tab("Flow", 900);
-  // No node selected → full swimlane overview, no occluding detail panel, so the
-  // most cards/elements are visible.
-  await shot("flow");
+  // Without a selection the board is a set of columns with nothing joining them. Focus
+  // the operational scenario that runs through the whole study, so the ribbons connecting
+  // its assets, actor, chain steps and measures are drawn - that network is the point.
+  // The board is wider than any sensible screenshot. Fitting all twelve lanes in would
+  // shrink the cards past reading, so the picture stays at normal width and simply cuts
+  // off on the right - the network is legible, which is what it is for.
+  await app.setViewportSize({ width: 1980, height: 980 });
+  await app.waitForTimeout(500);
+  await app.locator(".flow-node", { hasText: "Ransomware encryption" }).first().click();
+  await app.waitForTimeout(1000);
+  // Left-aligned: the board starts at the business assets and runs off the right edge.
+  // Scrolling into the middle cuts BOTH sides, which reads as an arbitrary detail
+  // rather than as the beginning of a chain.
+  // The board only - selecting opens a detail panel that would take half the picture.
+  await shotEl(".flow-scroll", "flow");
+  await app.setViewportSize({ width: W, height: H });
+  await app.setViewportSize({ width: W, height: H });
+  await app.waitForTimeout(300);
 
   // Coverage overview — the status ring plus the per-tactic coverage tiles,
   // cropped before the defense-in-depth bars.
+  // Coverage: the outcome ring and the per-tactic tiles, with one scenario's
+  // defence-in-depth bars opened underneath - the bars are what show WHERE on a chain
+  // the cover sits, and a ring alone does not.
   await tab("Treatment", 700);
-  await app.setViewportSize({ width: 1360, height: 1000 });
+  await app.setViewportSize({ width: 1360, height: 1500 });
   await app.evaluate(() => window.scrollTo(0, 0));
-  await app.waitForTimeout(300);
-  await shotClip(".panel:has(.mc-ring) .panel-head", ".panel:has(.mc-ring) .mc-body", "coverage");
+  await app.waitForTimeout(400);
+  await app.locator(".dd-scn-h").first().click();
+  await app.waitForTimeout(500);
+  await shotClip(".panel:has(.mc-ring) .panel-head", ".dd-steps", "coverage", 14);
   await app.setViewportSize({ width: W, height: H });
 
   // Monte-Carlo risk quantification — the annual-loss headline, the distribution with
   // vs without controls, and where the attempts on the chain are stopped. A clip is
   // taken within the viewport, so it has to be tall enough for the whole card.
+  // Attack paths: every kill chain of the study projected onto the assets it converges
+  // on. Chains start hidden, so they are switched on to make the choke points appear.
+  await tab("Operational Scenarios", 800);
+  const chips = app.locator(".ap-chip");
+  for (let i = 0; i < await chips.count(); i++) { await chips.nth(i).click(); await app.waitForTimeout(250); }
+  await app.waitForTimeout(500);
+  // The graph scrolls: the asset column the chains converge on - and with it the choke
+  // point the badge promises - sits off screen at a normal width. Widen until it fits.
+  const apNeed = await app.evaluate(() => {
+    const sc = document.querySelector(".ap-scroll");
+    return Math.ceil(sc.scrollWidth + (window.innerWidth - sc.clientWidth) + 24);
+  });
+  await app.setViewportSize({ width: Math.max(W, apNeed), height: 1100 });
+  await app.waitForTimeout(700);
+  await shotEl(".panel:has(.ap-head)", "attack-paths");
+  await app.setViewportSize({ width: W, height: H });
+  await app.waitForTimeout(300);
+
   await tab("Risk Quantification", 800);
   await app.setViewportSize({ width: W, height: 1400 });
   await app.evaluate(() => window.scrollTo(0, 0));
   await app.waitForTimeout(400);
+  // Show the inherent side: without controls the loss distribution is a full, rounded
+  // curve, where the residual one is flattened against the axis because most years
+  // carry no loss at all. The picture is about the shape of a loss distribution.
+  await app.locator(".seg-btn", { hasText: "Inherent" }).first().click();
+  await app.waitForTimeout(1200);
   await shotClip(".qt-top", ".qt-dist", "quant", 2);   // tight: the factor tree starts right below
   await app.setViewportSize({ width: W, height: H });
 } catch (e) {

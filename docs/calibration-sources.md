@@ -21,14 +21,15 @@ misleading about thirteen of them.
 
 ---
 
-## 1. The problem every published source has
+## 1. What published sources measure, and what a model needs
 
-Almost no security report measures what a risk model needs.
+Security reporting sets out to describe what happened. A risk model needs a rate. Those are
+different quantities, and most of the work below is the bridge between them.
 
-Incident reports — DBIR, M-Trends, leak-site trackers — count **events in a sample**. They
-tell you what share of breaches involved ransomware, or which sector produced the most
-victims. They cannot tell you how often *one organisation* is attacked, because they have
-no denominator: no count of the organisations that were exposed and *not* breached.
+Incident reports — DBIR, M-Trends, leak-site trackers — count **events in a sample**, which
+is what they are for: what share of breaches involved ransomware, which sector produced the
+most victims. A rate for *one organisation* needs something they do not set out to carry,
+a denominator — the organisations that were exposed and not breached.
 
 Only one kind of source has a denominator: a **representative survey** that asks a known
 population "did you experience X in the last twelve months". That gives **incidence** — the
@@ -79,13 +80,14 @@ are large and well-instrumented, the honest move is to raise this toward 0.9.
 **Insider — 0.08 attacks/yr.** Verizon DBIR consistently puts internal actors at roughly a
 fifth of breaches. Applied to the criminal rate: 0.35 × (18/82) ≈ 0.077.
 
-*Rejected anchor, and why.* The Ponemon Cost of Insider Risks 2025 reports **25
-insider-related incidents per organisation per year**, of which about 13.8 are negligence.
-That is three hundred times our figure — because it counts every insider-related event
-including careless data handling and policy violation, at large enterprises. A modelled
-insider scenario is a deliberate act by one privileged person, not an average of everything
-staff do wrong. Using Ponemon directly would have been the single largest error available
-here.
+*A published figure that measures a different quantity.* The Ponemon Cost of Insider Risks
+2025 reports **25 insider-related incidents per organisation per year**, about 13.8 of them
+arising from negligence. That is a wider event class than this table needs: it covers every
+insider-related event across large enterprises, careless data handling and policy breaches
+included. A modelled insider scenario is one deliberate act by one privileged person, so
+the two quantities are not interchangeable and the rate here comes from the breach share
+instead. For the question that report does answer — what insider risk costs an organisation
+across all its forms — it remains the better source.
 
 **Hacktivist 0.05 · Competitor 0.03 · State actor 0.02 · Terrorist 0.01 — judgement.**
 No representative survey measures these. They are placed an order of magnitude or more
@@ -99,11 +101,12 @@ This is where open-source data changed our answer most.
 
 The obvious move is to read sector exposure off leak-site tallies. In 2025 those recorded
 roughly **7,300–7,900 victims**, with manufacturing the largest sector (about a quarter of
-all victims by one count) and healthcare well under a tenth. Read naively, that says
-manufacturing is several times the risk of healthcare.
+all victims by one count) and healthcare well under a tenth. Taken as a measure of
+per-organisation risk, that would place manufacturing several times above healthcare.
 
-**It says nothing of the kind.** Those are counts, and a sector with more organisations in
-it produces more victims whatever its per-organisation risk. The tally has no denominator.
+Those tallies count victims, which is what they set out to do. Turning a count into a rate
+needs a denominator they do not carry: how many organisations each sector contains. A
+sector with more of them produces more victims whatever the risk to any one.
 
 The normalised figures point the other way, and much more gently. Sophos surveys the same
 question sector by sector, among comparable organisations:
@@ -128,9 +131,9 @@ normalised incidence figure exists, so the number is reasoning, not measurement.
 Verizon DBIR 2025 reports the ways in: **stolen credentials 22 % of breaches, exploited
 vulnerabilities 20 %, phishing 15 %**, with third-party involvement doubling to 30 %.
 
-This corrected a mistake. The table previously treated *valid accounts* as the rarest route
-at ×0.8, on the reasoning that it needs an account to begin with. The data says credential
-abuse is the single **most** common way in. Identity surfaces are internet-facing and
+This revised an earlier setting. The table had treated *valid accounts* as the rarest route
+at ×0.8, on the reasoning that it needs an account to begin with. The data puts credential
+abuse first among the ways in. Identity surfaces are internet-facing and
 attacked continuously, so it now sits at ×1.2, above phishing.
 
 *The assumption you should check:* a breach share mixes how often contact happens with how
@@ -179,10 +182,9 @@ and industrial 5.00M. Mean time to identify and contain: 241 days.
 
 The top severity band is anchored on 4.44M — deliberately at the **top** of the scale, not
 in the middle. It is a mean over large organisations with a long tail behind it; treating it
-as the typical breach would overstate the ordinary case badly. The bands stay wide for the
-same reason.
+as typical would overstate the ordinary case. The bands stay wide for the same reason.
 
-These remain the numbers a generic default serves worst. The sector spread in IBM's own
+These remain the numbers a generic default fits least well. The sector spread in the same
 data — 7.42M against 5.00M — is larger than anything else in this calibration, and it is
 about *your* organisation, not about the attacker. Replace them outright if you have loss
 history.
@@ -235,7 +237,7 @@ specific jurisdiction with its own reporting regime should expect different figu
   <https://cloud.google.com/blog/topics/threat-intelligence/m-trends-2025/>
 - IBM — *Cost of a Data Breach Report 2025*:
   <https://www.ibm.com/think/insights/cost-of-a-data-breach-healthcare-industry>
-- Ponemon Institute — *Cost of Insider Risks* (cited as a rejected anchor, §2):
+- Ponemon Institute — *Cost of Insider Risks* (on the total cost of insider risk, §2):
   <https://www.ponemon.org/news-updates/blog/security/lessons-learned-from-the-2026-global-cost-of-insider-risks.html>
 - Breachsense — *Ransomware Annual Report 2025* (leak-site tallies, §3):
   <https://www.breachsense.com/ransomware-reports/annual-report-2025/>

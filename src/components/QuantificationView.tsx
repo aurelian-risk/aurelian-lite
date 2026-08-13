@@ -4,12 +4,14 @@
 // haptic distribution inputs. The Monte-Carlo (annual loss / ALE + loss-exceedance
 // curve) recomputes live; an inherent<->residual toggle shows what the controls buy.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { EntityRecord, Study, Taxonomy } from "../domain/types";
 import { getType, recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
 import { useStore } from "../domain/store";
-import { DEFAULT_CALIBRATION } from "../domain/calibration";
+import { DEFAULT_CALIBRATION, type Calibration } from "../domain/calibration";
 import { simulate, type QuantInputs, type QuantResult, type Range } from "../domain/montecarlo";
-import { deriveInputs, meanOf, type Derived, type Prov } from "../domain/quantModel";
+import { deriveInputs, meanOf, measureEfficacyOf, type Derived, type Prov } from "../domain/quantModel";
+import { effectClassOf, EFFECT_CHANNEL } from "../domain/controls";
 import { likelihoodCheck } from "../domain/frequency";
 import { DistInput, fmtVal, type Unit } from "./DistInput";
 import { FactorTrace } from "./FactorTrace";
@@ -206,7 +208,7 @@ function QuantTree({ tax, study, op, color }: { tax: Taxonomy; study: Study; op:
         </div>
       </div>
       {resWith && resWithout && <LossDistribution resultWith={resWith} resultWithout={resWithout} active={residual ? "with" : "without"} accent={color}
-        derived={derivedWith} tax={tax} benefit={benefit} onTraceControls={() => setTrace("controlStrength")} />}
+        derived={derivedWith} tax={tax} cal={cal} benefit={benefit} onTraceControls={() => setTrace("controlStrength")} />}
 
       <div className="qt-tree">
         <NodeRow op="×" title="Loss event frequency" value={fmtVal(lef, "rate")} />
@@ -289,15 +291,156 @@ function MoneyRow({ title, value, onChange, unit, lo, hi, log, accent, prov, onT
   );
 }
 
+/** Where one row of the break-down came from: the records behind it, their state, how
+ *  they were combined and what that made the bar. `what` is a step id, "" for the
+ *  before-any-measure row, or "@through" for the share that reaches the objective. */
+function BreakExplain({ what, result, derived, tax, cal, onClose }: {
+  what: string; result: QuantResult; derived: Derived; tax: Taxonomy; cal: Calibration; onClose: () => void;
+}) {
+  const p1 = (x: number) => `${(x * 100).toFixed(1)}%`;
+  const p0 = (x: number) => `${Math.round(x * 100)}%`;
+  const dm = derived.demand;
+  const sc = derived.coverage.steps.find((s) => s.step.id === what);
+  const cs = derived.chain?.find((c) => c.id === what);
+  const share = what === "@through" ? result.vuln
+    : what === "" ? result.blockedAtBaseline
+      : result.breaks.find((b) => b.id === what)?.p ?? 0;
+  const title = sc ? recordTitle(getType(tax, sc.step.type)!, sc.step)
+    : what === "@through" ? "Attempts that reach the objective" : "Attempts that were never skilled enough";
+
+  // Labels of the implementation scale, so a measure's level reads as a word.
+  const lvlLabels = tax.entityTypes.flatMap((t) => t.fields)
+    .find((f) => f.key === "implementation_level")?.scaleLabels ?? [];
+  const lvlOf = (m: EntityRecord) => {
+    const v = Number(m.values.implementation_level);
+    return Number.isFinite(v) ? lvlLabels[v - 1] ?? `level ${v}` : "level not set";
+  };
+  const lvlW = (m: EntityRecord) => {
+    const v = Number(m.values.implementation_level);
+    return cal.effect.levelWeight[Number.isFinite(v) ? v - 1 : cal.effect.levelWeight.length - 1] ?? 1;
+  };
+  const stW = (m: EntityRecord) => cal.effect.statusWeight[String(m.values.status ?? "")] ?? 1;
+
+  /** One figure with the arithmetic that produced it directly underneath. Nothing in
+   *  this popup may appear without saying where it came from - that was the whole
+   *  point of opening it. */
+  const line = (k: React.ReactNode, v: string, from?: React.ReactNode, cls = "") => (
+    <div className={"bx-line " + cls}>
+      <span className="bx-k">{k}{from && <em>{from}</em>}</span>
+      <span className="mono bx-v">{v}</span>
+    </div>
+  );
+
+  return createPortal(
+    <div className="overlay" onMouseDown={onClose}>
+      <div className="ft-card" onMouseDown={(e) => e.stopPropagation()}>
+        <header className="ft-head">
+          <div>
+            <div className="ft-eyebrow">out of every 100 attempts on this chain</div>
+            <h2>{title} <span className="mono ft-val">{p1(share)}</span></h2>
+          </div>
+          <button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button>
+        </header>
+        <div className="ft-body">
+          {sc && cs ? (
+            <>
+              <p className="bx-h">Measures you recorded on this step</p>
+              {sc.measures.length ? sc.measures.map((m) => (
+                <div key={m.id}>
+                  {line(
+                    recordTitle(getType(tax, m.type)!, m),
+                    p1(measureEfficacyOf(tax, m, cal)),
+                    <>{effectClassOf(m)} — {EFFECT_CHANNEL[effectClassOf(m)]}<br />
+                      rolled out {lvlOf(m)} (×{lvlW(m).toPrecision(2)}) · {String(m.values.status ?? "no status")} (×{stW(m).toPrecision(2)})
+                      {" "}· most one measure can protect {p0(cal.effect.controlCeiling)}</>,
+                  )}
+                </div>
+              )) : <p className="bx-none">None. Nothing here costs an attacker anything.</p>}
+              {sc.measures.filter((m) => effectClassOf(m) === "Preventive").length > 1 && line(
+                "together they protect",
+                p1(sc.prevention),
+                <>1 − {sc.measures.filter((m) => effectClassOf(m) === "Preventive")
+                  .map((m) => `(1 − ${p1(measureEfficacyOf(tax, m, cal))})`).join(" × ")} — each only helps where the others failed</>,
+                "bx-sum",
+              )}
+
+              <p className="bx-h">How much skill it takes to get past this step</p>
+              {dm && line("what the attack needs on its own", p1(dm.total),
+                <>getting in {p1(dm.entry)} + tooling {p1(dm.adds.tooling)} + breadth over {dm.tactics} tactics {p1(dm.adds.depth)} + staying in {p1(dm.adds.dwell)}</>)}
+              {line(<>because this step is {p1(sc.prevention)} protected</>,
+                cs.gate ? `+${p1(cs.gate.mode - (dm?.total ?? 0))}` : "+0.0%",
+                <>{p1(sc.prevention)} × {p0(cal.effect.prevention)}, the most a fully protected step adds</>)}
+              {line(<b>an attacker has to be better than this share of all attackers</b>,
+                cs.gate ? p1(cs.gate.mode) : "nothing to clear", undefined, "bx-sum")}
+              {cs.interrupt > 0 && (
+                <>
+                  <p className="bx-h">Being spotted here</p>
+                  {line("chance the intrusion is ended at this step", p1(cs.interrupt),
+                    <>watched {p1(sc.detection)} × {p0(cal.effect.detection)} of what is seen gets stopped × how able you are to react</>)}
+                </>
+              )}
+              <p className="bx-note">
+                These {p1(share)} are the attempts whose attacker was skilled enough for the
+                attack itself but not for this step.
+              </p>
+            </>
+          ) : what === "" ? (
+            <>
+              <p className="bx-h">How much skill this attack needs on its own</p>
+              {dm ? (
+                <>
+                  {line("getting in", p1(dm.entry), <>from the first step&apos;s technique{dm.unknown.entry ? " - none recognised, so a default" : ""}</>)}
+                  {line("tooling", `+${p1(dm.adds.tooling)}`, <>the hardest single technique on the chain</>)}
+                  {line("breadth", `+${p1(dm.adds.depth)}`, <>the chain spans {dm.tactics} distinct tactics</>)}
+                  {line("staying in undetected", `+${p1(dm.adds.dwell)}`, <>the chain needs persistence, evasion or lateral movement</>)}
+                  {line(<b>skill the attack needs, before any measure of yours</b>, p1(dm.total), undefined, "bx-sum")}
+                </>
+              ) : line("read from the difficulty rating", p1(meanOf(derived.inputs.controlStrength)),
+                <>this scenario models no chain, so there is nothing to derive it from</>)}
+              <p className="bx-h">How skilled this attacker is</p>
+              {line(derived.riskSource,
+                `${p0(derived.inputs.adversaryStrength.min)} · ${p0(derived.inputs.adversaryStrength.mode)} · ${p0(derived.inputs.adversaryStrength.max)}`,
+                <>from the capability rating: at worst, most likely, at best - better than this share of all attackers. Wide because a rating describes a class of attacker, not one person.</>)}
+              <p className="bx-note">
+                These {p1(share)} are the attempts whose attacker was less skilled than the
+                attack requires. They stopped before reaching any step, so no measure of yours
+                was involved.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="bx-h">What this share becomes</p>
+              {line("attempts per year on this scenario", derived.frequency.total.toPrecision(2),
+                <>base rate {derived.frequency.base.toPrecision(2)} × tempo {derived.frequency.tempo.toPrecision(2)} × resources {derived.frequency.throughput.toPrecision(2)} × why-us {derived.frequency.pull.toPrecision(2)} × reachability {derived.frequency.reachability.toPrecision(2)}</>)}
+              {line("× the share that gets through", p1(result.vuln), <>measured over the simulation, not set anywhere</>)}
+              {line(<b>loss events per year</b>, result.lef.toPrecision(2),
+                result.lef > 0 ? <>about one every {Math.round(1 / result.lef)} years</> : undefined, "bx-sum")}
+              <p className="bx-note">
+                An attempt only counts as a loss event once it reaches the end of the chain.
+                Getting in is not a loss event.
+              </p>
+            </>
+          )}
+          <p className="bx-note">
+            Shares come from {result.iterations.toLocaleString("en-US")} simulated years. Every
+            row of the list, plus the share reaching the objective, adds up to 100%.
+          </p>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 // The simulated annual-loss distribution (Monte-Carlo output), read-only. It
 // overlays BOTH runs so the effect of the controls is visible: "without controls"
 // (inherent, ghosted) sits to the right at higher losses; "with controls"
 // (residual, filled) is pulled left. The mean of each is marked and the gap
 // between them is what the controls buy. Below it, the control chain is spelled
 // out (kill-chain coverage -> control strength -> loss reduction).
-function LossDistribution({ resultWith, resultWithout, active, accent, derived, tax, benefit, onTraceControls }: {
+function LossDistribution({ resultWith, resultWithout, active, accent, derived, tax, cal, benefit, onTraceControls }: {
   resultWith: QuantResult; resultWithout: QuantResult; active: "with" | "without"; accent: string;
-  derived: Derived; tax: Taxonomy; benefit: number; onTraceControls: () => void;
+  derived: Derived; tax: Taxonomy; cal: Calibration; benefit: number; onTraceControls: () => void;
 }) {
   const W = 520, H = 214, PL = 20, PB = 36, PT = 28, PR = 18;
   const base = H - PB, plotH = H - PT - PB;
@@ -355,7 +498,7 @@ function LossDistribution({ resultWith, resultWithout, active, accent, derived, 
         {ticks.map((t) => <text key={"t" + t} x={X(t)} y={H - 14} textAnchor="middle" className="qv-ax">{fmtVal(t, "money")}</text>)}
         <text x={W - PR} y={H - 2} textAnchor="end" className="qv-ax" fillOpacity={0.75}>annual loss (log €) →</text>
       </svg>
-      <ChainBreak result={resultWith} derived={derived} tax={tax} accent={accent} benefit={benefit} onTrace={onTraceControls} />
+      <ChainBreak result={resultWith} derived={derived} tax={tax} cal={cal} accent={accent} benefit={benefit} onTrace={onTraceControls} />
     </div>
   );
 }
@@ -364,9 +507,11 @@ function LossDistribution({ resultWith, resultWithout, active, accent, derived, 
 // could not say: of every attack attempt, which share is stopped by the scenario's own
 // difficulty, which share by each control on the chain, and which share gets through.
 // It answers "where does my money work" far better than any single loss figure.
-function ChainBreak({ result, derived, tax, accent, benefit, onTrace }: {
-  result: QuantResult; derived: Derived; tax: Taxonomy; accent: string; benefit: number; onTrace: () => void;
+function ChainBreak({ result, derived, tax, cal, accent, benefit, onTrace }: {
+  result: QuantResult; derived: Derived; tax: Taxonomy; cal: Calibration;
+  accent: string; benefit: number; onTrace: () => void;
 }) {
+  const [explain, setExplain] = useState<string | null>(null);
   const warn = "var(--color-state-warning)";
   const titleOf = (id: string) => {
     const sc = derived.coverage.steps.find((s) => s.step.id === id);
@@ -389,14 +534,22 @@ function ChainBreak({ result, derived, tax, accent, benefit, onTrace }: {
       </button>
     );
   }
-  const row = (p: number, label: string, cls = "") => (
-    <div className={"qb-row " + cls} key={label}>
+  // Every row is a chip that opens where its number came from: which measures, in what
+  // state, combined how, and what that made the bar. A percentage nobody can take apart
+  // is a percentage nobody can argue with.
+  const row = (p: number, label: string, cls = "", id?: string) => (
+    <button type="button" className={"qb-row " + cls} key={label}
+      onClick={() => setExplain(id ?? "")} title="Where this number comes from">
       <span className="qb-p mono">{(p * 100).toFixed(1)}%</span>
       <span className="qb-l">{label}</span>
-    </div>
+      <Icon.chevron />
+    </button>
   );
   return (
     <div className="qt-break">
+      {explain !== null && (
+        <BreakExplain what={explain} result={result} derived={derived} tax={tax} cal={cal} onClose={() => setExplain(null)} />
+      )}
       <div className="qt-break-h">
         <span className="qt-shift-lbl">Where the attempts are stopped</span>
         <span className="qb-scale">out of every 100 attacks on this chain</span>
@@ -410,8 +563,8 @@ function ChainBreak({ result, derived, tax, accent, benefit, onTrace }: {
           style={{ width: `${result.vuln * 100}%`, background: warn }} />
       </div>
       <div className="qb-rows">
-        {named.map((s) => row(s.p, s.id ? `stopped at ${s.label}` : "attacker not capable enough for this attack, before any measure of yours"))}
-        {row(result.vuln, "reach the objective - these become loss events", "through")}
+        {named.map((s) => row(s.p, s.id ? `stopped at ${s.label}` : "attacker not capable enough for this attack, before any measure of yours", "", s.id))}
+        {row(result.vuln, "reach the objective - these become loss events", "through", "@through")}
       </div>
       <div className="qb-foot">
         {result.detected > 0.002 && <span>Of those, {Math.round(result.detected * 100)} were stopped by detection and response rather than by resistance.</span>}

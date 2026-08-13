@@ -14,7 +14,9 @@ import {
   type Band as Band2, type SectorRow, type TableDoc,
 } from "../domain/calibration";
 import { MITRE_TECHNIQUES } from "../domain/mitre";
+import { EFFECT_CHANNEL } from "../domain/controls";
 import { Dial, DialRow, Seg } from "./CalInputs";
+import { DepthCurve } from "./CalDepth";
 import { DistInput } from "./DistInput";
 
 /** Replace one nested value without mutating the rest. */
@@ -43,11 +45,12 @@ function Table({ docKey, changed, onReset, children }: {
         <h3>
           {doc.title}
           <span className={"cal-grade " + doc.grade} title={GRADE_HINT[doc.grade]}>{doc.grade}</span>
-          {changed && <em className="cal-edited">edited</em>}
+          {/* Always rendered, only hidden - appearing on edit would reflow the header. */}
+          <em className={"cal-edited" + (changed ? "" : " off")}>edited</em>
         </h3>
         <div className="cal-head-act">
           <button className="cal-why" onClick={() => setWhy((v) => !v)}>{why ? "less" : "why these numbers"}</button>
-          {changed && <button className="cal-reset" onClick={onReset}>reset this table</button>}
+          <button className={"cal-reset" + (changed ? "" : " off")} onClick={onReset}>reset this table</button>
         </div>
       </header>
       <p className="cal-q">{doc.question}</p>
@@ -96,13 +99,26 @@ const GRADE_HINT: Record<string, string> = {
 /** The tactics the bundled reference knows, in the order it lists them. */
 const TACTIC_NAMES = [...new Set(MITRE_TECHNIQUES.map((t) => t.tactic))];
 
-export function CalibrationView({ study, color }: { study: Study; color: string }) {
+/** `scope` decides which tables are shown. The quantification workshop takes the whole
+ *  calibration; the treatment workshop takes only what a measure is worth, because that
+ *  is the part its tables are about - same panel, same controls, fewer sections. */
+export function CalibrationView({ study, color, scope = "all" }: {
+  study: Study; color: string; scope?: "all" | "measures";
+}) {
+  const all = scope === "all";
   const cal = study.calibration ?? DEFAULT_CALIBRATION;
   const setCal = useStore((s) => s.setCalibration);
-  const resetAll = () => setCal(null);
+  const resetAll = () => (all ? setCal(null) : resetPaths(["effect"]));
   const [open, setOpen] = useState(false);
+  const [lvl, setLvl] = useState(cal.effect.levelWeight.length - 1);
+  // The scale's own labels - "none / partial / substantial / full" - not invented ones.
+  const tax = useStore((s) => s.taxonomy);
+  const levelLabels = tax.entityTypes.flatMap((t) => t.fields)
+    .find((f) => f.key === "implementation_level")?.scaleLabels
+    ?? cal.effect.levelWeight.map((_, i) => `level ${i + 1}`);
 
   const put = (path: (string | number)[], value: unknown) => setCal(setIn(cal, path, value));
+
   /** Restore one or more branches of the defaults, leaving every other edit in place.
    *  Several branches are folded into ONE update on purpose: calling a single-path
    *  reset twice in a row would build each from the same stale value, and the second
@@ -123,6 +139,7 @@ export function CalibrationView({ study, color }: { study: Study; color: string 
     return JSON.stringify(a) !== JSON.stringify(b);
   };
 
+  const changedInScope = all ? !isDefaultCalibration(cal) : differs(["effect"]);
   const D = DEFAULT_CALIBRATION;
   const f = cal.frequency, d = cal.demand, e = cal.effect, mg = cal.magnitude;
   const actors = Object.keys(f.baseRate);
@@ -136,10 +153,14 @@ export function CalibrationView({ study, color }: { study: Study; color: string 
 
   const head = (
     <div className="panel-head">
-      <h3>Calibration</h3>
+      <h3>{all ? "Calibration" : "Control parametrization"}</h3>
       <span className="spacer" />
-      <span className="hint">parameter adjustment — the settings the figures are computed from</span>
-      {!isDefaultCalibration(cal) && <span className="badge">changed</span>}
+      <span className="hint">
+        {all
+          ? "parameter adjustment — the settings the figures are computed from"
+          : "parameter adjustment — what a measure is worth, and what layers of them add"}
+      </span>
+      <span className={"badge" + (changedInScope ? "" : " off")}>changed</span>
       <button className="btn sm" onClick={() => setOpen(!open)}>{open ? "Close" : "Adjust"}</button>
     </div>
   );
@@ -155,8 +176,9 @@ export function CalibrationView({ study, color }: { study: Study; color: string 
       <div className="panel-body cal-body">
       <div className="cal-intro">
         <p>
-          The parameters this study&apos;s quantification runs on. Edits take effect
-          immediately, are stored with the study and are included in every export of it.
+          {all
+            ? "The parameters this study's quantification runs on. Edits take effect immediately, are stored with the study and are included in every export of it."
+            : "What a measure is worth, and what several on the same step add up to. The same parameters the quantification uses - edits here change both. Stored with the study and included in every export of it."}
         </p>
         <p>
           Each table is graded by its basis: <b>measured</b> is a published figure with the
@@ -164,13 +186,19 @@ export function CalibrationView({ study, color }: { study: Study; color: string 
           means no published figure answers the question. &quot;Why these numbers&quot;
           shows the source and the derivation.
         </p>
-        {!isDefaultCalibration(cal) && (
-          <div className="cal-actions">
-            <button className="btn danger sm" onClick={resetAll}>Reset all tables to defaults</button>
-          </div>
-        )}
+        {/* Always in the layout: appearing on the first edit would shove every table
+            below it down the page. */}
+        <div className="cal-actions">
+          <span className={"cal-state" + (changedInScope ? " edited" : "")}>
+            {changedInScope ? "Changed from the defaults." : "Defaults, unchanged."}
+          </span>
+          <button className={"btn danger sm" + (changedInScope ? "" : " off")} onClick={resetAll}>
+            Reset {all ? "all tables" : "these tables"} to defaults
+          </button>
+        </div>
       </div>
 
+      {all && <>
       <h2 className="cal-part">How often a scenario is attempted</h2>
 
       <Table docKey="frequency.baseRate" changed={differs(["frequency", "baseRate"]) || differs(["frequency", "baseRateDefault"])}
@@ -345,35 +373,81 @@ export function CalibrationView({ study, color }: { study: Study; color: string 
           ))}
         </div>
       </Table>
+      </>}
 
-      <h2 className="cal-part">What a measure is worth, and what a loss costs</h2>
+      {all && <h2 className="cal-part">What a measure is worth, and what a loss costs</h2>}
 
-      <Table docKey="effect" changed={differs(["effect"])} onReset={() => resetPath(["effect"])}>
-        <div className="dial-rows">
-          {([
-            ["prevention", "A preventive measure raises the bar at its step by"],
-            ["detection", "A detective measure converts into breaking off the intrusion at"],
-            ["responseFloor", "…and some reaction happens even with nobody assigned"],
-            ["deterrence", "A deterrent measure cuts the number of attacks by"],
-            ["avoidance", "An avoidance measure cuts them by"],
-            ["recoverableShare", "Recovery can reach at most this share of the loss"],
-            ["containment", "Containment cuts the chance of follow-on losses by"],
-            ["lateDetection", "Spotting the damage as it happens trims the bill by"],
-            ["controlCeiling", "One single measure never blocks more than"],
-          ] as const).map(([k, name]) => (
-            <DialRow key={k} name={name} value={e[k] as number} dflt={D.effect[k] as number}
-              lo={0} hi={1} step={0.01} kind="pct" onChange={(n) => put(["effect", k], n)} />
-          ))}
-        </div>
-        <p className="cal-sub">How much of a measure counts, by where it is in its lifecycle:</p>
+      <Table docKey="effect.depth"
+        changed={["levelWeight", "statusWeight", "controlCeiling", "prevention"].some((k) => differs(["effect", k]))}
+        onReset={() => resetPaths(["effect", "levelWeight"], ["effect", "statusWeight"], ["effect", "controlCeiling"], ["effect", "prevention"])}>
+        <p className="cal-lead">
+          Everything below rests on one idea. An attack needs a certain level of skill to get
+          past a step, and a security measure raises that level. Skill is expressed as a rank
+          among attackers - &quot;better than 84% of them&quot;. The higher the level a step
+          demands, the fewer attempts clear it.
+        </p>
+        <DepthCurve effect={e} capability={cal.adversary.capability[2] ?? cal.adversary.capability[0]}
+          spread={d.spread} levels={levelLabels} level={lvl} onLevel={setLvl} />
+        <p className="cal-sub">
+          How much a measure counts at each stage of its roll-out, against a finished one:
+        </p>
+        <Band labels={levelLabels} values={e.levelWeight} dflt={D.effect.levelWeight}
+          lo={0} hi={1} step={0.01} kind="mult" onChange={(i, n) => put(["effect", "levelWeight", i], n)} />
+        <p className="cal-sub">
+          How much it counts depending on whether it exists yet. The two multiply: a measure
+          that is only planned and only partly rolled out protects{" "}
+          {Math.round((e.levelWeight[1] ?? 0) * (e.statusWeight.Planned ?? 0) * e.controlCeiling * 100)}% of its step.
+        </p>
         <div className="dial-rows">
           {Object.keys(e.statusWeight).map((k) => (
             <DialRow key={k} name={k} value={e.statusWeight[k]} dflt={D.effect.statusWeight[k] ?? 0}
-              lo={0} hi={1} step={0.05} kind="pct" onChange={(n) => put(["effect", "statusWeight", k], n)} />
+              lo={0} hi={1} step={0.05} kind="mult" onChange={(n) => put(["effect", "statusWeight", k], n)} />
           ))}
+          <DialRow name="The most one measure can protect on its own"
+            hint="no single control is perfect; several together can go higher"
+            value={e.controlCeiling} dflt={D.effect.controlCeiling}
+            lo={0} hi={1} step={0.01} kind="pct" onChange={(n) => put(["effect", "controlCeiling"], n)} />
+          <DialRow name="How much more skill a fully protected step demands"
+            hint={`a step protected 100% lifts the requirement by this much - from "better than 50% of attackers" to "better than ${Math.round((0.5 + e.prevention) * 100)}%"`}
+            value={e.prevention} dflt={D.effect.prevention}
+            lo={0} hi={1} step={0.01} kind="pct" onChange={(n) => put(["effect", "prevention"], n)} />
         </div>
       </Table>
 
+      <Table docKey="effect" changed={differs(["effect"])} onReset={() => resetPath(["effect"])}>
+        {([
+          ["Detective", [
+            ["detection", "How often a spotted intrusion is actually stopped", "an alarm that nobody follows up changes nothing, so only part of what a detective measure sees ends the intrusion"],
+            ["responseFloor", "Assumed ability to react when none is recorded", "the model reads that ability from the recovery measures in the study; where a study records none, it assumes this rather than nothing - some reaction always happens"],
+            ["lateDetection", "Spotting it while the damage is happening", "at the last step of the chain there is nothing left to prevent, so detection only shortens the event and takes this much off the bill"],
+          ]],
+          ["Corrective", [
+            ["recoverableShare", "The most recovery can take off the bill", "fines, notification duties and lost reputation stay, however good the backups"],
+            ["containment", "Cuts the chance of a knock-on loss by", ""],
+          ]],
+          ["Deterrent", [["deterrence", "Cuts the number of attacks by", ""]]],
+          ["Avoidance", [["avoidance", "Cuts the number of attacks by", "by removing the exposure, so contact happens less often"]]],
+        ] as const).map(([cls, rows]) => (
+          <div className="cal-class" key={cls}>
+            <p className="cal-class-h">
+              <b>{cls}</b>
+              <em>{EFFECT_CHANNEL[cls]}</em>
+            </p>
+            <div className="dial-rows">
+              {rows.map(([k, name, hint]) => (
+                <DialRow key={k} name={name} hint={hint || undefined} value={e[k] as number} dflt={D.effect[k] as number}
+                  lo={0} hi={1} step={0.01} kind="pct" onChange={(n) => put(["effect", k], n)} />
+              ))}
+            </div>
+          </div>
+        ))}
+        <p className="cal-sub">
+          Preventive measures are the fifth class; what they are worth is set in the
+          defence-in-depth table above, because it depends on how many sit on a step.
+        </p>
+      </Table>
+
+      {all && (
       <Table docKey="magnitude" changed={differs(["magnitude"])} onReset={() => resetPath(["magnitude"])}>
         {([["loss", "Direct loss per event"], ["cascadeLoss", "Follow-on loss, when it happens"]] as const).map(([k, name]) => (
           <div key={k}>
@@ -392,11 +466,14 @@ export function CalibrationView({ study, color }: { study: Study; color: string 
           dflt={D.magnitude.cascadeLikelihood.map((b) => b.mode)} lo={0} hi={1} step={0.01} kind="pct"
           onChange={(i, n) => put(["magnitude", "cascadeLikelihood", i, "mode"], n)} />
       </Table>
+      )}
 
-      <div className="cal-foot">
-        The taxonomy defines which fields exist; the calibration defines how their values
-        become numbers.
-      </div>
+      {all && (
+        <div className="cal-foot">
+          The taxonomy defines which fields exist; the calibration defines how their values
+          become numbers.
+        </div>
+      )}
       </div>
     </div>
   );

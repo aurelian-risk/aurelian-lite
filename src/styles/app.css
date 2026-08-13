@@ -1368,3 +1368,54 @@ select.btn { display: inline-block; width: auto; flex: none; line-height: 1.4; }
 .cal-curves { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
 .cal-count { display: inline-block; margin-left: 5px; padding: 0 6px; border-radius: 999px;
   background: var(--bg-hover); color: var(--fg-subtle); font-size: 10.5px; }
+
+/* Defence in depth, drawn: the saturation curve and the level x status grid. */
+.depth { margin-bottom: 4px; }
+.depth-svg { width: 100%; max-width: 470px; height: auto; display: block; }
+.depth-key { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin: 2px 0 0;
+  font-size: 11.5px; color: var(--fg-subtle); }
+.depth-k1 { width: 16px; height: 2.5px; border-radius: 2px; display: inline-block; }
+.depth-k2 { width: 16px; height: 0; border-top: 1.6px dashed var(--fg-muted); display: inline-block; margin-left: 10px; }
+.depth-note { margin: 8px 0 0; font-size: 12px; color: var(--fg-muted); line-height: 1.6; max-width: 72ch; }
+.depth-grid { display: grid; gap: 2px; margin-top: 6px; max-width: 470px; }
+.dg-h { font-size: 10.5px; color: var(--fg-subtle); text-align: center; padding-bottom: 2px; }
+.dg-k { font-size: 11.5px; color: var(--fg-muted); display: flex; align-items: center; }
+.dg-c { font-size: 11px; color: var(--fg); text-align: center; padding: 4px 0; border-radius: 5px;
+  font-variant-numeric: tabular-nums; }
+.depth-switch { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
+.depth-switch > span:first-child { font-size: 11.5px; color: var(--fg-subtle); margin-right: 6px; }
+.depth-switch .cal-seg-b { border: 1px solid var(--border); border-radius: 7px; }
+/* Effect strengths grouped by the class they belong to, so a reader sees which kind of
+   control each figure is about instead of a flat list of nine. */
+.cal-class { margin-bottom: 14px; }
+.cal-class:last-of-type { margin-bottom: 6px; }
+.cal-class-h { margin: 0 0 4px; font-size: 12.5px; }
+.cal-class-h b { color: var(--fg); }
+.cal-class-h em { font-style: normal; color: var(--fg-subtle); font-size: 11.5px; margin-left: 8px; }
+
+/* Break-down rows are chips that open where their number came from. */
+.qb-row { width: 100%; display: flex; align-items: baseline; gap: 10px; padding: 3px 8px;
+  border: none; background: none; border-radius: 7px; color: inherit; font: inherit;
+  text-align: left; cursor: pointer; }
+.qb-row:hover { background: var(--bg-hover); }
+.qb-row > svg { margin-left: auto; flex: none; opacity: 0.35; }
+.qb-row:hover > svg { opacity: 0.8; }
+.bx-h { margin: 16px 0 6px; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--fg-subtle); }
+.bx-h:first-child { margin-top: 0; }
+.bx-line { display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+  padding: 7px 0; font-size: 12.5px; color: var(--fg-muted); border-bottom: 1px solid var(--hairline); }
+.bx-k { min-width: 0; }
+.bx-k em { display: block; margin-top: 2px; font-style: normal; font-size: 11px;
+  color: var(--fg-subtle); line-height: 1.5; }
+.bx-v { flex: none; }
+.bx-line.bx-sum { border-bottom: none; color: var(--fg); font-weight: 600; }
+.bx-none { margin: 0; font-size: 12.5px; color: var(--color-state-warning); }
+.bx-note { margin: 10px 0 0; font-size: 12px; color: var(--fg-subtle); line-height: 1.6; }
+.cal-lead { margin: 0 0 14px; padding: 10px 12px; border-left: 2px solid var(--border-strong);
+  background: var(--bg-hover); border-radius: 0 8px 8px 0; font-size: 12.5px;
+  color: var(--fg-muted); line-height: 1.65; max-width: 74ch; }
+/* Markers and actions that only apply once something is edited stay in the layout and
+   are merely hidden - appearing would shift everything below them. */
+.cal-edited.off, .cal-reset.off, .btn.off, .badge.off { visibility: hidden; pointer-events: none; }
+.cal-actions { min-height: 30px; }

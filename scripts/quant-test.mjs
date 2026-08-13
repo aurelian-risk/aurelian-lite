@@ -94,8 +94,13 @@ const vulnOf = (chain, iter = 20000) => simulate(BASE_INPUTS, iter, chain).vuln;
   const c = chainFor([step("a", 1), step("b", 2, ["a"]), guard("m", ["b"])]);
   ok("a covered step becomes a gate", c[0].gate === null && !!c[1].gate);
   ok("the gate sits above the scenario baseline", c[1].gate.mode > 0.46);
-  const weak = chainFor([step("a", 1), step("b", 2, ["a"]), guard("m", ["b"], 1)]);
+  const weak = chainFor([step("a", 1), step("b", 2, ["a"]), guard("m", ["b"], 2)]);
   ok("a weakly implemented control gates less", weak[1].gate.mode < c[1].gate.mode);
+  // The lowest level of the implementation scale is labelled "none". A measure recorded
+  // as not implemented at all must therefore be worth nothing - it used to be worth a
+  // quarter of a full one, an artefact of dividing the level by the top of the scale.
+  const none = chainFor([step("a", 1), step("b", 2, ["a"]), guard("m", ["b"], 1)]);
+  ok("a measure implemented 'none' builds no barrier at all", none[1].gate === null);
 }
 {
   // Two steps, one terminal, fed by a shared predecessor - the sample's shape.

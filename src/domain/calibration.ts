@@ -169,6 +169,11 @@ export interface EffectCalibration {
   controlCeiling: number;
   /** A control only protects as far as it is actually in place. */
   statusWeight: Record<string, number>;
+  /** What each implementation level is worth, as a share of a fully rolled-out
+   *  control. Was implicit before - level divided by the top of the scale - which made
+   *  the value of level 1 depend on how long the scale happened to be. Now explicit,
+   *  and read like every other band, so a 1..N scale is placed proportionally. */
+  levelWeight: number[];
 }
 
 export interface Calibration {
@@ -327,6 +332,10 @@ const EFFECT: EffectCalibration = {
   responseFloor: 0.20,
   controlCeiling: 0.85,
   statusWeight: { Implemented: 1, Planned: 0.5, Recommended: 0.15, Missing: 0 },
+  // Matches the scale's own labels: level 1 is "none", so it is worth nothing. It used
+  // to be 0.25 - an artefact of dividing the level by the top of the scale - which made
+  // a measure whose implementation is explicitly "none" block a fifth of its step.
+  levelWeight: [0, 1 / 3, 2 / 3, 1],
 };
 
 export const DEFAULT_CALIBRATION: Calibration = {
@@ -458,6 +467,13 @@ export const CALIBRATION_DOC: Record<string, TableDoc> = {
     question: "How far does each class of measure move the factor it acts on, when fully implemented?",
     effect: "Preventive raises the bar at its step. Detective converts into breaking off the intrusion, gated on the response capability. Deterrent and avoidance cut the number of attacks. Corrective cuts the loss and the follow-on loss.",
     origin: "MFA blocks 66% of targeted attacks, against 99% of bulk phishing and 100% of automated ones. Targeted is the case a modelled scenario describes, which is why the ceiling is 0.85 and one measure comes out worth a factor of 2-4. For ransomware, 30% of intrusions are found by internal detection and 49% by the attacker announcing themselves - hence 0.35 for detection and a 0.20 response floor.",
+  },
+  "effect.depth": {
+    title: "Defence in depth",
+    grade: "judgement",
+    question: "What is one measure worth at each implementation level and lifecycle status, and what does a second or third measure on the same step add?",
+    effect: "A measure is worth level weight x status weight x ceiling. Measures on one step combine as 1 - product(1 - each), so they saturate: the second adds much less than the first, the third little. The combined figure then raises the bar by the preventive weight - which is the term that decides how much any of this matters, since the whole range from no cover to full cover moves the bar by that one figure.",
+    origin: "The saturating form assumes the measures fail independently. Correlated failure - a shared administrator, platform or bypass - is not modelled, so a stack of similar controls is flattered. Depth across the chain is the effect that carries: the traversal makes an attacker clear every defended step, which is where distributing measures beats stacking them.",
   },
   "magnitude": {
     title: "Loss magnitude, per severity",
