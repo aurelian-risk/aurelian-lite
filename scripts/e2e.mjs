@@ -69,6 +69,31 @@ try {
   ok("the share that gets through is called out", /reach the objective/i.test(await page.locator(".qb-row.through").innerText()));
   ok("each stopping point is a row that says what happened", (await page.locator(".qb-rows .qb-row").count()) >= 2
     && /stopped at/i.test(qb));
+  // Every row of the break-down opens where its number came from: the records behind
+  // it, their state, how they combined, and what that made the bar.
+  ok("break-down rows are clickable", (await page.locator(".qb-rows .qb-row").count()) >= 3);
+  await page.locator(".qb-rows .qb-row").nth(1).click();
+  await page.waitForSelector(".ft-card", { timeout: 5000 });
+  const bx = await page.locator(".ft-card").innerText();
+  ok("...naming the measures behind the number, with their state",
+    /measures you recorded on this step/i.test(bx) && /Preventive/.test(bx) && /Implemented/.test(bx));
+  // Every figure in the popup has to carry the arithmetic that produced it - otherwise
+  // it is just a new set of numbers with no more provenance than the one clicked.
+  ok("...and every figure carries the arithmetic behind it",
+    /rolled out .* \(×/.test(bx) && /most one measure can protect/i.test(bx)
+    && /1 − \(1 − /.test(bx) && /the most a fully protected step adds/i.test(bx));
+  ok("...ending at the skill an attacker needs there",
+    /has to be better than this share of all attackers/i.test(bx));
+  await page.locator(".ft-head .btn").click();
+  await page.waitForTimeout(200);
+  await page.locator(".qb-rows .qb-row").first().click();
+  await page.waitForSelector(".ft-card", { timeout: 5000 });
+  const bx0 = await page.locator(".ft-card").innerText();
+  ok("...and the baseline row breaks the demand into its four terms",
+    /getting in/i.test(bx0) && /distinct tactics/i.test(bx0) && /staying in/i.test(bx0));
+  await page.locator(".ft-head .btn").click();
+  await page.waitForTimeout(200);
+
   await page.locator(".qt-break").scrollIntoViewIfNeeded();
   await page.waitForTimeout(200);
   await page.screenshot({ path: `${shots}/QuantChain.png` });
@@ -525,7 +550,11 @@ try {
     /how often a scenario is attempted/i.test(calBody) && /what an attempt is up against/i.test(calBody));
   ok("every table asks a question in plain words", (await page.locator(".cal-q").count()) >= 8);
   ok("...and can explain where its numbers came from", (await page.locator(".cal-why").count()) >= 8);
-  ok("it starts out at the defaults", !(await page.locator(".cal .badge").count()));
+  ok("it starts out at the defaults", /defaults, unchanged/i.test(await page.locator(".cal-intro").innerText()));
+  // Markers that appear on the first edit must already occupy their space, or every
+  // table below them jumps down the page.
+  ok("...with the change markers already in the layout, merely hidden",
+    (await page.locator(".cal .badge.off").count()) === 1 && (await page.locator(".cal-edited.off").count()) > 0);
   await page.locator(".cal-why").first().click();
   await page.waitForTimeout(100);
   const whyBox = await page.locator(".cal-why-box").first().innerText();
@@ -552,7 +581,7 @@ try {
   await page.waitForTimeout(250);
   ok("an edited value is kept", /0\.9/.test(await page.locator(".cal-table").first().locator(".dial-v").first().innerText()));
   ok("...and the panel head marks the study as changed",
-    /changed/i.test(await page.locator(".cal .panel-head .badge").innerText()));
+    (await page.locator(".cal .panel-head .badge.off").count()) === 0);
   ok("...and the table itself is marked", (await page.locator(".cal-edited").count()) >= 1);
   await page.waitForTimeout(700);          // let the debounced write reach storage
   await page.reload();
@@ -574,6 +603,32 @@ try {
   ok("resetting one table restores its default",
     (await page.locator(".cal-table").first().locator(".dial-v").first().innerText()) === before);
 
+  // Defence in depth: one curve, switchable by implementation level, so the saturation
+  // and the trade between many weak measures and one strong one are both visible.
+  const depth = page.locator(".cal-table", { hasText: "Defence in depth" });
+  await depth.scrollIntoViewIfNeeded();
+  ok("the stacking relationship is drawn, not described", (await depth.locator(".depth-svg").count()) === 1);
+  // The curve must be in a unit that means something - attempts, not an intermediate.
+  ok("...in attempts getting through, not in an intermediate",
+    /how many get through/i.test(await depth.locator(".depth-key").innerText()));
+  ok("...and states the case it assumes",
+    /better than half/i.test(await depth.locator(".depth-svg").evaluate((el) => el.textContent ?? "")));
+  ok("weights read as multipliers, not as shares of attacks",
+    /×0\.33/.test(await depth.innerText()) || /x0\.33/.test(await depth.innerText()));
+  ok("...and the level switch uses the scale's own labels",
+    /none/.test(await depth.locator(".depth-switch").innerText())
+    && /substantial/.test(await depth.locator(".depth-switch").innerText()));
+  const atFull = await depth.locator(".depth-note").innerText();
+  await depth.locator(".depth-switch .cal-seg-b").nth(1).click();
+  await page.waitForTimeout(200);
+  ok("switching the level redraws the curve", (await depth.locator(".depth-note").innerText()) !== atFull);
+  await depth.locator(".depth-switch .cal-seg-b").first().click();
+  await page.waitForTimeout(200);
+  ok("a measure implemented 'none' counts for nothing",
+    /counts for nothing/i.test(await depth.locator(".depth-note").innerText()));
+  await depth.locator(".depth-switch .cal-seg-b").last().click();
+  await page.waitForTimeout(150);
+
   // Values that are really a choice between named cases are choices, not numbers, and
   // the techniques are ranked by what they demand rather than by identifier.
   const tool = page.locator(".cal-table", { hasText: "Tooling maturity, per technique" });
@@ -583,6 +638,30 @@ try {
   ok("...and the techniques are ranked by what they demand",
     /bespoke/i.test(caps.join(" ")) && /practitioner/i.test(caps.join(" "))
     && caps.findIndex((c) => /bespoke/i.test(c)) < caps.findIndex((c) => /commodity/i.test(c)));
+
+  // The treatment workshop gets the same panel, scoped to what a measure is worth -
+  // the parameters its own tables are about, at the top and shut by default.
+  await page.locator(".ws-tab", { hasText: "Treatment" }).click();
+  await page.waitForTimeout(900);
+  ok("treatment has a control-parameter panel", (await page.locator(".cal").count()) === 1);
+  const order = await page.locator(".main .panel .panel-head h3").allInnerTexts();
+  ok("...directly below Chain defence, where its effect is shown",
+    order[0] === "Chain defence" && order[1] === "Control parametrization");
+  ok("...shut by default", !(await page.locator(".cal-body").count()));
+  await page.locator(".cal .panel-head .btn").click();
+  await page.waitForTimeout(300);
+  const scoped = await page.locator(".cal-table h3").allInnerTexts();
+  ok("...showing only the measure tables, not the whole calibration",
+    scoped.length === 2 && /Defence in depth/.test(scoped[0]));
+  ok("...and the same controls as the quantification panel",
+    (await page.locator(".cal .dial-track").count()) > 5 && (await page.locator(".cal .depth-svg").count()) === 1);
+  // The strengths are grouped by the class they belong to, with the channel each acts
+  // through - a flat list of nine gave no clue which control type a figure was about.
+  const classes = await page.locator(".cal-class-h b").allInnerTexts();
+  ok("effect strengths are grouped by control class",
+    ["Detective", "Corrective", "Deterrent", "Avoidance"].every((c) => classes.includes(c)));
+  ok("...each naming the channel it acts through",
+    /reduces the number of attempts made/i.test(await page.locator(".cal-class").nth(2).innerText()));
 
   // Sector lives in the scope workshop, with what it actually does to the numbers.
   await page.locator(".ws-tab", { hasText: "Assets" }).click();

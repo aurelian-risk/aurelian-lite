@@ -271,7 +271,87 @@ regulatory fines, contractual penalties and reputational damage do not go away b
 the backups were good. A fully implemented corrective control therefore never drives the
 loss toward zero.
 
-## 8. The parameterisation, and how to change it
+## 8. What a measure is worth, and what a second one adds
+
+Everything in this section rests on one idea, so it is worth stating before any number.
+
+> An attack needs a certain level of skill to get past a step. A security measure raises
+> that level. Skill is expressed as a rank among attackers — "better than 84 % of them".
+> The higher the level a step demands, the fewer attempts clear it.
+
+### What one measure is worth
+
+Three things decide it, and they multiply:
+
+```
+what a measure protects  =  how far it is rolled out
+                          × whether it exists yet
+                          × the most any single measure can protect
+```
+
+**How far it is rolled out** reads the measure's *Implementation* field, whose own labels
+are none / partial / substantial / full. They weigh ×0, ×⅓, ×⅔ and ×1. A measure recorded
+as *none* is worth nothing — which sounds obvious, and was not the case until recently: the
+weight used to be the level divided by the top of the scale, so a measure explicitly
+recorded as not implemented still blocked a fifth of its step.
+
+**Whether it exists yet** reads *Status*: implemented ×1, planned ×0.5, recommended ×0.15,
+missing ×0. The two multiply, so a measure that is only planned and only partly rolled out
+protects 14 % of its step.
+
+**The most any single measure can protect** is capped at 85 %. No control is perfect.
+
+### What a second measure adds
+
+Measures on the same step combine so that the step is only breached if *every* one of them
+fails:
+
+```
+protected  =  1 − (1 − first) × (1 − second) × …
+```
+
+The consequence is the important part: **a second measure only matters in the cases where
+the first one failed.** Those are few, so it has few chances to help — and the third fewer
+still. With fully rolled-out measures on one step:
+
+| measures on the step | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|
+| step protected | 85 % | 98 % | 100 % | 100 % |
+| skill needed there | 84 % | 89 % | 90 % | 90 % |
+| **of 100 attempts, how many get through** | **6.9** | **3.3** | **2.9** | **2.8** |
+
+*(for an attack that by itself needs someone better than half of all attackers, tried by a
+capable one — without any measure, 64.5 of 100 would get through)*
+
+So layers on one step run out quickly. **The same measures achieve more spread across
+different steps of the chain**, because the traversal makes an attacker clear each of them
+in turn — three measures on one step leave 25 % of attempts succeeding, the same three on
+three steps leave 20 %.
+
+The Calibration section draws this as a curve you can switch by implementation level, so
+the trade is visible: four half-rolled-out measures protect 74 %, one finished one 85 %.
+
+### How the protection becomes a skill requirement
+
+```
+skill needed at a step  =  what the attack needs on its own
+                         + 40 % × how well the step is protected
+```
+
+The 40 % is the ceiling of what preventive measures on one step can ever buy. It is also
+the figure that decides how much the rest of this section matters: whether a step is
+protected 85 % or 98 % changes the requirement by five points, while the difference between
+no measure and one is thirty-four.
+
+### The assumption to be aware of
+
+The combination formula assumes the measures fail **independently of each other**. Two that
+depend on the same administrator, the same platform or the same bypass do not, and the
+model flatters them. This is a modelling decision rather than a setting — it is not
+adjustable, because changing it would change what the numbers mean rather than how large
+they are.
+
+## 9. The parameterisation, and how to change it
 
 Every number both derivations run on lives in one place — the **Calibration** section of
 the Quantification workshop — where
@@ -289,7 +369,8 @@ Each table is graded, and the grade is shown next to it:
 
 Six of the fourteen tables are measured or derived; **eight are judgement**. Presenting all
 fourteen with the same confidence would misrepresent thirteen of them. The full derivation
-of every figure, with sources and with the anchors that were considered and rejected, is in
+of every figure, with its sources and with the published figures that measure a different
+quantity from the one needed here, is in
 [`calibration-sources.md`](calibration-sources.md).
 
 The tables below are the shipped defaults, reproduced so this note is self-contained.
@@ -390,7 +471,8 @@ editable rather than fixed.
 | Containment cuts the chance of follow-on losses by | 0.50 |
 | Spotting the damage as it happens trims the bill by | 0.25 |
 | One single measure never blocks more than | 0.85 |
-| Counted by lifecycle status | implemented 1 · planned 0.5 · recommended 0.15 · missing 0 |
+| Counted by lifecycle status | implemented ×1 · planned ×0.5 · recommended ×0.15 · missing ×0 |
+| Counted by implementation level | none ×0 · partial ×⅓ · substantial ×⅔ · full ×1 |
 
 These are the best-supported numbers in the calibration. Published research on MFA reports
 that it blocks **100 % of automated attacks, 99 % of bulk phishing — and 66 % of targeted
@@ -428,7 +510,7 @@ alongside the rest of what defines the perimeter.
 > One consequence to state plainly: changing these numbers changes every figure in the
 > study, and — like taxonomy changes — it is **not** recorded in the change log.
 
-## 9. Why every number is a range, and how it was calibrated
+## 10. Why every number is a range, and how it was calibrated
 
 ### Ranges, not points
 
@@ -500,7 +582,7 @@ All of this is asserted in the automated tests. A change that moves a number bac
 nonsense. The target bands are deliberately wide engineering judgements — they do not
 claim precision, they rule out answers no practitioner would sign.
 
-## 10. Reading the results
+## 11. Reading the results
 
 **Annual loss (ALE), with percentiles.** The mean is what you budget against; P90 and P99
 are the bad years. A P50 of zero is normal for a rare severe scenario.
@@ -542,7 +624,7 @@ that something blocks or detects. Note the difference: this says nothing about h
 an attack is to fail, because that depends on where those steps sit in the chain. A
 tactic defended to 100 % on a route the attacker does not need changes nothing.
 
-## 11. What the model does not claim
+## 12. What the model does not claim
 
 Stated plainly, because a quantitative output invites more confidence than it earns:
 
@@ -550,7 +632,7 @@ Stated plainly, because a quantitative output invites more confidence than it ea
   published figures; eight are judgement, and each says which it is. The base rate is the
   weakest load-bearing number — two credible surveys of it differ by a factor of six — and
   the one most worth replacing with your own figures.
-- **Published incidence measures NOTICED events.** Everything never detected is missing,
+- **Published incidence covers noticed events.** Everything never detected is missing,
   which biases every rate here downward by an unknown amount. The bias runs the same way
   for all actor classes, so the orderings are sturdier than the levels.
 - **Ratios compound.** An actor rated below average on tempo, throughput, pull and
@@ -580,7 +662,7 @@ Treat the output as a structured, reproducible argument about relative magnitude
 for comparing scenarios, prioritising measures and showing what a control buys. Not as a
 prediction.
 
-## 12. Getting better numbers out of a study
+## 13. Getting better numbers out of a study
 
 Practical, in order of payoff:
 
@@ -627,7 +709,8 @@ Practical, in order of payoff:
 *This note describes the model as it stands in this release. It follows the established
 frequency × magnitude approach to quantitative risk analysis and the more recent thinking
 on how controls actually take effect. The parameterisation is in the Calibration section
-of the Quantification workshop and in `src/domain/calibration.ts`; the derivations are in
-`src/domain/frequency.ts` and `src/domain/demand.ts`; the reference cases and guardrails
-are in `scripts/quant-test.mjs`. All of it is readable, and all of it is meant to be
-argued with.*
+of the Quantification workshop and in
+`src/domain/calibration.ts`; the derivations are in `src/domain/frequency.ts` and
+`src/domain/demand.ts`; the reference cases and guardrails are in
+`scripts/quant-test.mjs`. All of it is readable, and all of it is meant to be argued
+with.*

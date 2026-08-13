@@ -66,6 +66,14 @@ control that mitigates it.
 
 - **MITRE ATT&CK® kill-chain builder** - arrange attack steps onto tactic lanes to describe how
   an operation unfolds.
+- **Attack-path projection** - every kill chain of the study drawn onto the assets it converges
+  on, with **choke points** marked: assets more than one chain has to pass through, where a
+  single control mitigates several scenarios at once.
+
+<div align="center">
+<img src="docs/attack-paths.png" alt="Aurelian Lite - all kill chains projected onto their target assets, with choke points marked" width="880">
+</div>
+
 - **Monte-Carlo risk quantification** - an own, offline simulation engine turns the qualitative
   model into an annual-loss distribution (loss-exceedance curve, percentiles), with every factor
   derived parametrically from the study inputs and traceable back to them. Opt-in per scenario.

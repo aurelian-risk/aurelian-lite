@@ -33,10 +33,9 @@ export function measureEfficacyOf(tax: Taxonomy, m: EntityRecord, cal: Calibrati
   const mt = getType(tax, m.type);
   const implF = mt?.fields.find((f) => f.key === "implementation_level");
   const statusF = mt?.fields.find((f) => f.key === "status");
-  const implMax = implF ? scaleMax(implF) : 4;
-  const impl = (implF ? Number(m.values[implF.key] ?? 1) : implMax) / implMax;
+  const lvl = implF ? sampleNum(cal.effect.levelWeight, scaleRatio(tax, m, implF.key, 1)) : 1;
   const sw = cal.effect.statusWeight[statusF ? String(m.values[statusF.key] ?? "") : ""] ?? 1;
-  return c01(impl) * cal.effect.controlCeiling * sw;
+  return c01(lvl) * cal.effect.controlCeiling * sw;
 }
 /** Defense-in-depth step coverage from the layers' efficacies: 1 - product(1-eff). */
 export const stepCoverage = (effs: number[]) => 1 - effs.reduce((p, e) => p * (1 - e), 1);

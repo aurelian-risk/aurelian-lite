@@ -5,6 +5,36 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.4.6] — 2026-08-13
+
+What a measure is worth, and what a second one on the same step adds, is now visible and
+adjustable.
+
+### Changed
+- **Implementation levels are a parameter**, weighing 0 / ⅓ / ⅔ / 1 in line with the
+  scale's own labels, and editable like every other band. Studies that record partly
+  rolled-out measures will see their residual figures move.
+- **Explanations rewritten for readers without a background in the method.** Each section
+  states the idea it rests on before any number: an attack needs a level of skill to get
+  past a step, a measure raises that level, and skill is expressed as a rank among
+  attackers. The parameter texts run to 490 words where they ran to 1,047.
+- **Effect strengths are grouped by the class of control they belong to** — detective,
+  corrective, deterrent, avoidance — each with the channel it acts through, instead of a
+  flat list of nine figures.
+- **Sector notes state what is specific to each sector**, with the published figures where
+  they exist, and say why there is no rate adjustment where none applies.
+
+### Added
+- **A defence-in-depth curve** showing how many of every 100 attempts get through a step
+  as measures are added, switchable by implementation level. It makes the trade visible:
+  four half-rolled-out measures let 26 through where one finished one lets 7.
+- **A control-parametrization panel in the Treatment workshop**, holding the parameters
+  that decide what the measures recorded there are worth.
+- **Every row of the attempt break-down opens its own derivation**: the measures behind
+  the figure with their roll-out and status, how they combine, and how that becomes the
+  skill an attempt has to clear.
+- **A section in the method note** on what a measure is worth and what a second one adds.
+
 ## [0.4.5] — 2026-08-09
 
 Attempt rate and resistance are derived from the modelled scenario instead of being
