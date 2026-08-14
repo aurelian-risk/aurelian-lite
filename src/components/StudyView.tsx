@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 import { Fragment, useState } from "react";
 import type { Study, Taxonomy } from "../domain/types";
 import { useActiveStudy, useStore } from "../domain/store";
@@ -79,6 +80,17 @@ export function StudyView({ onBack }: { onBack: () => void }) {
   const back = () => { setActiveStudy(null); onBack(); };
   const activeGroup = tax.groups.find((g) => g.key === tab);
 
+  // Which extra panels a group gets is derived from the taxonomy, never from a group key.
+  // A profile is free to name its groups; a hard-coded key drops the panel without a word.
+  // The kill-chain step type is the one that both points at a parent and carries an order;
+  // the group that owns something pointing at it is the one where measures are recorded.
+  const stepType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType)
+    && t.fields.some((f) => f.type === "number"));
+  const groupHasMeasures = !!activeGroup && tax.entityTypes.some((t) => t.group === activeGroup.key
+    && t.key !== stepType?.key && t.fields.some((f) => f.type === "multiref" && f.refType === stepType?.key));
+  // Sector belongs to the first group: it qualifies the organization being studied.
+  const isFirstGroup = !!activeGroup && tax.groups[0]?.key === activeGroup.key;
+
   return (
     <div className="main">
       <div className="topbar">
@@ -132,7 +144,7 @@ export function StudyView({ onBack }: { onBack: () => void }) {
               )}
               <CopyButton getText={() => workshopMarkdown(tax, study, activeGroup.key)} />
             </div>
-            {activeGroup.key === "ws1" && <SectorSection study={study} color={activeGroup.color} />}
+            {isFirstGroup && <SectorSection study={study} color={activeGroup.color} />}
             {(() => {
               // Risk matrix: only for the strategic-scenario workshop (WS3).
               const mt = tax.entityTypes.find((t) => t.group === activeGroup.key
@@ -140,27 +152,17 @@ export function StudyView({ onBack }: { onBack: () => void }) {
                 && t.fields.filter((f) => f.type === "scale").length >= 2);
               return mt ? <RiskMatrix tax={tax} study={study} type={mt} color={activeGroup.color} /> : null;
             })()}
-            {(() => {
-              // WS5: coverage overview (ring + tactic heatmap) ABOVE the tables.
-              const stepT = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
-              const hasMeasure = tax.entityTypes.some((t) => t.group === activeGroup.key && t.key !== stepT?.key && t.fields.some((f) => f.type === "multiref" && f.refType === stepT?.key));
-              return hasMeasure ? <MitigationCharts tax={tax} study={study} color={activeGroup.color} /> : null;
-            })()}
-            {/* The parameters that decide what the measures of this workshop are worth,
-                directly below the chart that shows their combined effect. */}
-            {activeGroup.key === "ws5" && <CalibrationView study={study} color={activeGroup.color} scope="measures" />}
-            {(() => {
-              // WS5: kill-chain mitigation (per-step measure assignment) ABOVE the tables.
-              const stepT = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
-              const hasMeasure = tax.entityTypes.some((t) => t.group === activeGroup.key && t.key !== stepT?.key && t.fields.some((f) => f.type === "multiref" && f.refType === stepT?.key));
-              return hasMeasure ? <KillChainMitigation tax={tax} study={study} color={activeGroup.color} /> : null;
-            })()}
+            {/* The measure workshop: coverage overview (ring + tactic heatmap), the
+                parameters that decide what those measures are worth, and the per-step
+                assignment — all ABOVE the tables. */}
+            {groupHasMeasures && <MitigationCharts tax={tax} study={study} color={activeGroup.color} />}
+            {groupHasMeasures && <CalibrationView study={study} color={activeGroup.color} scope="measures" />}
+            {groupHasMeasures && <KillChainMitigation tax={tax} study={study} color={activeGroup.color} />}
             {(() => {
               // WS4: the kill-chain lane is embedded in each operational scenario's
               // expanded row; the kill-chain-steps table stays and its rows are
               // draggable onto the tactic tiles.
-              const stepT = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
-              const opKey = stepT?.fields.find((f) => f.type === "ref" && f.refType)?.refType;
+              const opKey = stepType?.fields.find((f) => f.type === "ref" && f.refType)?.refType;
               // WS1: the asset-criticality heatmap sits BETWEEN the business-asset
               // table and its supporting-asset table. "business" = a type with a
               // scale that a sibling's multiref points at (its supporting assets).
@@ -175,7 +177,7 @@ export function StudyView({ onBack }: { onBack: () => void }) {
                 return (
                   <Fragment key={t.key}>
                     <EntitySection type={t} study={study} tax={tax} color={activeGroup.color}
-                      draggableRows={t.key === stepT?.key}
+                      draggableRows={t.key === stepType?.key}
                       hideAdd={!!target}
                       headerExtra={target ? <CatalogAdd tax={tax} study={study} target={target} /> : undefined}
                       renderDetailExtra={t.key === opKey ? (r) => <KillChainLane tax={tax} study={study} op={r} color={activeGroup.color} /> : undefined} />
@@ -186,13 +188,11 @@ export function StudyView({ onBack }: { onBack: () => void }) {
                 );
               });
             })()}
-            {(() => {
-              // WS4: integrated attack-paths projection — all kill chains of this study
-              // converging on the target assets, as a sub-section below the tables. Shown
-              // only in the workshop that owns the kill-chain step type.
-              const stepT = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
-              return stepT && stepT.group === activeGroup.key ? <AttackPathsView tax={tax} study={study} color={activeGroup.color} /> : null;
-            })()}
+            {/* Integrated attack-paths projection — all kill chains of this study
+                converging on the target assets, as a sub-section below the tables. Shown
+                only in the workshop that owns the kill-chain step type. */}
+            {stepType?.group === activeGroup.key
+              && <AttackPathsView tax={tax} study={study} color={activeGroup.color} />}
             {/* Risk Quantification: the derived Monte-Carlo tuner. Purely parametric
                 (from the qualitative model), so the group needs no manual entity. */}
             {activeGroup.key === "quant" && <>

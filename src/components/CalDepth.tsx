@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Defence in depth, drawn in the unit that means something.
 //
 // An earlier version plotted "combined coverage", which reads like a share of attacks

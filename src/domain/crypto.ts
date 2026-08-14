@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Password-based export encryption, self-contained and offline (Web Crypto).
 // Strong: PBKDF2-SHA-256 (250k iterations) derives a 256-bit key, AES-256-GCM
 // encrypts (authenticated). The envelope carries the salt + iv so only the

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Builds an LLM-friendly, taxonomy-valid text dump of one workshop (group):
 // the schema (entity types + fields) followed by the data (entities with
 // relationships resolved to names). Paste into an LLM chat as grounded context.

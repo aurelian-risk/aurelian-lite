@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // The calibration: every number the quantification runs on, in one place.
 //
 // These are settings, not measurements. Each table carries the question it answers, what

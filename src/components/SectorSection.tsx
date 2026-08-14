@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // The study's sector, in the workshop that defines the scope.
 //
 // It is a quantification input, not a label: it selects which base-rate exceptions

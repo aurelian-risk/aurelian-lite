@@ -2,7 +2,7 @@
   <h1>Aurelian Lite</h1>
   <p><strong>Cyber risk analysis, offline in a single file — EBIOS RM threat modelling, MITRE ATT&amp;CK kill chains and Monte-Carlo risk quantification</strong></p>
   <p>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-14b8a6.svg" alt="License: MIT"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MPL--2.0-14b8a6.svg" alt="License: MPL-2.0"></a>
     <img src="https://img.shields.io/badge/runs-100%25%20offline-1f9d55" alt="Runs 100% offline">
     <a href="MATURITY.md"><img src="https://img.shields.io/badge/status-beta-e0a13a.svg" alt="Status: Beta"></a>
   </p>
@@ -59,6 +59,10 @@ control that mitigates it.
 </div>
 
 - **Risk matrix** - a likelihood × severity heatmap that positions every scenario at a glance.
+- **Search, filters and grouping on every long table**, derived from the data rather than
+  configured: whichever fields actually repeat become the facets you can filter and group by.
+- **Catalogue import that reads what publishers issue** - CSV, JSON, OSCAL, and PDFs whose
+  text is one entry per identifier, with the identifier scheme worked out rather than set.
 
 <div align="center">
 <img src="docs/risk-matrix.png" alt="Aurelian Lite - likelihood × severity risk matrix" width="820">
@@ -179,11 +183,26 @@ at **[aurelian-risk.com](https://aurelian-risk.com)**.
 
 ## License
 
-[MIT](LICENSE) © Aurelian-Risk
+[Mozilla Public License 2.0](LICENSE) © Aurelian-Risk
 
-The MIT License covers the Aurelian Lite source code. Bundled reference datasets
-and the open-source libraries inlined into the build remain under their own
-licenses - see below.
+Use it, run it, fork it, sell services around it. Two things are asked in return.
+
+**Changes to these files come back.** MPL-2.0 is copyleft per file: if you modify a
+file that carries `SPDX-License-Identifier: MPL-2.0`, that file stays under the MPL
+and your modified version has to be available. Code you add in your own files is
+yours, under whatever licence you choose - you can build a proprietary product
+around this without opening it.
+
+**The built file says where its source is.** If you pass on `index.html`, section 3.2
+asks that recipients can find the source it came from; the banner at the top of the
+file carries that already.
+
+Bundled reference datasets and the open-source libraries inlined into the build keep
+their own licences - see below. The name is not part of the licence: see
+[`TRADEMARK.md`](TRADEMARK.md).
+
+Releases up to and including v0.4.6 were published under the MIT License and remain
+MIT for anyone holding them.
 
 ## Acknowledgements & attributions
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // The "+ Add" control on a catalog-backed table (Requirements in Compliance,
 // Security Measures in Treatment). Pick from bundled catalogs — the curated measure
 // library and the free frameworks (NIS2 / NIST CSF / 800-53) — or "Create custom…".

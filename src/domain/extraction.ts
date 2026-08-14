@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Embeddings-based candidate extraction — fully taxonomy- and entity-neutral:
 // nothing about any specific schema, type or example is hard-coded. Every signal
 // is derived at runtime from (a) the taxonomy passed in and (b) the entities the

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Extraction view: load a document's text (transiently) and run the embedding
 // model that is already loaded (managed entirely in the Model section) to propose
 // candidate entities grouped by the taxonomy. This view never downloads or loads

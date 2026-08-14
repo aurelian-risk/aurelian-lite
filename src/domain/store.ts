@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Central state (Zustand): taxonomy + studies, generic entity CRUD driven by
 // the taxonomy, plus data-layer swap (bundle/taxonomy/data import) and
 // migration from the legacy v1 fixed-schema format. Auto-persists (debounced).

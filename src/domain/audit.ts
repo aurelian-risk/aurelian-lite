@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Per-entity change history with a hash-chained log, for tamper-evidence and
 // accountability. Fully offline and deterministic - no crypto library needed.
 // "who" is a self-declared editor name (single-user desktop; there is no auth),

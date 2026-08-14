@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Deterministic Monte-Carlo risk quantification - own engine, no external libs,
 // runs offline in the browser. Generic quantitative-risk model: how often a loss
 // event happens (frequency) times how much it costs (magnitude), aggregated over

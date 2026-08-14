@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Exhaustive unit test for the semi-deterministic catalog table importer.
 // The pure module (src/domain/catalogimport.ts) is bundled in isolation with esbuild
 // (see the npm script) and imported here; we drive it through a fixture corpus of

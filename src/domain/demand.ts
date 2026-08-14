@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // What an attempt on this scenario is intrinsically up against, derived from the kill
 // chain the analyst already modelled - see docs/resistance-model.md.
 //

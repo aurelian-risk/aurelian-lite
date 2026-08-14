@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Renders a single taxonomy field as the appropriate input control.
 import type { FieldDef, FieldValue } from "../domain/types";
 import { scaleLabel, scaleMax } from "../domain/taxonomy";

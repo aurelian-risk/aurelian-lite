@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Document references. By design we hold only references (name + metadata) —
 // content is NOT ingested into the browser. Files can be opened transiently in
 // a viewer, but nothing is stored. (LLM extraction will read content on demand.)

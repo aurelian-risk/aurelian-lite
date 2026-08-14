@@ -1,6 +1,7 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 import { useState } from "react";
 import { useStore } from "../domain/store";
-import { makeSampleStudy } from "../domain/sample";
+import { makeSampleStudy } from "../profile";
 import { clearStorage } from "../domain/persistence";
 import { deleteDocsForStudy } from "../domain/documents";
 import { SECTORS } from "../domain/calibration";

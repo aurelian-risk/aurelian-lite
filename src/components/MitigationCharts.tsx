@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Treatment (WS5) analytics over the kill chain:
 //   - a ring showing what actually happens to an attempt: resisted, caught in the act,
 //     or through - read from the SAME traversal the quantification runs, so this view

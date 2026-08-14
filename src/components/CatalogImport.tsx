@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Semi-deterministic framework / catalog import — part of the Documents system.
 // Its OWN import logic (not the embedding entity-extraction): a structured table
 // (CSV/TSV/JSON, or pasted) is parsed VERBATIM; the embedding model only *assists*
@@ -7,8 +8,14 @@ import { createPortal } from "react-dom";
 import type { Study, Taxonomy } from "../domain/types";
 import { catalogTargets } from "../domain/catalog";
 import type { Framework, FrameworkItem } from "../domain/frameworks";
-import { parseCatalog } from "../domain/frameworks";
+import { parseCatalog, fetchPublishedCatalog } from "../domain/frameworks";
+import type { PublishedCatalog } from "../domain/frameworks";
+import { PUBLISHED_CATALOGS } from "../profile";
+import { planVocabularyUpdate, applyVocabularyUpdate, catalogDefinesVocabulary, type VocabularyChange, type VocabularyMode } from "../domain/vocabulary";
 import { parseTable, guessMapping, tableToItems, looksLikeJson, FIELD_KEYS, type FieldKey, type Mapping, type ParsedTable } from "../domain/catalogimport";
+import { detectShape, readList } from "../domain/listimport";
+import { looksLikeOscal, parseOscalCatalog } from "../domain/oscal";
+import { isExtractable, extractFileText } from "../domain/docextract";
 import { embed, cosine, isLoaded } from "../domain/embeddings";
 import { useStore } from "../domain/store";
 import { downloadText } from "../domain/clipboard";
@@ -33,23 +40,98 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
   const [aiBusy, setAiBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [excluded, setExcluded] = useState<Set<number>>(new Set()); // items the user un-checked
+  const [fetching, setFetching] = useState<string | null>(null);    // key of the catalogue being downloaded
+  const [skipVocab, setSkipVocab] = useState<Set<string>>(new Set());
+  const [vocabMode, setVocabMode] = useState<VocabularyMode>("add");
+  const [srcLabel, setSrcLabel] = useState("");                     // the catalogue's own provenance line
   const fileRef = useRef<HTMLInputElement>(null);
+  const setTaxonomy = useStore((s) => s.setTaxonomy);
 
   const target = targets.find((t) => t.kind === kind) ?? targets[0];
   const existing = target ? study.entities.filter((e) => e.type === target.type.key) : [];
 
   const parse = (raw: string, fallbackName: string) => {
-    setMsg(null); setJsonItems(null); setTable(null); setExcluded(new Set());
+    setMsg(null); setJsonItems(null); setTable(null); setExcluded(new Set()); setSkipVocab(new Set());
     if (!raw.trim()) return;
     if (looksLikeJson(raw)) {
-      try { const c = parseCatalog(raw, fallbackName || "Imported"); setName(c.name); setJsonItems(c.items); }
-      catch (e) { setMsg("Invalid JSON: " + (e instanceof Error ? e.message : String(e))); }
+      const oscal = looksLikeOscal(raw);
+      try {
+        const c = oscal ? parseOscalCatalog(raw, fallbackName || "Imported") : parseCatalog(raw, fallbackName || "Imported");
+        setName(c.name); setJsonItems(c.items);
+        // An OSCAL catalogue states its own version; a plain JSON catalogue does not.
+        setSrcLabel("source" in c && typeof c.source === "string" ? c.source : "");
+        if (oscal) {
+          // Which properties actually land depends on the taxonomy, so report what the
+          // file carries rather than claiming they were all used.
+          const seen = new Set<string>();
+          for (const it of c.items) for (const k of Object.keys(it.props ?? {})) seen.add(k);
+          const taken = target ? [...seen].filter((k) => target.type.fields.some((f) => f.key === k)) : [];
+          setMsg(`Read as an OSCAL catalogue: ${c.items.length} entries`
+            + (seen.size ? ` · properties in the file: ${[...seen].sort().join(", ")}` : "")
+            + (taken.length ? ` · taken into fields: ${taken.sort().join(", ")}` : seen.size ? " · none of them match a field of this entity type" : ""));
+        }
+      } catch (e) { setMsg((oscal ? "Not readable as OSCAL: " : "Invalid JSON: ") + (e instanceof Error ? e.message : String(e))); }
     } else {
-      const t = parseTable(raw);
-      setTable(t); setMap(guessMapping(t.headers)); setName(fallbackName || "Imported");
+      // Decide what the input IS before parsing it. Without this step arbitrary text -
+      // the text layer of a PDF, say - is read as a delimited table and turns into
+      // hundreds of rows of noise that look like a result.
+      const probe = parseTable(raw);
+      const shape = detectShape(raw, probe.rows.length, probe.headers.length);
+      if (shape.shape === "table") {
+        setTable(probe); setMap(guessMapping(probe.headers)); setName(fallbackName || "Imported");
+      } else if (shape.shape === "list") {
+        const r = readList(raw);
+        const headers = ["Reference ID", "Title", ...(r.markers.length ? ["Level"] : []), "Description", "Section"];
+        const rows = r.items.map((it) => [it.ref_id, it.title, ...(r.markers.length ? [it.marker ?? ""] : []), it.description ?? "", it.section ?? ""]);
+        setTable({ headers, rows, delimiter: "\t" });
+        setMap(guessMapping(headers));
+        setName(fallbackName || "Imported");
+        setMsg(`Read as a list: ${r.items.length} entries of the form ${r.pattern}`
+          + (r.markers.length ? `, levels ${r.markers.join("/")}` : "")
+          + (r.missed.length ? ` · ${r.missed.length} identifiers were not read as entries` : ""));
+      } else {
+        setMsg(`This does not look like a catalogue: ${shape.reason}. Paste a table, JSON, or a list where each entry starts with its identifier.`);
+      }
     }
   };
-  const onFile = async (f: File) => { const raw = await f.text(); setText(raw); parse(raw, f.name.replace(/\.[^.]+$/, "")); };
+  // A PDF or Word file has to be extracted, not read as text: reading the bytes as UTF-8
+  // yields the compressed streams, which is neither a table nor a list and is rightly
+  // refused - but for the wrong reason, and after the user has already chosen the file.
+  const onFile = async (f: File) => {
+    const base = f.name.replace(/\.[^.]+$/, "");
+    if (!isExtractable(f.name, f.type)) {
+      const raw = await f.text();
+      setText(raw); parse(raw, base);
+      return;
+    }
+    setMsg(`Reading ${f.name}…`);
+    const raw = await extractFileText(f);
+    if (!raw.trim()) {
+      setText("");
+      setMsg(`No text could be read from ${f.name}. A scanned document has no text layer; the text has to come from somewhere else.`);
+      return;
+    }
+    setText(raw); parse(raw, base);
+  };
+
+  // Fetch a catalogue from the publisher that hosts it. Nothing here runs on its own:
+  // the dialog does everything it does without ever reaching the network, and this is
+  // the one path that does, on a press. The text is not put in the textarea when it is
+  // large - a five-megabyte catalogue in a text box helps nobody and stalls the view.
+  const download = async (pc: PublishedCatalog) => {
+    setFetching(pc.key);
+    setMsg(`Loading ${pc.name} from ${new URL(pc.url).host}…`);
+    try {
+      const raw = await fetchPublishedCatalog(pc, (loaded, total) => setMsg(
+        `Loading ${pc.name}… ${(loaded / 1e6).toFixed(1)} MB${total ? ` of ${(total / 1e6).toFixed(1)} MB` : ""}`));
+      setText(raw.length < 200_000 ? raw : "");
+      parse(raw, pc.name);
+    } catch (e) {
+      setMsg(`${pc.name} could not be fetched: ${e instanceof Error ? e.message : String(e)}`
+        + ". The published file can be imported from disk instead.");
+    }
+    setFetching(null);
+  };
 
   const suggestWithAI = async () => {
     if (!table || !isLoaded()) return;
@@ -66,7 +148,28 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
   };
 
   const items: FrameworkItem[] = jsonItems ?? (table ? tableToItems(table, map) : []);
-  const fw: Framework = { key: name || "imported", name: name || "Imported", source: "user import", items };
+  const fw: Framework = { key: name || "imported", name: name || "Imported", source: srcLabel || "user import", items };
+
+  // What this catalogue would change about the lists the taxonomy offers. Computed from
+  // the parsed items, so it is the same whether they were pasted, chosen or downloaded.
+  const vocabPlan: VocabularyChange[] = useMemo(
+    () => (items.length ? planVocabularyUpdate(tax, fw, study.entities) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items, tax, study.entities, name, srcLabel]);
+  // Extending has nothing to do for a field this catalogue only takes values away from,
+  // so that row is not offered in that mode - otherwise the panel would stay open on a
+  // change that pressing the button cannot resolve.
+  const vocabShown = vocabMode === "add" ? vocabPlan.filter((c) => c.added.length > 0) : vocabPlan;
+  const vocabDefined = useMemo(() => (items.length ? catalogDefinesVocabulary(tax, fw) : false),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items, tax, name, srcLabel]);
+  const vocabPicked = vocabShown.map((c) => `${c.typeKey}.${c.fieldKey}`).filter((id) => !skipVocab.has(id));
+  const applyVocab = () => {
+    if (!vocabPicked.length) return;
+    setTaxonomy(applyVocabularyUpdate(tax, vocabShown, vocabPicked, fw, undefined, vocabMode));
+    setMsg(`${vocabMode === "replace" ? "Replaced" : "Extended"} ${vocabPicked.length} `
+      + `vocabular${vocabPicked.length === 1 ? "y" : "ies"} from ${fw.name}.`);
+  };
   const inStudy = (it: FrameworkItem) => (target ? target.exists(existing, fw, it) : false);
   // selected = parsed, not already in the study, and not un-checked by the user.
   const chosen = items.filter((it, i) => !inStudy(it) && !excluded.has(i));
@@ -103,11 +206,31 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
           )}
 
           <div className="guide" style={{ marginBottom: 12 }}>
-            Paste a table (CSV/TSV) or JSON, or choose a file. Values are read <b>verbatim</b>; for a
-            table you map columns to fields below. JSON format:
+            Paste a table (CSV/TSV) or JSON, or choose a file — CSV, JSON, text, or a PDF or Word
+            document, whose text is extracted first. Values are read <b>verbatim</b>; for a table
+            you map columns to fields below. A document that is not a table is read as a list, one
+            entry per identifier. JSON format:
             <code style={{ display: "block", marginTop: 6, whiteSpace: "pre-wrap" }}>{`{ "name": "…", "items": [ { "ref_id", "title", "category", "description" } ] }`}</code>
             <button className="btn ghost sm" style={{ marginTop: 8 }} onClick={() => downloadText("catalog-template.json", TEMPLATE)}><Icon.download /> Download template</button>
           </div>
+
+          {PUBLISHED_CATALOGS.length > 0 && (
+            <div className="guide" style={{ marginBottom: 12 }}>
+              <b>From the publisher.</b> The catalogue is fetched when you press this and not
+              otherwise — the application asks for nothing on its own, and works without ever
+              asking. On a machine with no network, import the published file from disk below.
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                {PUBLISHED_CATALOGS.map((pc) => (
+                  <button key={pc.key} className="btn sm pub-cat" disabled={!!fetching} onClick={() => download(pc)}>
+                    <Icon.download /> {fetching === pc.key ? "Loading…" : pc.name}{pc.size ? ` · ${pc.size}` : ""}
+                  </button>
+                ))}
+              </div>
+              <div className="hint" style={{ marginTop: 6 }}>
+                {PUBLISHED_CATALOGS.map((p) => `${p.name} — ${p.source}`).join(" · ")}
+              </div>
+            </div>
+          )}
 
           <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
             <button className="btn sm" onClick={() => fileRef.current?.click()}><Icon.upload /> Choose file…</button>
@@ -134,6 +257,63 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
                     </select>
                   </label>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* The lists the taxonomy offers in its pickers belong to the publisher, not to
+              this build. A catalogue that declares them can bring them up to date, which
+              is the difference between a copy that ages silently and one that is dated. */}
+          {/* Nothing to change is a result, not an absence: it says this build's lists are
+              the ones the catalogue uses. Without it, a silent panel is indistinguishable
+              from a check that never ran. */}
+          {items.length > 0 && vocabShown.length === 0 && vocabDefined && (
+            <div className="guide vocab-current" style={{ marginTop: 14 }}>
+              The vocabularies this catalogue defines are already the ones this build offers —
+              nothing to bring up to date.
+            </div>
+          )}
+          {vocabShown.length > 0 && (
+            <div className="panel vocab-panel" style={{ marginTop: 14 }}>
+              <div className="panel-head"><h3>Vocabularies this catalogue defines</h3>
+                <span className="badge">{vocabShown.length}</span><span className="spacer" />
+                <span className="hint">the option lists of fields that name a source</span></div>
+              <div className="panel-body" style={{ padding: "6px 14px 12px" }}>
+                <div className="guide" style={{ marginBottom: 8 }}>
+                  <b>Extend</b> adds what this catalogue has and keeps the rest. <b>Replace</b> takes
+                  its list as the whole truth and drops what it does not name — right for the ruleset
+                  the field belongs to, wrong for any other, because an unrelated catalogue lists none
+                  of these terms without that meaning they were retired. Either way a value a record
+                  still holds is kept, and records are not otherwise touched.
+                  <div className="seg" style={{ marginTop: 8, width: "fit-content" }}>
+                    <button className={"seg-btn" + (vocabMode === "add" ? " on" : "")} onClick={() => setVocabMode("add")}>Extend</button>
+                    <button className={"seg-btn" + (vocabMode === "replace" ? " on" : "")} onClick={() => setVocabMode("replace")}>Replace</button>
+                  </div>
+                </div>
+                {vocabShown.map((c) => {
+                  const id = `${c.typeKey}.${c.fieldKey}`;
+                  return (
+                    <label key={id} className="ex-cand">
+                      <input type="checkbox" style={{ width: "auto", marginTop: 3 }} checked={!skipVocab.has(id)}
+                        onChange={() => setSkipVocab((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; })} />
+                      <span style={{ flex: 1 }}>
+                        <span className="ex-cand-name">{c.typeLabel} · {c.fieldLabel}{" "}
+                          <span className="hint">({c.current.length} → {(vocabMode === "replace" ? c.mergedReplacing : c.merged).length})</span></span>
+                        <span className="ex-cand-snip">
+                          {c.added.length > 0 && <>{c.added.length} new: {c.added.slice(0, 8).join(", ")}{c.added.length > 8 ? " …" : ""}</>}
+                          {c.added.length > 0 && c.removed.length > 0 && " — "}
+                          {c.removed.length > 0 && <>{c.removed.length} not in this catalogue: {c.removed.slice(0, 8).join(", ")}{c.removed.length > 8 ? " …" : ""}
+                            {vocabMode === "replace" ? " (dropped)" : " (kept)"}</>}
+                          {c.keptInUse.length > 0 && vocabMode === "replace" && <> — {c.keptInUse.length} of those kept anyway, records hold them</>}
+                        </span>
+                      </span>
+                      <span className="badge">{c.source}</span>
+                    </label>
+                  );
+                })}
+                <button className="btn sm vocab-apply" style={{ marginTop: 8 }} disabled={!vocabPicked.length} onClick={applyVocab}>
+                  {vocabMode === "replace" ? "Replace" : "Extend"} {vocabPicked.length || ""} vocabular{vocabPicked.length === 1 ? "y" : "ies"}
+                </button>
               </div>
             </div>
           )}
@@ -168,7 +348,7 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
           <button className="btn ghost" onClick={onClose}>Close</button>
           <button className="btn primary" disabled={!target || chosen.length === 0} onClick={doImport}>Add {chosen.length || ""} selected</button>
         </footer>
-        <input ref={fileRef} type="file" accept=".csv,.tsv,.json,.txt" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
+        <input ref={fileRef} type="file" accept=".csv,.tsv,.json,.txt,.md,.pdf,.docx,.xml" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
       </div>
     </div>,
     document.body,

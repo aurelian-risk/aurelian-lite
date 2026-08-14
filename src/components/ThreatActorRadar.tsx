@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Risk-Sources analytics: a radar comparing threat actors across their EBIOS
 // rating scores (capability, resources, activity, relevance, …). Each actor is
 // one polygon; the axes are the score dimensions. Falls back to bars for <3 scores.

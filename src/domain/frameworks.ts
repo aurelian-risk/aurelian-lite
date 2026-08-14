@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Bundled framework catalogs for the compliance / requirements mapping:
 //   • NIS2  — EU legislation (Directive (EU) 2022/2555), reusable per Decision 2011/833/EU.
 //   • NIST CSF 2.0 — a work of the U.S. Government, public domain.
@@ -9,7 +10,16 @@ import { EFFECT_CLASSES, type EffectClass } from "./controls";
  *  control's mechanism is unambiguous; governance and support controls are left unset
  *  on purpose, so the linter asks the analyst to decide in context rather than the
  *  catalog silently claiming an effect the control does not have. */
-export interface FrameworkItem { ref_id: string; title: string; category?: string; description?: string; effect?: EffectClass }
+export interface FrameworkItem {
+  ref_id: string; title: string; category?: string; description?: string; effect?: EffectClass;
+  /** Where the item sits in the catalogue's own hierarchy, as a readable path. */
+  section?: string;
+  /** Named properties the catalogue carries beyond these fields - OSCAL `props`, a
+   *  spreadsheet's extra columns. Kept verbatim; catalog.ts writes a property into the
+   *  entity when the taxonomy declares a field of the same key, so which of them a
+   *  product can absorb is a property of its taxonomy rather than of the reader. */
+  props?: Record<string, string>;
+}
 export interface Framework { key: string; name: string; source: string; items: FrameworkItem[] }
 
 // NIS2 — Directive (EU) 2022/2555, Article 21(2) risk-management measures.
@@ -92,7 +102,7 @@ export const NIST_800_53: Framework = {
   ],
 };
 
-export const BUNDLED_FRAMEWORKS: Framework[] = [NIS2, NIST_CSF, NIST_800_53];
+// Which of these a build ships is a product decision: see src/profile/*/catalogs.ts.
 
 // A curated, framework-neutral library of common security measures (controls),
 // written here so a study can be seeded with real controls
@@ -141,10 +151,6 @@ export const MEASURE_LIBRARY: Framework = {
   ],
 };
 
-// Catalogs that seed security measures: the curated library first, then the
-// frameworks (whose items are also controls).
-export const BUNDLED_MEASURE_CATALOGS: Framework[] = [MEASURE_LIBRARY, NIS2, NIST_CSF, NIST_800_53];
-
 /** Convert a catalog item to `requirement` entity values. */
 export function requirementValues(fw: Framework, it: FrameworkItem): Record<string, FieldValue> {
   return { name: it.title, ref_id: it.ref_id, framework: fw.name, category: it.category ?? "", description: it.description ?? "" };
@@ -182,4 +188,45 @@ function normItem(o: any): FrameworkItem | null {
     description: o?.description ? String(o.description) : undefined,
     effect: (EFFECT_CLASSES as string[]).includes(effect) ? (effect as EffectClass) : undefined,
   };
+}
+
+// ── Catalogues the publisher hosts ───────────────────────────────────────
+
+/** A catalogue that is published rather than shipped, offered for download on demand.
+ *
+ *  The engine holds the mechanism, the profile the list: which rulesets a product works
+ *  to is what makes it that product. Nothing is fetched on its own — a download happens
+ *  when the user asks for it, and the application works without ever asking. */
+export interface PublishedCatalog {
+  key: string;
+  name: string;
+  url: string;
+  /** Publisher and licence, shown beside the button, so what is being fetched from where
+   *  is visible before it is fetched. */
+  source: string;
+  /** Transfer size, as published. */
+  size?: string;
+}
+
+/** Download a published catalogue, reporting bytes as they arrive.
+ *  Returns the raw text; what it is read as is the caller's decision. */
+export async function fetchPublishedCatalog(cat: PublishedCatalog, onProgress?: (loaded: number, total: number) => void): Promise<string> {
+  const res = await fetch(cat.url, { redirect: "follow" });
+  if (!res.ok) throw new Error(`${cat.name}: the publisher answered ${res.status} ${res.statusText}`);
+  const total = Number(res.headers.get("content-length") ?? 0);
+  if (!res.body || !onProgress) return await res.text();
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.length;
+    onProgress(loaded, total);
+  }
+  const buf = new Uint8Array(loaded);
+  let at = 0;
+  for (const c of chunks) { buf.set(c, at); at += c.length; }
+  return new TextDecoder().decode(buf);
 }

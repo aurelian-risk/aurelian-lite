@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Unit test for the study change log: the hash chain, and what it does and does not
 // detect. These are the claims the tool makes to an auditor, so they are pinned here
 // rather than left to hold by accident.

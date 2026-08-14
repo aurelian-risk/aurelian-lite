@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Haptic three-point distribution input: drag min / most-likely / max on a
 // (log or linear) axis and watch the PERT (beta) density reshape live. Drag the
 // peak handle up/down to make the distribution more peaked or flatter (lambda).

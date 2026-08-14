@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Capture real screenshots of the built app (dist/index.html) and present each
 // inside a clean browser-window frame on a soft backdrop. Output → docs/.
 // Run after `npm run build`:  node scripts/shots.mjs

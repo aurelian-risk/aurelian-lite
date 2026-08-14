@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Quantitative risk as an interactive factor tree, one per operational scenario.
 // Most factors are DERIVED from the qualitative model (scenario, risk source,
 // kill-chain coverage) and carry a provenance chip; only the loss magnitudes are

@@ -1,9 +1,13 @@
 Aurelian Lite - NOTICE
 =======================
 
-Aurelian Lite is licensed under the MIT License (see LICENSE),
-Copyright (c) Aurelian-Risk. The MIT License covers the Aurelian Lite source
-code only.
+Aurelian Lite is licensed under the Mozilla Public License, v. 2.0 (see LICENSE),
+Copyright (c) Aurelian-Risk. Up to and including v0.4.6 the licence was MIT;
+those releases remain MIT for anyone holding them.
+
+The MPL covers the Aurelian Lite source files, which carry the marker
+"SPDX-License-Identifier: MPL-2.0". It is copyleft per file: files without that
+marker are not covered by it.
 
 This product includes, references or interoperates with third-party material
 that remains the property of its respective owners and is subject to its own

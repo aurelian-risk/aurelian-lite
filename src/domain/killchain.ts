@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Domain rules for the kill-chain step graph (the `predecessors` / cascade edges).
 //
 // A kill chain is a left-to-right escalation. `predecessors` turns it into a DAG,

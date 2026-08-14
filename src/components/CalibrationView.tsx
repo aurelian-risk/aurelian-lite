@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // The calibration, laid open: every number the quantification runs on, what it
 // answers, what it changes, and where the default came from - editable in place.
 //

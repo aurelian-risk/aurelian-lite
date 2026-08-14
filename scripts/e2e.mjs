@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Self-contained headless verification of the PORTABLE build (no extension).
 // Loads dist/index.html over file://, loads the sample study, walks every
 // workshop tab + the graph, and asserts the data view renders. Screenshots
@@ -15,6 +16,30 @@ mkdirSync(shots, { recursive: true });
 const errors = [];
 const checks = [];
 const ok = (name, cond) => { checks.push({ name, cond }); console.log(`${cond ? "✓" : "✗"} ${name}`); };
+
+/** A single-page PDF with an uncompressed text layer, built here so the check needs no
+ *  network and no file in the repository. It exists to prove one thing: that a chosen
+ *  PDF is extracted rather than read as bytes. The real catalogues are measured
+ *  separately, by scripts/corpus-test.mjs. */
+function makePdf(lines) {
+  const body = `BT /F1 10 Tf 12 TL 1 0 0 1 40 750 Tm\n`
+    + lines.map((l) => `(${l.replace(/([()\\])/g, "\\$1")}) Tj T*\n`).join("") + "ET";
+  const objs = [
+    "<</Type/Catalog/Pages 2 0 R>>",
+    "<</Type/Pages/Kids[3 0 R]/Count 1>>",
+    "<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>",
+    `<</Length ${body.length}>>\nstream\n${body}\nendstream`,
+    "<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
+  ];
+  let out = "%PDF-1.4\n";
+  const off = [];
+  objs.forEach((o, i) => { off.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+  const xref = out.length;
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`
+    + off.map((o) => String(o).padStart(10, "0") + " 00000 n \n").join("")
+    + `trailer\n<</Size ${objs.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, "latin1");
+}
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -440,6 +465,30 @@ try {
   await page.waitForTimeout(300);
   ok("table import maps columns via header aliases", (await page.locator(".modal-lg .panel-head h3", { hasText: "Map columns" }).count()) > 0);
   ok("import lists parsed rows as a selectable catalog", (await page.locator(".modal-lg .ex-cand").count()) === 2 && (await page.locator(".modal-lg .ex-cand input[type=checkbox]").count()) === 2);
+  // A PDF chosen through the file picker must go through text extraction. Reading the
+  // file as text instead put the compressed streams into the preview and made every
+  // document look like it had no text layer.
+  {
+    const pdf = makePdf([
+      "ZZZ.1 Catalogue for the extraction check",
+      "",
+      ...Array.from({ length: 12 }, (_, k) => [
+        `ZZZ.1.A${k + 1} Invented requirement number ${k + 1} (${k % 2 ? "S" : "B"})`,
+        `Body text belonging to requirement ${k + 1}, long enough to count as substance.`,
+        "",
+      ]).flat(),
+    ]);
+    await page.locator('.modal-lg input[type=file]').setInputFiles({ name: "check.pdf", mimeType: "application/pdf", buffer: pdf });
+    await page.waitForTimeout(1200);
+    const preview = await page.locator(".modal-lg textarea").inputValue();
+    ok("a chosen PDF is extracted, not read as bytes", /Invented requirement number 1/.test(preview));
+    ok("the extracted document is read as a list", /Read as a list: 12 entries/.test(await page.locator(".modal-lg .guide.warn").innerText().catch(() => "")));
+    ok("its levels are derived from the document", (await page.locator(".modal-lg .ex-cand").count()) === 12);
+    // back to the table case the rest of this block asserts on
+    await page.locator(".modal-lg textarea").fill("Control ID,Requirement,Domain,Guidance\nX-1,Just-in-time admin,Access,Grant admin temporarily\nX-2,Immutable backups,Resilience,Keep an offline copy");
+    await page.locator(".modal-lg button", { hasText: "Parse" }).click();
+    await page.waitForTimeout(300);
+  }
   await page.screenshot({ path: `${shots}/CatalogImport.png` });
   await page.locator(".modal-lg .ex-cand input[type=checkbox]").first().uncheck();
   await page.waitForTimeout(150);
@@ -482,6 +531,58 @@ try {
   }
   await page.locator(".ws-tab", { hasText: "Compliance" }).click();
   await page.waitForTimeout(250);
+
+  // Search, facets and grouping. The requirements table spans three frameworks, which is
+  // what makes grouping worth having; the toolbar only appears once a table is long enough.
+  {
+    const tools = page.locator(".panel", { has: page.locator(".tbl-tools") }).first();
+    ok("a long table offers a toolbar", (await tools.count()) > 0);
+    // Scoped to the panel the toolbar belongs to: the tab may carry other tables.
+    const rows = () => tools.locator(".tbl tbody tr.row-clickable").count();
+    const all = await rows();
+    ok("the sample requirements are enough to need one", all >= 8, String(all));
+
+    await tools.locator(".tbl-search input").fill("backup");
+    await page.waitForTimeout(200);
+    ok("search narrows the table", (await rows()) < all && (await rows()) > 0, `${await rows()} of ${all}`);
+    ok("...and says how many are left", /of \d+/.test(await tools.locator(".tbl-tools-foot .hint").innerText()));
+    await tools.locator(".tbl-search input").fill("");
+    await page.waitForTimeout(200);
+    ok("clearing the search restores every row", (await rows()) === all);
+
+    const chip = tools.locator(".facet", { hasText: "Framework" }).locator(".facet-chip").first();
+    const chipText = (await chip.innerText()).trim();
+    const chipCount = Number(chipText.match(/(\d+)$/)?.[1] ?? 0);
+    await chip.click();
+    await page.waitForTimeout(200);
+    ok("a facet chip filters to its own count", (await rows()) === chipCount, `${await rows()} vs ${chipCount}`);
+    ok("the active chip is marked", (await tools.locator(".facet-chip.on").count()) === 1);
+
+    // A second value on the same field widens rather than narrows: they are alternatives.
+    const second = tools.locator(".facet", { hasText: "Framework" }).locator(".facet-chip").nth(1);
+    await second.click();
+    await page.waitForTimeout(200);
+    ok("a second value on the same field widens the result", (await rows()) > chipCount);
+
+    await tools.locator(".btn.ghost", { hasText: "Clear filters" }).click();
+    await page.waitForTimeout(200);
+    ok("clearing the filters restores every row", (await rows()) === all);
+
+    await tools.locator(".tbl-group select").selectOption({ label: "Framework" });
+    await page.waitForTimeout(250);
+    const groups = await tools.locator(".tbl .group-row").count();
+    ok("grouping splits the table into headed sections", groups >= 3, String(groups));
+    ok("...and every row is still there", (await rows()) === all);
+    await tools.locator(".tbl .group-row").first().click();
+    await page.waitForTimeout(200);
+    ok("a group collapses", (await rows()) < all);
+    await tools.locator(".tbl .group-row").first().click();
+    await page.waitForTimeout(200);
+    await tools.locator(".tbl-group select").selectOption({ label: "nothing" });
+    await page.waitForTimeout(200);
+    ok("ungrouping restores the plain table", (await tools.locator(".tbl .group-row").count()) === 0 && (await rows()) === all);
+  }
+
   const reqRow = page.locator(".tbl tbody tr.row-clickable").first();
   const reqName = (await reqRow.locator(".name").innerText()).trim();
   await reqRow.click();

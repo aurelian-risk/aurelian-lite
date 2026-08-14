@@ -5,6 +5,53 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.5.0] — 2026-08-14
+
+Long tables became usable, catalogues arrive in the form their publishers issue them, and
+the licence changed.
+
+### Added
+- **Search, facet filters and grouping on every table** past eight rows. What can be
+  filtered or grouped by is read from the data rather than declared: a requirement's
+  framework and category are plain text fields, and they are the two worth grouping by.
+  Values within one field are alternatives, different fields must all hold, and rows
+  without a value form their own group instead of disappearing.
+- **OSCAL catalogue import.** OSCAL is NIST's model for control catalogues; NIST publishes
+  SP 800-53 in it and the BSI its Stand-der-Technik library. Groups, controls nested inside
+  controls and prose split across parts are read, and a catalogue's own named properties
+  are carried into any taxonomy field of the same name — so an import can fill more than
+  title and identifier without a mapping step.
+- **Documents that are not tables are read as lists.** A PDF whose text is one entry per
+  identifier is recognised as such, with the identifier scheme derived rather than
+  configured. Measured against nine published documents from six publishers.
+- **A product profile** (`src/profile/`) holding what makes this build what it is — its
+  identity, taxonomy, sample study and bundled catalogues — so the engine underneath
+  carries no product knowledge.
+
+### Fixed
+- **A chosen PDF or Word file is extracted, not read as bytes.** The file picker accepted
+  neither, and a file chosen anyway put its compressed streams into the preview.
+- **A document is classified before it is parsed.** Arbitrary text used to be read as a
+  delimited table and turn into hundreds of rows of noise that looked like a result; input
+  that is not a catalogue is now refused, with the reason.
+
+### Changed
+- **The licence is now the Mozilla Public License 2.0**, replacing MIT. Releases up to and
+  including v0.4.6 stay MIT for anyone holding them; the change applies from the next
+  release on.
+
+  MPL-2.0 is copyleft per file. Files carrying `SPDX-License-Identifier: MPL-2.0` stay
+  under it, and modifications to them have to be available. Files you add are yours, under
+  a licence of your choosing — a proprietary product can be built around this without
+  opening it. `npm run spdx:check` reports any source file without the marker.
+
+  What is new in practice: the distributed `index.html` states where its source can be
+  obtained, as section 3.2 requires. The banner at the top of the file carries it.
+
+### Added
+- `TRADEMARK.md` — what may be done with the name without asking. The licence covers the
+  code, not the name.
+
 ## [0.4.6] — 2026-08-13
 
 What a measure is worth, and what a second one on the same step adds, is now visible and

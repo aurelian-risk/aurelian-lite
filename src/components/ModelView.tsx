@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Model configuration section: pick the local embedding model, download/load it,
 // see the load + cache state, and clear the cached model. The model powers the
 // document extraction and runs entirely in the browser.

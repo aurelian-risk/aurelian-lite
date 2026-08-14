@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Diff an incoming bundle's studies against the current ones, so an import can be
 // reviewed (added / changed / removed entities, with per-field changes) before it
 // is applied. Deterministic and offline; matching is by entity id.

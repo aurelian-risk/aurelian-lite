@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // ─────────────────────────────────────────────────────────────────────────
 // Generic, schema-driven data model. The taxonomy (meta-schema) defines
 // entity types, their fields and the relationships between them (via ref
@@ -29,6 +30,14 @@ export interface FieldDef {
   suggest?: string;
   /** enum: allowed values (extensible). */
   options?: string[];
+  /** Where this field's values come from in a published catalogue, so the vocabulary can
+   *  be refreshed from the source instead of being maintained by hand:
+   *   · a property name  — the values that property takes across the catalogue
+   *                        (a value listing several, comma-separated, counts as each);
+   *   · "@groups"        — the labels of the catalogue's top-level groups.
+   *  For an imported record the same declaration says where the field's own value comes
+   *  from, so declaring it once serves both the option list and the import. */
+  vocabulary?: string;
   /** scale: labels per step; length = max value. Value stored as 1..N. */
   scaleLabels?: string[];
   /** scale: is a HIGH value good or bad? Drives the colour ramp direction.
@@ -71,6 +80,9 @@ export interface Taxonomy {
   description?: string;
   groups: GroupDef[];
   entityTypes: EntityTypeDef[];
+  /** Which published catalogue the vocabularies were last refreshed from, so a taxonomy
+   *  can state its own currency rather than leaving it to be guessed. */
+  vocabularySource?: { name: string; version?: string; at: string };
 }
 
 // ── Instances ────────────────────────────────────────────────────────────
@@ -180,7 +192,7 @@ export interface RefDocRecord {
 
 /** App-level settings that travel with a fully portable export. Model WEIGHTS
  *  are never included (too large — the embedding model is a separate .bin);
- *  only the selection. */
+ *  only the selections. */
 export interface PortableSettings {
   modelId?: string;      // selected embedding model
   theme?: "light" | "dark";
@@ -195,4 +207,32 @@ export interface Bundle {
   studies?: Study[];
   documents?: RefDocRecord[];
   settings?: PortableSettings;
+}
+
+/** Product identity. Supplied by the active profile (src/profile), consumed by the shell. */
+export interface Product {
+  name: string;
+  tagline: string;
+  /** Accessible name for the logo mark. */
+  mark: string;
+  /** Which theme a fresh install opens in. Defaults to dark. */
+  scheme?: "light" | "dark";
+  /** Where the source of THIS build can be obtained. Under a file-level copyleft the
+   *  distributed single file has to say this: a recipient who has only the built HTML
+   *  must still be able to find the source it came from. */
+  source?: string;
+  /** CSS custom properties this product overrides, on top of src/styles/tokens.css.
+   *  `base` applies to both themes, `light` and `dark` only to theirs. Written as a
+   *  stylesheet at startup, so a product can carry its own palette, radii and type
+   *  without the shared token file diverging between builds. */
+  theme?: {
+    base?: Record<string, string>;
+    light?: Record<string, string>;
+    dark?: Record<string, string>;
+  };
+  /** A stylesheet of this product's own, appended after the engine's. Tokens carry a
+   *  palette; a product whose voice is a different KIND of document — ruled tables, no
+   *  cards, a printed rather than an assembled page — needs to restate some rules. Kept
+   *  in the profile so the shared stylesheet stays identical between builds. */
+  styles?: string;
 }

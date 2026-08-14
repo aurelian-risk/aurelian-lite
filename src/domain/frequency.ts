@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // How often an operational scenario is attempted at all - see docs/frequency-model.md.
 //
 // This replaces the pair "contact frequency x probability of action" with ONE derived

@@ -1,5 +1,7 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 import { useEffect, useState } from "react";
 import { useStore } from "./domain/store";
+import { PRODUCT } from "./profile";
 import { Dashboard } from "./components/Dashboard";
 import { StudyView } from "./components/StudyView";
 import { TaxonomyView } from "./components/TaxonomyView";
@@ -22,7 +24,7 @@ function Sidebar({ route, go, hasStudy }: { route: Route; go: (r: Route) => void
   return (
     <div className="sidebar">
       <div className="brand">
-        <svg className="logo-mark" width="42" height="42" viewBox="0 0 32 32" fill="none" aria-label="Aurelian">
+        <svg className="logo-mark" width="42" height="42" viewBox="0 0 32 32" fill="none" aria-label={PRODUCT.mark}>
           <g fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--fg-muted)" }}>
             <path d="M8.5 24.8 L16 19.8 L23.5 24.8" opacity="0.55" />
             <path d="M8.5 17.5 L16 12.5 L23.5 17.5" />
@@ -30,8 +32,8 @@ function Sidebar({ route, go, hasStudy }: { route: Route; go: (r: Route) => void
           <path d="M8.5 12.0 L16 7.0 L23.5 12.0" fill="none" stroke="var(--color-workshop-2)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
         <div>
-          <div className="name">Aurelian Lite</div>
-          <div className="tag">Structured cyber risk analysis</div>
+          <div className="name">{PRODUCT.name}</div>
+          <div className="tag">{PRODUCT.tagline}</div>
         </div>
       </div>
       <div className="nav-section">Navigation</div>
@@ -58,6 +60,12 @@ function Sidebar({ route, go, hasStudy }: { route: Route; go: (r: Route) => void
         <span className="dot" style={{ background: "var(--primary)" }} />
         {light ? "Dark theme" : "Light theme"}
       </button>
+      {/* Under a file-level copyleft the built file has to tell its recipient where the
+          source is - this build may well be the only copy someone ever receives. */}
+      <div className="colophon">
+        {PRODUCT.name} {__APP_VERSION__} · {__APP_LICENSE__}
+        {PRODUCT.source && <><br /><a href={`https://${PRODUCT.source}`} target="_blank" rel="noreferrer">{PRODUCT.source}</a></>}
+      </div>
     </div>
   );
 }
