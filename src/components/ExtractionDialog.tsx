@@ -8,7 +8,7 @@ import { createPortal } from "react-dom";
 import { useActiveStudy, useStore } from "../domain/store";
 import { getType } from "../domain/taxonomy";
 import { getDocText, viewTextTransient } from "../domain/documents";
-import { extractByEmbeddings, type TypeCandidates } from "../domain/extraction";
+import { extractByEmbeddings, type TypeCandidates, type Candidate } from "../domain/extraction";
 import { isLoaded } from "../domain/embeddings";
 import { Icon } from "./ui";
 
@@ -21,6 +21,11 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [groups, setGroups] = useState<TypeCandidates[] | null>(null);
+  /** Candidates the user re-classified: original id → the type it should become. The id
+   *  stays the one it was found under, so the selection survives a re-classification. */
+  const [moved, setMoved] = useState<Record<string, string>>({});
+  /** Rows showing their surrounding text. */
+  const [opened, setOpened] = useState<Set<string>>(new Set());
   const [sel, setSel] = useState<Set<string>>(new Set());
 
   // The embedding model is loaded in the Model section, not here.
@@ -57,10 +62,46 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
     let added = 0;
     const src = name.trim() || "pasted text";           // automatic source attribution
     for (const g of groups) g.candidates.forEach((c, i) => {
-      if (sel.has(g.typeKey + ":" + i)) { addEntity(g.typeKey, c.values, src); added++; }
+      const id = g.typeKey + ":" + i;
+      if (!sel.has(id)) return;
+      const target = moved[id] ?? g.typeKey;
+      // The values were read for the type it was found under. Moving it keeps only what
+      // the new type actually declares - a field it has no place for would be stored
+      // where nothing reads it.
+      const t = getType(tax, target);
+      const values = target === g.typeKey ? c.values
+        : Object.fromEntries(Object.entries(c.values).filter(([k]) => t?.fields.some((f) => f.key === k)));
+      if (t && !values.name) values.name = c.name;
+      addEntity(target, values, src);
+      added++;
     });
     alert(`Added ${added} entities to “${active.name}” (source: ${src}).`);
     onClose();
+  };
+
+  /** Panels as they now stand: a re-classified candidate appears under its new type. */
+  type Row = { id: string; c: Candidate; from: string };
+  const panels: { typeKey: string; label: string; rows: Row[] }[] = [];
+  if (groups) {
+    const rows: Row[] = [];
+    for (const g of groups) g.candidates.forEach((c, i) => rows.push({ id: g.typeKey + ":" + i, c, from: g.typeKey }));
+    const order = [...new Set([...groups.map((g) => g.typeKey), ...Object.values(moved)])];
+    for (const key of order) {
+      const mine = rows.filter((r) => (moved[r.id] ?? r.from) === key);
+      if (mine.length) panels.push({ typeKey: key, label: getType(tax, key)?.labelPlural ?? key, rows: mine });
+    }
+  }
+
+  /** The passage a candidate came from, with a little either side. The sentence itself is
+   *  what was matched; the surrounding text is what tells you whether the match is right. */
+  const contextOf = (snippet: string): { before: string; hit: string; after: string } | null => {
+    const at = text.indexOf(snippet);
+    if (at < 0) return null;
+    return {
+      before: text.slice(Math.max(0, at - 900), at),
+      hit: snippet,
+      after: text.slice(at + snippet.length, at + snippet.length + 900),
+    };
   };
 
   return createPortal(
@@ -103,31 +144,66 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
 
           {groups && (groups.length === 0
             ? <div className="empty" style={{ padding: "24px 0" }}>No candidates found.</div>
-            : groups.map((g) => {
-              const enumFields = (getType(tax, g.typeKey)?.fields ?? []).filter((f) => f.type === "enum");
+            : panels.map((p) => {
+              const enumFields = (getType(tax, p.typeKey)?.fields ?? []).filter((f) => f.type === "enum");
               return (
-                <div className="panel" style={{ marginTop: 14 }} key={g.typeKey}>
-                  <div className="panel-head"><h3>{g.label}</h3><span className="badge">{g.candidates.length}</span></div>
+                <div className="panel" style={{ marginTop: 14 }} key={p.typeKey}>
+                  <div className="panel-head"><h3>{p.label}</h3><span className="badge">{p.rows.length}</span></div>
                   <div className="panel-body" style={{ padding: "6px 12px 12px" }}>
-                    {g.candidates.map((c, i) => {
-                      const id = g.typeKey + ":" + i;
+                    {p.rows.map(({ id, c, from }) => {
+                      const isOpen = opened.has(id);
+                      const ctx = isOpen ? contextOf(c.snippet) : null;
                       return (
-                        <label key={id} className="ex-cand">
-                          <input type="checkbox" style={{ width: "auto", marginTop: 3 }} checked={sel.has(id)} onChange={() => toggle(id)} />
-                          <span style={{ flex: 1 }}>
-                            <span className="ex-cand-name">{c.name}</span>
-                            {c.snippet.trim() !== c.name.trim() && <span className="ex-cand-snip">{c.snippet}</span>}
-                            {enumFields.length > 0 && (
-                              <span className="ex-cand-fields">
-                                {enumFields.map((f) => c.values[f.key] ? <span key={f.key} className="badge">{f.label}: {String(c.values[f.key])}</span> : null)}
-                              </span>
-                            )}
-                          </span>
-                          <span style={{ display: "flex", gap: 6, alignItems: "center", flex: "none" }}>
-                            {c.uncertain && <span className="badge" title="Best and second-best type were close — please review" style={{ color: "var(--color-state-warning, var(--fg-muted))" }}>uncertain</span>}
-                            <span className="badge">{Math.round(c.score * 100)}%</span>
-                          </span>
-                        </label>
+                        <div key={id} className={"ex-cand" + (isOpen ? " open" : "")}>
+                          <div className="ex-cand-row">
+                            <input type="checkbox" style={{ width: "auto", marginTop: 3 }}
+                              checked={sel.has(id)} onChange={() => toggle(id)} aria-label={`Select ${c.name}`} />
+                            <span style={{ flex: 1, cursor: "pointer" }} onClick={() => toggle(id)}>
+                              <span className="ex-cand-name">{c.name}</span>
+                              {c.snippet.trim() !== c.name.trim() && <span className="ex-cand-snip">{c.snippet}</span>}
+                              {enumFields.length > 0 && (
+                                <span className="ex-cand-fields">
+                                  {enumFields.map((f) => c.values[f.key] ? <span key={f.key} className="badge">{f.label}: {String(c.values[f.key])}</span> : null)}
+                                </span>
+                              )}
+                            </span>
+                            <span className="ex-cand-tools">
+                              {/* Re-classify. The model proposed a type; this is where you disagree with
+                                  it, without losing the candidate or having to type it in again. */}
+                              <select className="chip ex-cand-type" value={moved[id] ?? from}
+                                aria-label={`Type of ${c.name}`}
+                                title={moved[id] && moved[id] !== from ? `Found as ${getType(tax, from)?.label ?? from}` : "Type proposed by the model"}
+                                onChange={(e) => setMoved((m) => {
+                                  const next = { ...m };
+                                  if (e.target.value === from) delete next[id]; else next[id] = e.target.value;
+                                  return next;
+                                })}>
+                                {tax.entityTypes.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+                              </select>
+                              {moved[id] && moved[id] !== from && (
+                                <span className="badge" title={`Found as ${getType(tax, from)?.label ?? from}`}>re-classified</span>
+                              )}
+                              {c.uncertain && <span className="badge" title="Best and second-best type were close — please review" style={{ color: "var(--color-state-warning, var(--fg-muted))" }}>uncertain</span>}
+                              <span className="badge">{Math.round(c.score * 100)}%</span>
+                              <button type="button" className="btn ghost sm" aria-expanded={isOpen}
+                                title={isOpen ? "Hide the passage it came from" : "Show the passage it came from"}
+                                onClick={() => setOpened((o) => { const n = new Set(o); n.has(id) ? n.delete(id) : n.add(id); return n; })}>
+                                <span className={"caret" + (isOpen ? " open" : "")}><Icon.chevron /></span>
+                              </button>
+                            </span>
+                          </div>
+                          {isOpen && (
+                            <div className="ex-cand-ctx">
+                              {ctx
+                                ? <p className="ex-ctx-text">
+                                    <span className="ex-ctx-side">…{ctx.before}</span>
+                                    <mark>{ctx.hit}</mark>
+                                    <span className="ex-ctx-side">{ctx.after}…</span>
+                                  </p>
+                                : <p className="hint" style={{ margin: 0 }}>The passage could not be located in the current text — it may have been edited since the extraction ran.</p>}
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                   </div>

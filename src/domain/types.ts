@@ -30,6 +30,11 @@ export interface FieldDef {
   suggest?: string;
   /** enum: allowed values (extensible). */
   options?: string[];
+  /** enum: what to SHOW for each option, positionally. The stored value stays the option.
+   *  A published vocabulary is an identifier as much as a word — the engine matches on it,
+   *  an auditor checks it against the publisher's list, and translating it would break
+   *  both. This is how a product can read in one language while recording in another. */
+  optionLabels?: string[];
   /** Where this field's values come from in a published catalogue, so the vocabulary can
    *  be refreshed from the source instead of being maintained by hand:
    *   · a property name  — the values that property takes across the catalogue
@@ -83,6 +88,10 @@ export interface Taxonomy {
   /** Which published catalogue the vocabularies were last refreshed from, so a taxonomy
    *  can state its own currency rather than leaving it to be guessed. */
   vocabularySource?: { name: string; version?: string; at: string };
+  /** For a vocabulary that is a tree rather than a list: child → parent, per source. A
+   *  class inherits what its parents require, which is what lets a catalogue state a rule
+   *  once and have it reach every special case (see modelling.ts). */
+  vocabularyHierarchy?: Record<string, Record<string, string>>;
 }
 
 // ── Instances ────────────────────────────────────────────────────────────
@@ -230,6 +239,12 @@ export interface Product {
     light?: Record<string, string>;
     dark?: Record<string, string>;
   };
+  /** What the generated document is called — a security concept, a risk analysis, an
+   *  assessment. The method decides the name of its own deliverable. */
+  documentTitle?: string;
+  /** A stylesheet for the generated report, appended after the engine's. The report is
+   *  read beside the publisher's own documents; a product may need it to look the part. */
+  reportCss?: string;
   /** A stylesheet of this product's own, appended after the engine's. Tokens carry a
    *  palette; a product whose voice is a different KIND of document — ruled tables, no
    *  cards, a printed rather than an assembled page — needs to restate some rules. Kept

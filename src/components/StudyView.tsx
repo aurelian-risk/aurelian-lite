@@ -17,6 +17,7 @@ import { QuantificationView } from "./QuantificationView";
 import { CalibrationView } from "./CalibrationView";
 import { SectorSection } from "./SectorSection";
 import { CatalogAdd } from "./CatalogAdd";
+import { ModellingPanel } from "./ModellingPanel";
 import { catalogTargets } from "../domain/catalog";
 import { GraphView } from "./GraphView";
 import { CompletenessView } from "./CompletenessView";
@@ -205,6 +206,12 @@ export function StudyView({ onBack }: { onBack: () => void }) {
               // WS2: threat-landscape radar over the risk-source actors.
               const actorT = tax.entityTypes.find((t) => t.group === activeGroup.key && t.fields.some((f) => f.type === "scale" && f.key === "capability"));
               return actorT ? <ThreatActorRadar study={study} actorType={actorT} color={activeGroup.color} /> : null;
+            })()}
+            {/* Where the catalogue-backed records live: what the catalogue itself says
+                applies here, derived and accounted for, above the table it writes into. */}
+            {(() => {
+              const t = catalogTargets(tax).find((x) => x.type.group === activeGroup.key);
+              return t ? <ModellingPanel tax={tax} study={study} color={activeGroup.color} /> : null;
             })()}
             {(() => {
               // Compliance: framework-coverage radar ABOVE the traceability matrix.

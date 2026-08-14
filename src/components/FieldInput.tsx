@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Renders a single taxonomy field as the appropriate input control.
 import type { FieldDef, FieldValue } from "../domain/types";
-import { scaleLabel, scaleMax } from "../domain/taxonomy";
+import { optionLabel, scaleLabel, scaleMax } from "../domain/taxonomy";
 import { suggestTechniques, techniqueLabel } from "../domain/mitre";
 import { MultiSelect, ScaleInput } from "./ui";
 
@@ -29,7 +29,7 @@ export function FieldInput({
       return (
         <select value={String(value ?? "")} onChange={(e) => onChange(e.target.value)}>
           {!field.required && <option value="">—</option>}
-          {(field.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+          {(field.options ?? []).map((o) => <option key={o} value={o}>{optionLabel(field, o)}</option>)}
         </select>
       );
 

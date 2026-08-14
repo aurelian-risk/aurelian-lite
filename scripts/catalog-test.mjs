@@ -241,5 +241,42 @@ for (const s of SAMPLES) {
   }
 }
 
+// ── a body drawn from several columns ────────────────────────────────────
+//
+// A document read as a list spreads one entry over more than one detected column: the
+// term in one, the definition in another, a note in a third. Mapping a single column
+// throws the rest away, which is what fragmented a clause-numbered standard on import.
+{
+  const t = parseTable("Ref\tTerm\tDefinition\tNote\n3.1\taccess control\tmeans to ensure access is authorized\tNote 1 to entry: applies to assets");
+  const items = tableToItems(t, { ref_id: 0, title: 1, description: [2, 3] });
+  ok("body takes several columns", items[0].description === "means to ensure access is authorized\n\nNote 1 to entry: applies to assets", items[0].description);
+  ok("a single column still works as a number", tableToItems(t, { ref_id: 0, title: 1, description: 2 })[0].description === "means to ensure access is authorized");
+  ok("column order decides the order, not click order",
+    tableToItems(t, { ref_id: 0, title: 1, description: [3, 2] })[0].description.startsWith("Note 1"),
+    "reversed selection is honoured as given");
+}
+{
+  // The reader puts the whole entry in the title AND in the description. Joining them
+  // verbatim would double every record.
+  const whole = "access control means to ensure that access to assets is authorized and restricted";
+  const t = parseTable(`Ref\tTitle\tDescription\n3.1\t${whole}\t${whole}`);
+  const items = tableToItems(t, { ref_id: 0, title: 1, description: [1, 2] });
+  ok("a part that repeats one already taken is left out", items[0].description === whole, items[0].description);
+}
+{
+  // A short cell inside a longer one may be a value of its own, not a repeat.
+  const t = parseTable("Ref\tLevel\tText\nA-1\tB\tThe measure applies at level B in every case");
+  const items = tableToItems(t, { ref_id: 0, title: 2, description: [1, 2] });
+  ok("a short cell is kept even if it occurs inside a longer one",
+    items[0].description.startsWith("B\n\n"), items[0].description.slice(0, 20));
+}
+{
+  const t = parseTable("Ref\tA\tB\nX-1\t\tonly this");
+  ok("empty columns are skipped rather than leaving blank lines",
+    tableToItems(t, { ref_id: 0, title: 2, description: [1, 2] })[0].description === "only this");
+  ok("selecting nothing leaves the field unset",
+    tableToItems(t, { ref_id: 0, title: 2, description: [] })[0].description === undefined);
+}
+
 console.log(`\n${pass}/${pass + fail} catalog-import assertions passed · ${fail} failed`);
 process.exit(fail ? 1 : 0);

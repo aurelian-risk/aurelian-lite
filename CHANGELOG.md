@@ -5,6 +5,29 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.5.1] — 2026-08-14
+
+### Added
+- **A body can be built from several columns.** A document read as a list rarely puts one
+  entry's text in one place — a clause-numbered standard leaves the term, its definition
+  and its note in separate detected columns, and mapping a single one threw the rest away.
+  Parts that only repeat one already taken are dropped, so a reader that puts the whole
+  entry in both title and description no longer doubles every record.
+- **The sections a document is divided into can be dropped.** A standard numbers its
+  introduction like its clauses, so it arrived looking like a requirement. Sections are
+  listed with their counts; all are kept until you say otherwise.
+- **Re-classify a candidate in the extraction dialogue** from a dropdown on its row. The
+  row moves to the type it now belongs to and keeps its selection; on import only the
+  fields the new type declares are carried over.
+- **Each candidate opens the passage it came from**, with 900 characters either side and
+  the matched sentence marked. The sentence alone rarely settles whether a match is right.
+- **A modelling panel above the catalogue-backed tables**, showing what the catalogue
+  itself says applies here, derived and accounted for.
+
+### Changed
+- The report takes its heading from the taxonomy's and the product's own names instead of
+  strings fixed in the generator, and carries a control block stating what it was made from.
+
 ## [0.5.0] — 2026-08-14
 
 Long tables became usable, catalogues arrive in the form their publishers issue them, and

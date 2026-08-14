@@ -13,7 +13,8 @@ import type { Framework, FrameworkItem } from "./frameworks";
 
 interface OscalProp { name: string; value: string; ns?: string; class?: string }
 interface OscalPart { id?: string; name: string; prose?: string; props?: OscalProp[]; parts?: OscalPart[] }
-interface OscalControl { id: string; title: string; class?: string; props?: OscalProp[]; parts?: OscalPart[]; controls?: OscalControl[] }
+interface OscalParam { id: string; label?: string; values?: string[]; select?: { choice?: string[] } }
+interface OscalControl { id: string; title: string; class?: string; params?: OscalParam[]; props?: OscalProp[]; parts?: OscalPart[]; controls?: OscalControl[] }
 interface OscalGroup { id?: string; title?: string; props?: OscalProp[]; groups?: OscalGroup[]; controls?: OscalControl[] }
 interface OscalCatalog {
   uuid?: string;
@@ -37,6 +38,31 @@ function proseOf(part: OscalPart): string {
   const here = (part.prose ?? "").trim();
   const below = (part.parts ?? []).map(proseOf).filter(Boolean);
   return [here, ...below].filter(Boolean).join("\n\n");
+}
+
+/** OSCAL leaves blanks in the prose for the reader to fill: `{{ insert: param, x-prm1 }}`.
+ *  Left as they are, that markup is what the user reads. Resolved here:
+ *
+ *   · a parameter the publisher has already set is substituted outright;
+ *   · one left open keeps its suggested wording, in guillemets, so it reads as prose and
+ *     still shows where a decision of the reader's own belongs;
+ *   · a parameter the control does not declare is dropped rather than shown as markup.
+ *
+ *  Which parameters an item carries is reported separately (`params`), so a product can
+ *  ask for them without parsing prose. */
+const PARAM_RE = /\{\{\s*insert:\s*param,\s*([^}\s]+)\s*\}\}/g;
+
+function resolveParams(text: string, params: OscalParam[] | undefined): string {
+  if (!text.includes("{{")) return text;
+  const by = new Map((params ?? []).map((p) => [p.id, p]));
+  return text.replace(PARAM_RE, (_m, id: string) => {
+    const p = by.get(id);
+    if (!p) return "";
+    if (p.values?.length) return p.values.join(", ");
+    const choice = p.select?.choice?.length ? p.select.choice.join(" / ") : undefined;
+    const open = choice ?? p.label;
+    return open ? `«${open}»` : "";
+  }).replace(/ {2,}/g, " ").replace(/ ([,.;:])/g, "$1").trim();
 }
 
 const flatten = (props: OscalProp[] | undefined, into: Record<string, string>) => {
@@ -64,13 +90,18 @@ function readControl(c: OscalControl, path: string[], out: FrameworkItem[]): voi
   const extra = parts.filter((p) => p !== statement && p !== guidance)
     .map(proseOf).filter(Boolean).join("\n\n");
 
+  // Parameters are declared on the control and referenced from the prose beneath it.
+  const open = (c.params ?? []).filter((p) => !p.values?.length)
+    .map((p) => `${p.id} = ${p.select?.choice?.join(" / ") ?? p.label ?? ""}`.trim());
+
   out.push({
     ref_id: c.id,
-    title: c.title ?? c.id,
+    title: resolveParams(c.title ?? c.id, c.params),
     category: path[path.length - 1] ?? "",
-    description: [body, extra].filter(Boolean).join("\n\n"),
+    description: resolveParams([body, extra].filter(Boolean).join("\n\n"), c.params),
     section: path.join(" / "),
     ...(Object.keys(props).length ? { props } : {}),
+    ...(open.length ? { params: open.join(" · ") } : {}),
   });
 
   for (const nested of c.controls ?? []) readControl(nested, path, out);

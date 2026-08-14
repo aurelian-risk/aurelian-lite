@@ -4,3 +4,8 @@ dist/
 .DS_Store
 .vite/
 tsconfig.tsbuildinfo
+
+# Media files that are not part of the documentation.
+docs/*.webp
+docs/*.mp4
+docs/*.webm
