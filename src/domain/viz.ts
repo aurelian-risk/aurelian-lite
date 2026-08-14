@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Shared helpers for the analytical SVG/CSS charts (deterministic, offline).
 // Colours reuse the app's semantic tokens so light/dark themes both work.
 

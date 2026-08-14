@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Coverage / traceability - maps EXISTING requirements to the security measures
 // that fulfil them. A compact table of frameworks with a coverage status in the
 // quick view; expand a framework to assign measures per requirement (writes their

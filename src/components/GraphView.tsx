@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Relationship graph as a FOCUS / ego-network: one node sits at the centre and only
 // its DIRECT neighbours fan out around it (coloured by workshop group, shaped by entity
 // type, edges labelled with the relation + direction). Click a neighbour to re-centre on

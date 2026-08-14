@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Analysis quality / completeness checks ("linter"). Surfaces gaps in a study -
 // uncovered kill-chain steps, untreated risks, orphan entities, unfulfilled
 // requirements, etc. - each with the affected entities and a fix hint. Purely

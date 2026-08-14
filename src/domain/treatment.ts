@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Derive the residual risk position (likelihood × gravity) of a treated risk from the
 // treatment DECISION plus what the measures actually achieve - never a manual number, so
 // the matrix cannot drift away from the rest of the study.

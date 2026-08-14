@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk */
 /* ═══════════════════════════════════════════════════════════════════
    Design tokens — oklch. Dark-first, "security-intelligence" aesthetic:
    deep slate base, glass panels with light edges, teal accent.
@@ -22,9 +23,15 @@
   --color-state-info: oklch(0.72 0.1 235);
 
   --radius: 14px;
+  /* Labelling pills — badges, chips, counters. A product whose voice is a printed
+     document squares these off; sliders and tracks stay capsules regardless. */
+  --radius-pill: 999px;
   --radius-sm: 9px;
   --radius-lg: 20px;
   --font-sans: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  /* Headings and the brand. Defaults to the body face; a product that wants a different
+     voice for its titles overrides this one variable rather than restyling every rule. */
+  --font-display: var(--font-sans);
   --font-mono: "Cascadia Code", "Cascadia Mono", "SF Mono", ui-monospace, Consolas, monospace;
 
   --ease: cubic-bezier(0.32, 0.72, 0, 1);

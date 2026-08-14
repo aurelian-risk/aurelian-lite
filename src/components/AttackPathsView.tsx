@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Integrated attack-paths view: a READ-ONLY projection of all operational-scenario
 // kill chains into one graph that converges on the target assets. The kill chains
 // remain the single source of truth. Intra-chain edges come from step order (with

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Large popup for viewing + editing a single entity — the same fields as the
 // workshop table's editor, plus its incoming relationships. Fixed header and
 // footer, scrollable body, so nothing is ever cut off.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Persistence + portable data-layer swap.
 // Storage: IndexedDB → localStorage fallback. Portability: single-file
 // export/import as JSON or YAML, as a full bundle (taxonomy + data), or

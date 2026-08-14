@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Kill-chain mitigation (WS5) - a table of ALL operational scenarios (from WS4).
 // Each row shows the mitigation status; expanding it reveals the scenario's
 // kill-chain steps as an ordered lane (like WS4), with a dropdown on each step to

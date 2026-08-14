@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Event flow — the parent app's engine, adopted as-is (frontend/src/components/
 // workshop/event-flow.tsx): rich per-scenario chains, availableSet AND-filter
 // with click-lockout, Sankey ribbons between highlighted cards (rAF-tracked),

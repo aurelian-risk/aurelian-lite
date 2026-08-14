@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Effect classification of security measures: WHICH risk factor a control moves.
 // A measure is not defined, for quantification purposes, by how much work it is but
 // by its mechanism - deterring an attempt, removing the exposure, resisting a step,

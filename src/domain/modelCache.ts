@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Persistent IndexedDB cache for the in-browser model files. Transformers.js
 // caches via the Cache API by default, which is unavailable on file:// (not a
 // secure context) → the model would re-download every session. This provides a

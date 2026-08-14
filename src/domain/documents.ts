@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Reference-document library. We hold lightweight REFERENCES (name + metadata)
 // and, for text-like files, cache the extracted plain text locally (offline, in
 // IndexedDB) so extraction can read it instantly without re-picking the file.

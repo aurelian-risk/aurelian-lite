@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Global change timeline: every entity's hash-chained history, aggregated across
 // the active study and shown newest-first, grouped by day. A left-nav view.
 import { useMemo, useState } from "react";

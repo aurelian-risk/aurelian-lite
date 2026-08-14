@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Data import dialog with a review step: parse a bundle (file / paste / a demo
 // revision), preview the diff against the current data (added / changed / removed
 // entities, per field), then apply it additively or destructively.

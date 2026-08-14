@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Offline plain-text extraction from Word (.docx) and PDF, so a text corpus can be
 // imported without any external service or CDN. Uses the built-in DecompressionStream
 // (deflate) - no libraries. .docx is exact; PDF is best-effort (works for most

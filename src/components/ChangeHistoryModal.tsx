@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Popup showing one entity's hash-chained change history. Reused from the entity
 // table (opened on click) and the timeline (clicking a row).
 import { createPortal } from "react-dom";

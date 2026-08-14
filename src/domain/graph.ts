@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Derives a node/edge graph from a study's generic entities, using the
 // taxonomy's ref/multiref fields as relationships.
 import type { EntityRecord, Study, Taxonomy } from "./types";

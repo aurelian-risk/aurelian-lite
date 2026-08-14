@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // User model registry — lets the user add embedding models by Hugging Face repo
 // id, without any hard-coded model or address in the code. Stored in localStorage
 // and merged with the small built-in defaults (see embeddings.ts).

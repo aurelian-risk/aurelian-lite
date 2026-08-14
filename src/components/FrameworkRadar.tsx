@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Compliance analytics: a radar of requirement-coverage per framework.
 // Coverage = share of a framework's requirements fulfilled by ≥1 security measure.
 import { useMemo } from "react";

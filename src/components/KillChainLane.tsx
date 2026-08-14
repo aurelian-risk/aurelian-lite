@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Kill-chain lane for ONE operational scenario — rendered inline inside the
 // op-scenario's expanded row. Shows the parent WS3 scenario context and a lane
 // of MITRE ATT&CK tactic tiles. Steps (dragged from the kill-chain-steps table

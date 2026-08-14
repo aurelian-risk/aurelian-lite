@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Derive the quantitative-risk factors of an operational scenario from the
 // qualitative model already captured (scenario likelihood/difficulty, risk-source
 // capability/activity, kill-chain mitigation coverage, feared-event severity).

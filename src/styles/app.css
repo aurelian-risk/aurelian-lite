@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk */
 /* ═══════════════════════════════════════════════════════════════════
    App-Styles — Glasmorphismus, Tiefe, feine Bewegung. Dark-first.
    ═══════════════════════════════════════════════════════════════════ */
@@ -16,7 +17,7 @@ body {
     linear-gradient(180deg, var(--bg-1), var(--bg-0));
   background-attachment: fixed;
 }
-h1, h2, h3, h4 { margin: 0; font-weight: 640; letter-spacing: -0.015em; color: var(--fg); }
+h1, h2, h3, h4 { margin: 0; font-family: var(--font-display); font-weight: 640; letter-spacing: -0.015em; color: var(--fg); }
 button { font-family: inherit; }
 a { color: var(--primary); }
 ::selection { background: var(--primary-glow); }
@@ -52,7 +53,7 @@ a { color: var(--primary); }
   background: radial-gradient(circle at 30% 25%, oklch(1 0 0 / 0.5), transparent 60%);
 }
 .logo-mark { flex: none; }
-.brand .name { font-weight: 700; font-size: 15.5px; letter-spacing: -0.02em; }
+.brand .name { font-family: var(--font-display); font-weight: 700; font-size: 15.5px; letter-spacing: -0.02em; }
 .brand .tag { font-size: 11px; color: var(--fg-subtle); letter-spacing: 0.01em; }
 
 .nav-section { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.09em;
@@ -84,7 +85,7 @@ a { color: var(--primary); }
   flex-wrap: wrap; row-gap: 8px;
 }
 .topbar .btn { flex: none; }
-.topbar .title { font-size: 16.5px; font-weight: 650; letter-spacing: -0.02em; }
+.topbar .title { font-family: var(--font-display); font-size: 16.5px; font-weight: 650; letter-spacing: -0.02em; }
 .topbar .sub { color: var(--fg-subtle); font-size: 12.5px; }
 .topbar .spacer, .panel-head .spacer { flex: 1; }
 .content { padding: 30px 28px; width: 100%; animation: rise 0.4s var(--ease); }
@@ -192,7 +193,7 @@ select { cursor: pointer; }
 .modal-lg-head { display: flex; align-items: flex-start; gap: 12px; padding: 18px 22px; border-bottom: 1px solid var(--hairline); }
 .em-back { align-self: center; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 .ent-source { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; font-size: 11.5px; color: var(--fg-muted);
-  background: var(--bg-hover); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; max-width: 100%; }
+  background: var(--bg-hover); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 2px 10px; max-width: 100%; }
 .ent-source svg { width: 12px; height: 12px; flex: none; }
 .modal-lg-body { flex: 1; overflow-y: auto; padding: 20px 22px; }
 .modal-lg-foot { display: flex; align-items: center; gap: 9px; padding: 14px 22px; border-top: 1px solid var(--hairline); }
@@ -218,7 +219,7 @@ select { cursor: pointer; }
 .ent-hist { margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--hairline); }
 .hist-head { display: flex; align-items: center; gap: 10px; }
 .hist-chain { text-transform: none; letter-spacing: 0; font-size: 10.5px; font-weight: 600;
-  padding: 1px 8px; border-radius: 999px; }
+  padding: 1px 8px; border-radius: var(--radius-pill); }
 .hist-chain.ok { color: var(--color-state-success); background: color-mix(in oklch, var(--color-state-success) 14%, transparent); }
 .hist-chain.bad { color: var(--color-state-error); background: color-mix(in oklch, var(--color-state-error) 14%, transparent); }
 .hist-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
@@ -255,7 +256,7 @@ select { cursor: pointer; }
 /* What happened to the record, where it is not obvious from the text: a deletion, or an
    entry that came in with a confirmed import. */
 .tl-kind { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;
-  border-radius: 999px; padding: 1px 8px; }
+  border-radius: var(--radius-pill); padding: 1px 8px; }
 .tl-kind.del { color: var(--color-state-error); background: color-mix(in oklch, var(--color-state-error) 14%, transparent); }
 .tl-kind.imp { color: var(--color-state-info, var(--primary)); background: color-mix(in oklch, var(--color-state-info, var(--primary)) 14%, transparent); }
 /* A record that no longer exists: its entries stay, but there is nothing to open. */
@@ -273,14 +274,14 @@ select { cursor: pointer; }
 /* Import diff / merge preview */
 .idiff-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .idiff-summary { display: flex; gap: 10px; margin-bottom: 14px; font-size: 12.5px; font-weight: 600; }
-.idiff-c { padding: 2px 10px; border-radius: 999px; }
+.idiff-c { padding: 2px 10px; border-radius: var(--radius-pill); }
 .idiff-c.add { color: var(--color-state-success); background: color-mix(in oklch, var(--color-state-success) 14%, transparent); }
 .idiff-c.chg { color: var(--color-state-warning); background: color-mix(in oklch, var(--color-state-warning) 18%, transparent); }
 .idiff-c.rem { color: var(--color-state-error); background: color-mix(in oklch, var(--color-state-error) 14%, transparent); }
 .idiff-study { margin-bottom: 16px; }
 .idiff-study-h { font-weight: 650; font-size: 13.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
 .idiff-new { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-state-success);
-  background: color-mix(in oklch, var(--color-state-success) 14%, transparent); border-radius: 999px; padding: 1px 8px; font-weight: 600; }
+  background: color-mix(in oklch, var(--color-state-success) 14%, transparent); border-radius: var(--radius-pill); padding: 1px 8px; font-weight: 600; }
 .idiff-ent { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 9px; padding: 6px 9px; border-radius: 7px;
   margin-bottom: 4px; background: var(--bg-raised); border: 1px solid var(--hairline); font-size: 12.5px; }
 .idiff-ent.added { border-left: 3px solid var(--color-state-success); }
@@ -303,12 +304,12 @@ select { cursor: pointer; }
 .ap-wrap { max-width: none; }
 .ap-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0 12px; }
 .ap-tb-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--fg-subtle); font-weight: 700; }
-.ap-chip { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border);
+.ap-chip { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: var(--radius-pill); border: 1px solid var(--border);
   background: var(--bg-raised); font-size: 12.5px; font-weight: 600; color: var(--fg); cursor: pointer; transition: all 0.14s; }
 .ap-chip .sw { width: 9px; height: 9px; border-radius: 3px; }
 .ap-chip.off { opacity: 0.42; filter: grayscale(0.5); }
 .ap-choketag { font-size: 11.5px; font-weight: 700; color: var(--color-workshop-1, #c98a2a);
-  background: color-mix(in oklch, var(--color-workshop-1, #c98a2a) 16%, transparent); border-radius: 999px; padding: 3px 11px; }
+  background: color-mix(in oklch, var(--color-workshop-1, #c98a2a) 16%, transparent); border-radius: var(--radius-pill); padding: 3px 11px; }
 .ap-body { padding: 6px 18px 10px; }
 .ap-stage { border: 1px solid var(--hairline); border-radius: 12px; background: color-mix(in oklch, var(--bg-hover) 26%, transparent); }
 .ap-scroll { overflow-x: auto; padding: 26px 24px; }
@@ -323,7 +324,7 @@ select { cursor: pointer; }
 .ap-dot { position: absolute; top: 8px; right: 9px; width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 0 3px var(--bg-raised); }
 .ap-dot.ok { background: var(--color-state-success); } .ap-dot.gap { background: var(--color-state-error); }
 .ap-choke-badge { position: absolute; top: -9px; left: 10px; font-size: 8.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;
-  color: var(--primary-fg, #fff); background: var(--color-workshop-1, #dd9a33); padding: 1px 7px; border-radius: 999px; }
+  color: var(--primary-fg, #fff); background: var(--color-workshop-1, #dd9a33); padding: 1px 7px; border-radius: var(--radius-pill); }
 .ap-tac { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-subtle); font-weight: 700; }
 .ap-nm { font-size: 12px; font-weight: 650; line-height: 1.22; margin: 1px 0 3px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -361,14 +362,14 @@ select { cursor: pointer; }
   color: var(--fg); font: inherit; transition: background 0.14s, border-color 0.14s; }
 .hist-btn:hover { background: var(--bg-hover); border-color: var(--border); }
 .hist-count { font-size: 11px; font-weight: 700; background: var(--bg-hover); color: var(--fg-muted);
-  border-radius: 999px; padding: 1px 8px; font-variant-numeric: tabular-nums; }
+  border-radius: var(--radius-pill); padding: 1px 8px; font-variant-numeric: tabular-nums; }
 .hist-view { font-size: 11.5px; color: var(--primary); font-weight: 600; }
 .tl-item { cursor: pointer; border-radius: 8px; transition: background 0.12s; }
 .tl-item:hover { background: var(--bg-hover); }
 .tl-item:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 
 /* ── Badges / Chips ───────────────────────────────────────────────── */
-.badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px;
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: var(--radius-pill);
   font-size: 11.5px; font-weight: 600; background: var(--bg-hover); color: var(--fg-muted);
   border: 1px solid var(--hairline); white-space: nowrap; }
 .badge .dot { width: 7px; height: 7px; border-radius: 50%; }
@@ -781,7 +782,7 @@ select { cursor: pointer; }
 .kcm-main { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 2px; }
 .kcm-meta { font-size: 11.5px; }
 .kcm-measures { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; flex: 2; }
-.kcm-tog { font-size: 11.5px; padding: 3px 9px; border-radius: 999px; cursor: pointer;
+.kcm-tog { font-size: 11.5px; padding: 3px 9px; border-radius: var(--radius-pill); cursor: pointer;
   border: 1px solid var(--hairline); background: transparent; color: var(--fg-subtle); transition: all 0.14s; }
 .kcm-tog:hover { border-color: var(--border-strong); color: var(--fg); }
 .kcm-tog.on { background: color-mix(in oklch, var(--ws-color, var(--primary)) 85%, transparent);
@@ -974,7 +975,7 @@ button.hm-cell:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm,
 .di-read { color: var(--fg-muted); font-size: 11px; white-space: nowrap; }
 .di-read b { color: var(--fg); }
 .di-presets { display: flex; gap: 5px; margin: 5px 0; }
-.di-preset { font-size: 10.5px; padding: 1px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-hover); color: var(--fg-muted); cursor: pointer; }
+.di-preset { font-size: 10.5px; padding: 1px 9px; border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--bg-hover); color: var(--fg-muted); cursor: pointer; }
 .di-preset:hover { border-color: var(--border-strong); color: var(--fg); }
 .di-track { position: relative; height: 38px; margin-top: 2px; border-radius: 8px; background: var(--bg-input); border: 1px solid var(--border); touch-action: none; }
 .di-inner { position: absolute; inset: 0 11px; }  /* inset so min/max handles never clip the box edge */
@@ -1172,7 +1173,7 @@ button.hm-cell:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm,
 .lint-head h2 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
 .lint-head .hint { margin: 0 0 12px; max-width: 660px; }
 .lint-summary { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
-.lint-pill { font-size: 12px; font-weight: 600; padding: 3px 11px; border-radius: 999px; border: 1px solid var(--border); }
+.lint-pill { font-size: 12px; font-weight: 600; padding: 3px 11px; border-radius: var(--radius-pill); border: 1px solid var(--border); }
 .lint-pill.ok { color: var(--color-state-success); border-color: color-mix(in oklch, var(--color-state-success) 40%, transparent); background: color-mix(in oklch, var(--color-state-success) 10%, transparent); }
 .lint-pill.warn { color: var(--fg); background: var(--bg-hover); }
 .lint-pill.sev-high { color: var(--color-state-error); border-color: color-mix(in oklch, var(--color-state-error) 40%, transparent); background: color-mix(in oklch, var(--color-state-error) 10%, transparent); }
@@ -1271,14 +1272,14 @@ button.hm-cell:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm,
 .cal-add:hover { border-color: var(--primary); color: var(--fg); }
 
 .cal-chips { display: flex; flex-wrap: wrap; gap: 5px; }
-.cal-chip { background: var(--bg-0); border: 1px solid var(--border); border-radius: 999px;
+.cal-chip { background: var(--bg-0); border: 1px solid var(--border); border-radius: var(--radius-pill);
   padding: 3px 10px; color: var(--fg-muted); cursor: pointer; font-size: 11.5px; }
 .cal-chip.on { background: color-mix(in oklch, var(--primary) 18%, transparent); border-color: var(--primary); color: var(--fg); font-weight: 600; }
 
 .cal-foot { display: flex; align-items: center; gap: 9px; margin-top: 26px; padding-top: 16px;
   border-top: 1px solid var(--border); font-size: 12.5px; color: var(--fg-muted); }
 .sector-pick { margin-left: 10px; background: transparent; border: 1px solid var(--border);
-  border-radius: 999px; padding: 1px 8px; color: var(--fg-muted); font-size: 11.5px; cursor: pointer; }
+  border-radius: var(--radius-pill); padding: 1px 8px; color: var(--fg-muted); font-size: 11.5px; cursor: pointer; }
 .sector-pick:hover { border-color: var(--primary); color: var(--fg); }
 /* The likelihood rating is no longer an input, so the model's own answer can be shown
    next to it as a second opinion rather than as an echo. */
@@ -1288,7 +1289,7 @@ button.hm-cell:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm,
 .qt-crosscheck b { color: var(--fg); }
 /* Evidence grade per calibration table. A number that rests on a survey and a number
    somebody reasoned out should not look the same. */
-.cal-grade { margin-left: 9px; padding: 1px 7px; border-radius: 999px; font-size: 10px;
+.cal-grade { margin-left: 9px; padding: 1px 7px; border-radius: var(--radius-pill); font-size: 10px;
   font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; vertical-align: middle; cursor: help; }
 .cal-grade.measured { background: color-mix(in oklch, var(--color-state-success, #3fb950) 20%, transparent); color: var(--color-state-success, #3fb950); }
 .cal-grade.derived { background: color-mix(in oklch, var(--primary) 18%, transparent); color: var(--primary); }
@@ -1366,7 +1367,7 @@ select.btn { display: inline-block; width: auto; flex: none; line-height: 1.4; }
 .cal-seg-b:hover { background: var(--bg-hover); color: var(--fg-muted); }
 .cal-seg-b.on { background: color-mix(in oklch, var(--primary) 22%, transparent); color: var(--fg); font-weight: 600; }
 .cal-curves { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
-.cal-count { display: inline-block; margin-left: 5px; padding: 0 6px; border-radius: 999px;
+.cal-count { display: inline-block; margin-left: 5px; padding: 0 6px; border-radius: var(--radius-pill);
   background: var(--bg-hover); color: var(--fg-subtle); font-size: 10.5px; }
 
 /* Defence in depth, drawn: the saturation curve and the level x status grid. */
@@ -1419,3 +1420,52 @@ select.btn { display: inline-block; width: auto; flex: none; line-height: 1.4; }
    are merely hidden - appearing would shift everything below them. */
 .cal-edited.off, .cal-reset.off, .btn.off, .badge.off { visibility: hidden; pointer-events: none; }
 .cal-actions { min-height: 30px; }
+
+/* ── Tabellen-Werkzeugleiste: Suche, Facetten, Gruppierung ────────────
+   Sitzt zwischen Panel-Kopf und Tabelle und übernimmt dessen Polsterung,
+   damit Suchfeld und Titel auf einer Flucht liegen. */
+.tbl-tools { padding: 11px 18px 10px; border-bottom: 1px solid var(--hairline);
+  display: flex; flex-direction: column; gap: 8px; }
+.tbl-tools-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.tbl-search { flex: 1 1 240px; min-width: 200px; display: flex; align-items: center; gap: 7px;
+  padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 9px;
+  background: var(--bg-0); transition: border-color 0.14s; }
+.tbl-search:focus-within { border-color: var(--primary); }
+.tbl-search .inline-icon { flex: none; color: var(--fg-subtle); }
+.tbl-search input { flex: 1; border: none; background: none; padding: 7px 0; font: inherit;
+  font-size: 13px; color: var(--fg); min-width: 0; }
+.tbl-search input:focus { outline: none; }
+.tbl-search input::-webkit-search-cancel-button { filter: grayscale(1); opacity: 0.6; }
+.tbl-group { display: flex; align-items: center; gap: 7px; flex: none; }
+.tbl-group select.btn { display: inline-block; width: auto; }
+
+.facet { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.facet-label { flex: 0 0 auto; min-width: 88px; font-size: 11.5px; font-weight: 600;
+  color: var(--fg-subtle); letter-spacing: 0.01em; }
+.facet-chip { cursor: pointer; border: 1px solid transparent; font: inherit; font-size: 12px;
+  display: inline-flex; align-items: center; gap: 6px; transition: background 0.14s, color 0.14s, border-color 0.14s; }
+.facet-chip:hover { border-color: var(--border-strong); color: var(--fg); }
+.facet-chip.on { background: color-mix(in oklch, var(--primary) 26%, transparent);
+  border-color: color-mix(in oklch, var(--primary) 55%, transparent); color: var(--fg); }
+.facet-n { font-size: 10.5px; color: var(--fg-subtle); font-variant-numeric: tabular-nums; }
+.facet-chip.on .facet-n { color: var(--fg-muted); }
+.tbl-tools-foot { display: flex; align-items: center; gap: 10px; min-height: 22px; }
+
+/* Gruppen-Kopfzeile in der Tabelle. Klebt nicht, damit sie nicht mit dem
+   Sticky-Tabellenkopf konkurriert (siehe Flow-Header-Regeln). */
+.tbl .group-row th { text-align: left; padding: 9px 14px; cursor: pointer;
+  background: var(--bg-1); border-top: 1px solid var(--hairline);
+  font-size: 12.5px; font-weight: 600; color: var(--fg-muted); }
+.tbl .group-row:hover th { color: var(--fg); }
+.tbl .group-row th .caret { margin-right: 7px; }
+.tbl .group-row th .badge { margin-left: 9px; }
+.tbl tbody.grouped:first-of-type .group-row th { border-top: none; }
+.facet-more { cursor: pointer; font: inherit; font-size: 11.5px; line-height: 1.5; }
+.facet-more:hover { color: var(--fg); border-color: var(--fg-subtle); }
+
+/* Herkunftszeile am Fuß der Seitenleiste. Die ausgelieferte Einzeldatei muss sagen,
+   woher ihr Quellcode stammt (MPL-2.0 §3.2) — leise, aber vorhanden. */
+.colophon { padding: 10px 14px 14px; font-size: 10.5px; line-height: 1.5;
+  color: var(--fg-subtle); border-top: 1px solid var(--hairline); }
+.colophon a { color: var(--fg-muted); text-decoration: none; }
+.colophon a:hover { color: var(--primary); text-decoration: underline; }

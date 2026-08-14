@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Import / export popover: full data-layer swap. Export a bundle (taxonomy +
 // data), data-only or taxonomy-only, as JSON or YAML. Import any of them.
 import { useState } from "react";

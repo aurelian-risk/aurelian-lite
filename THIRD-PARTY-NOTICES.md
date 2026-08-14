@@ -1,9 +1,11 @@
 # Third-Party Software Notices
 
-Aurelian Lite (MIT License, © Aurelian-Risk) is distributed as a single,
+Aurelian Lite (Mozilla Public License 2.0, © Aurelian-Risk) is distributed as a single,
 self-contained HTML file that inlines the open-source libraries listed below.
 Their copyright and permission notices are reproduced here as required by their
-respective licenses. Data-source and trademark attributions (MITRE ATT&CK, NIS2,
+respective licenses. Combining them with MPL-covered files into one distributed
+file is what MPL-2.0 section 3.3 calls a Larger Work, and is permitted: the
+MPL-covered files stay under the MPL, the rest under the licences below. Data-source and trademark attributions (MITRE ATT&CK, NIS2,
 NIST, on-device models) are in the separate [`NOTICE`](NOTICE) file.
 
 ## Bundled at build time (inlined into the distributed `index.html`)

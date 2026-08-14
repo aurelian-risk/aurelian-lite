@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Foundation (WS1) analytics: a criticality heatmap of the business assets -
 // each a tile shaded on the severity ramp (green = low … red = critical). Click a
 // tile to expand a tree of the supporting assets that depend on it; any node

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Slim, bundled TTP reference (tactics, techniques & procedures): the 14 kill-chain
 // tactics (also the `tactic` enum in the taxonomy) and a curated set of common
 // techniques, used only to power an offline typeahead on the kill-chain-step

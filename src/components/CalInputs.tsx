@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Visual inputs for the calibration.
 //
 // A calibration read as a wall of number boxes tells you nothing about whether a value

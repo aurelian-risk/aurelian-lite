@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Taxonomy editor: view and edit the meta-schema — groups, entity types and
 // their fields (including enums, scales and relationships). Import/export via
 // the Data menu. This is the extensible taxonomy definition.

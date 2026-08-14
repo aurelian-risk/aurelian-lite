@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Quality-checks dashboard: runs the completeness linter and lists the gaps
 // (failing checks first) with the affected entities as click-through chips and a
 // fix hint; passing checks collapse into a compact green list.

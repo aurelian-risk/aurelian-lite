@@ -1,7 +1,8 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // A realistic sample study (hospital) to populate and exercise the data view.
 // Uses the default EBIOS taxonomy field keys and wires relationships by id.
-import type { EntityRecord, FieldValue, Study } from "./types";
-import { hashValues, sealLog, type LogInput } from "./audit";
+import type { EntityRecord, FieldValue, Study } from "../../domain/types";
+import { hashValues, sealLog, type LogInput } from "../../domain/audit";
 
 function uid(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
@@ -77,10 +78,19 @@ export function makeSampleStudy(): Study {
   const reqData = add("requirement", { name: "Data Security", ref_id: "PR.DS", framework: "NIST CSF", category: "Protect" });
   const reqAC = add("requirement", { name: "Access Control", ref_id: "AC", framework: "NIST 800-53", category: "Control family" });
   add("requirement", { name: "Contingency Planning", ref_id: "CP", framework: "NIST 800-53", category: "Control family" }); // gap demo (radar shows partial coverage)
+  // Enough of the scope to be a realistic compliance table rather than a token one: three
+  // frameworks, several categories, and more rows than fit at a glance.
+  const reqSupply = add("requirement", { name: "Supply chain security", ref_id: "21(2)(d)", framework: "NIS2", category: "Supply chain" });
+  add("requirement", { name: "Basic cyber hygiene and cybersecurity training", ref_id: "21(2)(g)", framework: "NIS2", category: "People" });
+  add("requirement", { name: "Cryptography and, where appropriate, encryption", ref_id: "21(2)(h)", framework: "NIS2", category: "Protection" });
+  add("requirement", { name: "Human resources security, access control and asset management", ref_id: "21(2)(i)", framework: "NIS2", category: "Access & assets" });
+  add("requirement", { name: "Identity Management, Authentication, and Access Control", ref_id: "PR.AA", framework: "NIST CSF", category: "Protect" });
+  add("requirement", { name: "Continuous Monitoring", ref_id: "DE.CM", framework: "NIST CSF", category: "Detect" });
+  add("requirement", { name: "Audit and Accountability", ref_id: "AU", framework: "NIST 800-53", category: "Control family" });
 
   // ── Workshop 5 - Treatment ──
   add("security_measure", { name: "Secure email gateway & phishing training", description: "A secure email gateway filters malicious attachments and links, backed by regular phishing-awareness training so staff recognise and report the lures that would otherwise deliver the initial loader through the maintenance channel.", measure_type: "Preventive", status: "Implemented", priority: 2, implementation_level: 4, covers: [st1], protects: [saHis] });
-  add("security_measure", { name: "MFA on remote maintenance access", description: "Phishing-resistant multi-factor authentication enforced on all remote and third-party maintenance access, so stolen or phished credentials alone cannot open a session or be replayed after a credential dump.", measure_type: "Preventive", status: "Planned", priority: 3, implementation_level: 2, covers: [st1, st3], protects: [saHis, saNetwork], fulfills: [reqAuth, reqAC] });
+  add("security_measure", { name: "MFA on remote maintenance access", description: "Phishing-resistant multi-factor authentication enforced on all remote and third-party maintenance access, so stolen or phished credentials alone cannot open a session or be replayed after a credential dump.", measure_type: "Preventive", status: "Planned", priority: 3, implementation_level: 2, covers: [st1, st3], protects: [saHis, saNetwork], fulfills: [reqAuth, reqAC, reqSupply] });
   add("security_measure", { name: "Network segmentation (IT / clinical VLANs)", description: "The clinical VLANs are firewalled off from the corporate IT network so that an attacker who lands in IT cannot move laterally into the ward and medical-device networks unimpeded, containing the blast radius of an intrusion.", measure_type: "Preventive", status: "Implemented", priority: 3, implementation_level: 3, covers: [stLateral], protects: [saNetwork] });
   add("security_measure", { name: "Egress monitoring & DLP", description: "Egress monitoring and data-loss-prevention rules detect and block bulk transfers of health records to external destinations, whether staged over a web service before ransomware or copied to removable media by an insider.", measure_type: "Detective", status: "Planned", priority: 3, implementation_level: 2, covers: [stExfil, stI3], protects: [saHis] });
   add("security_measure", { name: "EDR on clinical endpoints", description: "Endpoint detection and response on clinical endpoints and servers flags the tell-tale behaviour of credential dumping, suspicious scheduled tasks and mass file encryption, giving the SOC a chance to contain the intrusion before impact.", measure_type: "Detective", status: "Implemented", priority: 3, implementation_level: 3, covers: [st2, st3, st6, stI2], protects: [saHis], fulfills: [reqIncident] });

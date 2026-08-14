@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Unit test for the kill-chain traversal in the quantification.
 //
 // The two modules are pure (no DOM), so they are bundled in isolation and driven here.

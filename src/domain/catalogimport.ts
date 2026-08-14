@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Deterministic import of a structured catalog table (CSV / TSV / delimited) into
 // catalog items — verbatim, no model. An embedding model can only *assist* header
 // mapping (see guessMapping's optional scorer); the values are always parsed, never

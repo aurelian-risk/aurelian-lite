@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Generic radar/spider chart.
 //  • Single series  : pass `axes` (each an axis with a 0..1 value + optional sub).
 //  • Multiple series : pass `axisLabels` + `series` (one polygon each, with a

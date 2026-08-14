@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Traceability popup for a quantification factor: the effect chain up to the
 // annual loss (with live values), where the value comes from (source entity +
 // derivation, openable in the full modal), and a haptic control to adjust/override

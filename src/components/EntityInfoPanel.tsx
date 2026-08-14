@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Shared right-frame info panel for the graph and the flow canvas: type, all
 // field values, and clickable incoming/outgoing relationships (navigate).
 import type { EntityRecord, FieldDef, FieldValue, Study, Taxonomy } from "../domain/types";
