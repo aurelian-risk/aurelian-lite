@@ -4,6 +4,7 @@
 // relationships resolved to names). Paste into an LLM chat as grounded context.
 import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue, Study, Taxonomy } from "./types";
 import { getType, recordTitle, scaleLabel, scaleMax } from "./taxonomy";
+import { PRODUCT } from "../profile";
 import { deriveInputs, meanOf } from "./quantModel";
 import { residualPos } from "./treatment";
 import { simulate, type QuantInputs, type QuantResult } from "./montecarlo";
@@ -44,7 +45,8 @@ export function workshopMarkdown(tax: Taxonomy, study: Study, groupKey: string):
   const types = tax.entityTypes.filter((t) => t.group === groupKey);
   const L: string[] = [];
 
-  L.push(`# EBIOS RM-inspired - ${group?.label ?? groupKey}`);
+  // The method is the taxonomy's to name, not this file's.
+  L.push(`# ${tax.name} - ${group?.label ?? groupKey}`);
   if (group?.description) L.push(`_${group.description}_`);
   L.push("");
   L.push(`**Study:** ${study.name}${study.organization ? ` (${study.organization})` : ""}`);
@@ -495,7 +497,7 @@ function treatmentSection(tax: Taxonomy, study: Study): string[] | null {
 
 export function reportMarkdown(tax: Taxonomy, study: Study): string {
   const L: string[] = [];
-  L.push(`# ${study.name} - Risk Analysis Report`);
+  L.push(`# ${study.name} - ${PRODUCT.documentTitle ?? "Risk Analysis Report"}`);
   const meta: string[] = [];
   if (study.organization) meta.push(`**Organization:** ${study.organization}`);
   if (study.scope) meta.push(`**Scope:** ${study.scope}`);
@@ -504,6 +506,42 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
   L.push("");
 
   L.push("---\n");
+
+  // Document control. A concept handed to an auditor has to state what it was made from
+  // and what has happened to it since — the vocabulary it works to, and the change record
+  // with its integrity. Both are already held; not printing them was the omission.
+  L.push("## Document control\n");
+  const dc: string[] = [];
+  dc.push(`| | |`, `|---|---|`);
+  dc.push(`| Document | ${PRODUCT.documentTitle ?? "Risk Analysis Report"} |`);
+  if (study.organization) dc.push(`| Institution | ${study.organization} |`);
+  if (study.sector) dc.push(`| Sector | ${study.sector} |`);
+  dc.push(`| Generated | ${new Date().toISOString().slice(0, 10)} |`);
+  if (tax.vocabularySource) {
+    dc.push(`| Vocabulary | ${tax.vocabularySource.name}${tax.vocabularySource.version ? `, version ${tax.vocabularySource.version}` : ""} |`);
+  }
+  const log = study.log ?? [];
+  if (log.length) {
+    const editors = [...new Set(log.map((e) => e.editor).filter(Boolean))];
+    const last = log[log.length - 1];
+    dc.push(`| Change record | ${log.length} entries, ${editors.length} editor${editors.length === 1 ? "" : "s"}, last ${String(last?.ts ?? "").slice(0, 10)} |`);
+  }
+  L.push(dc.join("\n"));
+  L.push("");
+
+  if (log.length) {
+    const updates = log.filter((e) => e.kind === "update" && e.comment).slice(-12);
+    if (updates.length) {
+      L.push("### Changes of record\n");
+      L.push("| Date | Editor | Record | Reason |");
+      L.push("|---|---|---|---|");
+      for (const e of updates) {
+        L.push(`| ${String(e.ts).slice(0, 10)} | ${e.editor} | ${(e.title ?? "").replace(/\|/g, "/")} | ${(e.comment ?? "").replace(/\|/g, "/")} |`);
+      }
+      L.push("");
+    }
+  }
+
   L.push("## Overview\n");
   for (const t of tax.entityTypes) {
     const n = study.entities.filter((e) => e.type === t.key).length;
@@ -878,8 +916,8 @@ export function reportHtml(tax: Taxonomy, study: Study): string {
   const body = mdToHtml(reportMarkdown(tax, study));
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(study.name)} - Risk Analysis Report</title>
-<style>${REPORT_CSS}</style></head>
+<title>${esc(study.name)} - ${esc(PRODUCT.documentTitle ?? "Risk Analysis Report")}</title>
+<style>${REPORT_CSS}${PRODUCT.reportCss ?? ""}</style></head>
 <body><main class="report">${body}</main></body></html>`;
 }
 

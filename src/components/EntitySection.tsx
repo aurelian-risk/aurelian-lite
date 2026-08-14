@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue, Study, Taxonomy } from "../domain/types";
-import { columnFields, getType, recordTitle, refFields, scaleLabel, scaleMax, titleField } from "../domain/taxonomy";
+import { columnFields, getType, optionLabel, recordTitle, refFields, scaleLabel, scaleMax, titleField } from "../domain/taxonomy";
 import { facetsOf, filterItems, groupItems, activeCount, TOOLBAR_MIN_ROWS, type Selection } from "../domain/tablefilter";
 import { useStore } from "../domain/store";
 import { ChangeHistoryModal, IntegrityBadge } from "./ChangeHistoryModal";
@@ -33,7 +33,7 @@ function FieldValueView({ field, value, tax, study, onOpen }:
     : <span className="chip" key={id}>{nameOf(id)}</span>;
   switch (field.type) {
     case "enum":
-      return value ? <span className="badge">{String(value)}</span> : <span className="hint">—</span>;
+      return value ? <span className="badge" title={String(value)}>{optionLabel(field, String(value))}</span> : <span className="hint">—</span>;
     case "scale": {
       const v = typeof value === "number" ? value : 1;
       return <ScaleBadge value={v} max={scaleMax(field)} label={scaleLabel(field, v)} positive={field.polarity === "positive"} />;

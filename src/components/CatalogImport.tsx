@@ -12,8 +12,8 @@ import { parseCatalog, fetchPublishedCatalog } from "../domain/frameworks";
 import type { PublishedCatalog } from "../domain/frameworks";
 import { PUBLISHED_CATALOGS } from "../profile";
 import { planVocabularyUpdate, applyVocabularyUpdate, catalogDefinesVocabulary, type VocabularyChange, type VocabularyMode } from "../domain/vocabulary";
-import { parseTable, guessMapping, tableToItems, looksLikeJson, FIELD_KEYS, type FieldKey, type Mapping, type ParsedTable } from "../domain/catalogimport";
-import { detectShape, readList } from "../domain/listimport";
+import { parseTable, guessMapping, tableToItems, looksLikeJson, FIELD_KEYS, MULTI_FIELDS, type FieldKey, type Mapping, type ParsedTable } from "../domain/catalogimport";
+import { detectShape, readList, type ListRead } from "../domain/listimport";
 import { looksLikeOscal, parseOscalCatalog } from "../domain/oscal";
 import { isExtractable, extractFileText } from "../domain/docextract";
 import { embed, cosine, isLoaded } from "../domain/embeddings";
@@ -26,6 +26,10 @@ const FIELD_TEXT: Record<FieldKey, string> = {
   ref_id: "reference identifier code number clause", title: "title name of the requirement or control",
   category: "category family domain group function", description: "description details guidance explanation text",
 };
+/** A field's columns as a list, whichever form the mapping holds. */
+const multiOf = (m: number | number[] | undefined): number[] =>
+  m == null ? [] : Array.isArray(m) ? m.filter((i) => i >= 0) : m >= 0 ? [m] : [];
+
 const TEMPLATE = JSON.stringify({ name: "My framework", source: "where the content came from", items: [{ ref_id: "A-1", title: "Example control", category: "Group", description: "What it requires." }] }, null, 2) + "\n";
 
 export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: Study; onClose: () => void }) {
@@ -40,6 +44,11 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
   const [aiBusy, setAiBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [excluded, setExcluded] = useState<Set<number>>(new Set()); // items the user un-checked
+  /** A document read as a list, kept so its sections can be dropped without re-reading. */
+  const [listRead, setListRead] = useState<ListRead | null>(null);
+  /** Sections the user dropped. A standard's front matter is numbered like its clauses,
+   *  so it arrives as entries; naming the section is how you tell them apart. */
+  const [dropped, setDropped] = useState<Set<string>>(new Set());
   const [fetching, setFetching] = useState<string | null>(null);    // key of the catalogue being downloaded
   const [skipVocab, setSkipVocab] = useState<Set<string>>(new Set());
   const [vocabMode, setVocabMode] = useState<VocabularyMode>("add");
@@ -50,8 +59,19 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
   const target = targets.find((t) => t.kind === kind) ?? targets[0];
   const existing = target ? study.entities.filter((e) => e.type === target.type.key) : [];
 
+  /** Build the table from a list reading, leaving out the sections that were dropped. */
+  const applyList = (r: ListRead, drop: Set<string>) => {
+    const kept = r.items.filter((it) => !drop.has(it.section ?? ""));
+    const headers = ["Reference ID", "Title", ...(r.markers.length ? ["Level"] : []), "Description", "Section"];
+    const rows = kept.map((it) => [it.ref_id, it.title, ...(r.markers.length ? [it.marker ?? ""] : []), it.description ?? "", it.section ?? ""]);
+    setTable({ headers, rows, delimiter: "\t" });
+    setMap(guessMapping(headers));
+    setExcluded(new Set());
+  };
+
   const parse = (raw: string, fallbackName: string) => {
-    setMsg(null); setJsonItems(null); setTable(null); setExcluded(new Set()); setSkipVocab(new Set());
+    setMsg(null); setJsonItems(null); setTable(null); setExcluded(new Set());
+    setListRead(null); setDropped(new Set()); setSkipVocab(new Set());
     if (!raw.trim()) return;
     if (looksLikeJson(raw)) {
       const oscal = looksLikeOscal(raw);
@@ -81,10 +101,8 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
         setTable(probe); setMap(guessMapping(probe.headers)); setName(fallbackName || "Imported");
       } else if (shape.shape === "list") {
         const r = readList(raw);
-        const headers = ["Reference ID", "Title", ...(r.markers.length ? ["Level"] : []), "Description", "Section"];
-        const rows = r.items.map((it) => [it.ref_id, it.title, ...(r.markers.length ? [it.marker ?? ""] : []), it.description ?? "", it.section ?? ""]);
-        setTable({ headers, rows, delimiter: "\t" });
-        setMap(guessMapping(headers));
+        setListRead(r); setDropped(new Set());
+        applyList(r, new Set());
         setName(fallbackName || "Imported");
         setMsg(`Read as a list: ${r.items.length} entries of the form ${r.pattern}`
           + (r.markers.length ? `, levels ${r.markers.join("/")}` : "")
@@ -240,6 +258,41 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
             onChange={(e) => setText(e.target.value)} onBlur={() => parse(text, name)} style={{ width: "100%", fontFamily: "var(--font-mono)", fontSize: 12 }} />
           <div style={{ marginTop: 6 }}><button className="btn sm" disabled={!text.trim()} onClick={() => parse(text, name)}>Parse</button></div>
 
+          {/* Sections of the document. A standard numbers its front matter like its
+              clauses, so an introduction arrives looking like a requirement; dropping the
+              section it came from is what tells them apart. All are kept until you say
+              otherwise - guessing which section is front matter would be a heuristic
+              fitted to whichever document was to hand. */}
+          {listRead && (() => {
+            const counts = new Map<string, number>();
+            for (const it of listRead.items) { const k = it.section ?? ""; counts.set(k, (counts.get(k) ?? 0) + 1); }
+            if (counts.size < 2) return null;
+            const kept = listRead.items.filter((it) => !dropped.has(it.section ?? "")).length;
+            return (
+              <div className="panel" style={{ marginTop: 14 }}>
+                <div className="panel-head"><h3>Sections found</h3><span className="badge">{counts.size}</span>
+                  <span className="spacer" /><span className="hint">{kept} of {listRead.items.length} entries</span></div>
+                <div className="panel-body" style={{ padding: "10px 14px 12px", display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {[...counts].map(([sec, n]) => {
+                    const on = !dropped.has(sec);
+                    return (
+                      <button key={sec || "_"} type="button" className={"chip facet-chip" + (on ? " on" : "")}
+                        aria-pressed={on}
+                        onClick={() => setDropped((d) => {
+                          const next = new Set(d);
+                          next.has(sec) ? next.delete(sec) : next.add(sec);
+                          applyList(listRead, next);
+                          return next;
+                        })}>
+                        {sec || <span className="hint">no section</span>} <span className="facet-n">{n}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           {table && (
             <div className="panel" style={{ marginTop: 14 }}>
               <div className="panel-head"><h3>Map columns</h3><span className="badge">{table.rows.length} rows</span><span className="spacer" />
@@ -248,15 +301,48 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
                 </button>
               </div>
               <div className="panel-body" style={{ padding: "8px 14px 12px", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10 }}>
-                {FIELD_KEYS.map((f) => (
-                  <label key={f} className="field" style={{ margin: 0 }}>
-                    <span className="hint">{FIELD_LABEL[f]}{f === "title" ? " *" : ""}</span>
-                    <select value={map[f] ?? -1} onChange={(e) => setMap((m) => ({ ...m, [f]: Number(e.target.value) }))}>
-                      <option value={-1}>— none —</option>
-                      {table.headers.map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>)}
-                    </select>
-                  </label>
-                ))}
+                {FIELD_KEYS.map((f) => {
+                  // The body may draw on several columns; the rest take one. A document
+                  // read as a list often spreads one entry's text over more than one
+                  // detected column, and picking a single one throws the rest away.
+                  if (MULTI_FIELDS.includes(f)) {
+                    const sel = multiOf(map[f]);
+                    return (
+                      <div key={f} className="field map-multi" style={{ margin: 0 }}>
+                        <span className="hint">{FIELD_LABEL[f]}{sel.length > 1 ? ` · ${sel.length} columns` : ""}</span>
+                        <div className="map-cols">
+                          {table.headers.map((h, i) => {
+                            const on = sel.includes(i);
+                            return (
+                              <button key={i} type="button" className={"chip facet-chip" + (on ? " on" : "")}
+                                aria-pressed={on}
+                                onClick={() => setMap((m) => {
+                                  const cur = multiOf(m[f]);
+                                  const next = cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i].sort((a, b) => a - b);
+                                  return { ...m, [f]: next };
+                                })}>
+                                {h || `Column ${i + 1}`}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {sel.length > 1 && (
+                          <span className="hint">Joined in column order. A part that only repeats one already taken is left out.</span>
+                        )}
+                      </div>
+                    );
+                  }
+                  const one = typeof map[f] === "number" ? (map[f] as number) : -1;
+                  return (
+                    <label key={f} className="field" style={{ margin: 0 }}>
+                      <span className="hint">{FIELD_LABEL[f]}{f === "title" ? " *" : ""}</span>
+                      <select value={one} onChange={(e) => setMap((m) => ({ ...m, [f]: Number(e.target.value) }))}>
+                        <option value={-1}>— none —</option>
+                        {table.headers.map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>)}
+                      </select>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}

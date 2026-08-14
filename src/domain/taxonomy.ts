@@ -67,6 +67,12 @@ export function validateRecord(t: EntityTypeDef, values: Record<string, FieldVal
   return null;
 }
 
+/** What to show for an enum value: the field's label for it, or the value itself. */
+export function optionLabel(f: FieldDef, value: string): string {
+  const i = f.options?.indexOf(value) ?? -1;
+  return (i >= 0 ? f.optionLabels?.[i] : undefined) ?? value;
+}
+
 export function scaleMax(f: FieldDef): number {
   return f.scaleLabels?.length ?? 4;
 }
