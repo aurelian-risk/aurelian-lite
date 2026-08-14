@@ -12,7 +12,33 @@ import type { FrameworkItem } from "./frameworks";
 export type FieldKey = "ref_id" | "title" | "category" | "description";
 export const FIELD_KEYS: FieldKey[] = ["ref_id", "title", "category", "description"];
 export interface ParsedTable { headers: string[]; rows: string[][]; delimiter: string }
-export type Mapping = Partial<Record<FieldKey, number>>;
+/** Which column feeds a field. The body may draw on SEVERAL columns, because a document
+ *  read as a list does not always put its text in one place: a standard that carries the
+ *  term, its definition and a note as separate detected pieces loses two of the three if
+ *  only one column can be chosen. The single-column fields keep a plain number. */
+export type Mapping = Partial<Record<FieldKey, number | number[]>>;
+
+/** Fields that may be fed from more than one column. */
+export const MULTI_FIELDS: FieldKey[] = ["description"];
+
+/** Join several cells into one body.
+ *
+ *  Parts that repeat what is already there are dropped rather than concatenated: when a
+ *  list reader puts the whole entry in the title AND in the description - which is what
+ *  happens with a clause-numbered standard - joining them verbatim doubles every entry.
+ *  Only substantial repeats are dropped; a short cell that happens to occur inside a long
+ *  one may well be a distinct value. */
+export function joinCells(parts: string[]): string {
+  const out: string[] = [];
+  for (const raw of parts) {
+    const p = raw.trim();
+    if (!p) continue;
+    const dup = out.some((q) => q === p || (p.length >= 20 && q.includes(p)));
+    if (dup) continue;
+    out.push(p);
+  }
+  return out.join("\n\n");
+}
 
 const DELIMS = [",", ";", "\t", "|"];
 
@@ -115,7 +141,12 @@ export function guessMapping(headers: string[], score?: (field: FieldKey, header
 
 /** Apply a mapping to produce catalog items — verbatim, trimmed, blank rows skipped. */
 export function tableToItems(t: ParsedTable, map: Mapping): FrameworkItem[] {
-  const cell = (row: string[], f: FieldKey) => { const i = map[f]; return i != null && i >= 0 ? (row[i] ?? "").trim() : ""; };
+  const cell = (row: string[], f: FieldKey) => {
+    const m = map[f];
+    if (m == null) return "";
+    if (Array.isArray(m)) return joinCells(m.filter((i) => i >= 0).map((i) => row[i] ?? ""));
+    return m >= 0 ? (row[m] ?? "").trim() : "";
+  };
   const items: FrameworkItem[] = [];
   for (const row of t.rows) {
     const ref_id = cell(row, "ref_id");

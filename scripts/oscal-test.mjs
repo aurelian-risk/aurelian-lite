@@ -72,5 +72,33 @@ try {
 }
 ok("does not claim plain JSON is OSCAL", looksLikeOscal('{"name":"x","items":[]}') === null);
 
+// ── Parameters ────────────────────────────────────────────────────────────
+// OSCAL leaves blanks in the prose for the reader: `{{ insert: param, id }}`. Left alone,
+// that markup is what the user reads. A published catalogue can carry hundreds of them.
+{
+  const cat = JSON.stringify({ catalog: { metadata: { title: "P", version: "1" }, groups: [{ id: "A", title: "Alpha", controls: [
+    { id: "A.1", title: "Set by the publisher",
+      params: [{ id: "a1-p1", label: "a suggestion", values: ["every quarter"] }],
+      parts: [{ name: "statement", prose: "Alpha MUSS the review {{ insert: param, a1-p1 }} carry out." }] },
+    { id: "A.2", title: "Left open",
+      params: [{ id: "a2-p1", label: "a competent role" }],
+      parts: [{ name: "statement", prose: "Alpha MUSS {{ insert: param, a2-p1 }} appoint." }] },
+    { id: "A.3", title: "A choice",
+      params: [{ id: "a3-p1", select: { choice: ["daily", "weekly"] } }],
+      parts: [{ name: "statement", prose: "Alpha SOLLTE {{ insert: param, a3-p1 }} check." }] },
+    { id: "A.4", title: "Referenced but not declared",
+      parts: [{ name: "statement", prose: "Alpha KANN {{ insert: param, nowhere }} do." }] },
+  ] }] } });
+  const fw = parseOscalCatalog(cat, "P");
+  const by = (id) => fw.items.find((i) => i.ref_id === id);
+  ok("a parameter the publisher set is substituted", by("A.1").description.includes("every quarter"));
+  ok("an open parameter keeps its wording, marked as one to set", by("A.2").description.includes("«a competent role»"));
+  ok("a choice is offered in the prose", by("A.3").description.includes("«daily / weekly»"));
+  ok("a parameter nothing declares is dropped, not shown as markup", !by("A.4").description.includes("{{"));
+  ok("no item keeps the insert markup", fw.items.every((i) => !/\{\{\s*insert/.test(i.description ?? "")));
+  ok("what is left open is reported separately", by("A.2").params === "a2-p1 = a competent role"
+    && by("A.1").params === undefined, JSON.stringify({ open: by("A.2").params, set: by("A.1").params }));
+}
+
 console.log(`\n${pass}/${pass + fail} OSCAL assertions passed · ${fail} failed`);
 process.exit(fail ? 1 : 0);

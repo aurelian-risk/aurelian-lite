@@ -14,6 +14,10 @@ export interface FrameworkItem {
   ref_id: string; title: string; category?: string; description?: string; effect?: EffectClass;
   /** Where the item sits in the catalogue's own hierarchy, as a readable path. */
   section?: string;
+  /** Parameters the item leaves open for the reader to set, as "id = suggested wording".
+   *  The prose already reads with the suggestion in place; this states what a product
+   *  would have to ask for to make the text the institution's own. */
+  params?: string;
   /** Named properties the catalogue carries beyond these fields - OSCAL `props`, a
    *  spreadsheet's extra columns. Kept verbatim; catalog.ts writes a property into the
    *  entity when the taxonomy declares a field of the same key, so which of them a
