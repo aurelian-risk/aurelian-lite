@@ -1,7 +1,7 @@
 # Maturity & suitability
 
 This document states honestly what Aurelian Lite **is** and **is not**, so that institutions can
-weigh the investment fairly. Read it alongside the [LICENSE](LICENSE) (MIT — provided "as is").
+weigh the investment fairly. Read it alongside the [LICENSE](LICENSE) (Mozilla Public License 2.0 — provided "as is").
 
 ## Status: Beta
 
@@ -31,8 +31,8 @@ some interfaces to still change between minor versions.
 - **Not professional advice and not a compliance guarantee.** Outputs — including any suggestions,
   scores, coverage figures, and monetary estimates — are modelling aids that **must be reviewed by
   qualified personnel**. Framework mappings are illustrative, not certification.
-- **No warranty.** Provided under the MIT License, "as is", without warranty of any kind and
-  without liability, to the extent permitted by law.
+- **No warranty.** Provided under the Mozilla Public License 2.0, "as is", without warranty of
+  any kind and without liability, to the extent permitted by law.
 
 ## Data & format stability
 
