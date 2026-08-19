@@ -53,7 +53,9 @@ export function facetsOf(type: EntityTypeDef, items: EntityRecord[], display: Di
         .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value)),
     });
   }
-  return out;
+  // A field the table sets rows back by is the one a reader filters on first — it decides
+  // what the register is FOR, where the others only describe what is in it.
+  return out.sort((a, b) => Number(!!b.field.toggle) - Number(!!a.field.toggle));
 }
 
 /** Everything about a record a search should look at: its title, its description and every
@@ -113,6 +115,29 @@ export function groupItems(items: EntityRecord[], field: FieldDef | null, displa
     .sort((a, b) => b.items.length - a.items.length || a.key.localeCompare(b.key));
   if (empty) out.push({ key: "", items: empty });
   return out;
+}
+
+/** The facets again, but counted against what the OTHER filters leave standing.
+ *
+ *  Which fields and which values are offered stays as it was over the whole table: chips
+ *  that appeared and vanished as you filtered would move under the pointer. Only the
+ *  numbers narrow, and a value with nothing left reads zero rather than disappearing.
+ *
+ *  A field is counted ignoring its own selection, because its values are alternatives:
+ *  having picked one, the others must still show what picking them instead would give. */
+export function countFacets(facets: Facet[], items: EntityRecord[], type: EntityTypeDef,
+  query: string, sel: Selection, display: Display): Facet[] {
+  return facets.map((f) => {
+    const others: Selection = { ...sel };
+    delete others[f.field.key];
+    const scope = filterItems(items, type, query, others, display);
+    const counts = new Map<string, number>();
+    for (const r of scope) {
+      const v = display(f.field, r.values[f.field.key] ?? null).trim();
+      if (v) counts.set(v, (counts.get(v) ?? 0) + 1);
+    }
+    return { field: f.field, values: f.values.map((v) => ({ value: v.value, count: counts.get(v.value) ?? 0 })) };
+  });
 }
 
 export const activeCount = (sel: Selection): number =>

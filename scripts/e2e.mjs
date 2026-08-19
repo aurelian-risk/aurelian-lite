@@ -152,6 +152,11 @@ try {
   await page.locator(".tbl tbody tr.row-clickable").first().locator(".name").click();
   await page.waitForTimeout(200);
   ok("row expands inline detail", await page.locator(".detail").count() > 0);
+  // What points at a record is grouped by who points and through which relation, so a
+  // record a hundred others name reads as a sentence with a count, not a wall of chips.
+  ok("what points at the record is grouped by kind and relation",
+    (await page.locator(".detail .d-rel-group").count()) >= 1
+    && (await page.locator(".detail .d-rel-head .badge").count()) >= 1);
   await page.screenshot({ path: `${shots}/RowDetail.png` });
   const link = page.locator(".detail .chip.link").first();
   if (await link.count()) await link.click();
@@ -412,12 +417,83 @@ try {
   // defended only where something actually resists or watches.
   await page.locator(".ws-tab", { hasText: "Treatment" }).click();
   await page.waitForSelector(".mc-ring", { timeout: 15000 });
+  // A measure on an attack step is in use by that fact: the switch is refused in the
+  // direction that would contradict the chain, and says why.
+  {
+    const panel = page.locator(".panel", { has: page.locator(".cell-toggle") }).first();
+    const all = await panel.locator(".cell-toggle").count();
+    const locked = await panel.locator(".cell-toggle.locked").count();
+    ok("measures carry an in-use switch", all > 0, String(all));
+    ok("one on the chain cannot be taken out of use", locked > 0 && locked < all, `${locked} of ${all}`);
+    // Naming what holds it, not counting it: "(1)" leaves the reader to go and find which.
+    const why = (await panel.locator(".cell-toggle.locked").first().getAttribute("title")) ?? "";
+    ok("...and the switch says why", /take it off there first/i.test(why), why);
+    ok("...naming what holds it rather than counting", /in use: [a-z ]+ \S/i.test(why) && !/\(\d+\)/.test(why), why);
+    ok("a measure off the chain stays switchable",
+      (await panel.locator(".cell-toggle:not(.locked)").count()) > 0);
+  }
   const mc = await page.locator(".panel:has(.mc-ring)").innerText();
   ok("treatment shows what becomes of an attempt", /blocked/i.test(mc) && /detected in time/i.test(mc) && /reaches the objective/i.test(mc));
   ok("the ring counts attempts, not coverage", /attempts stopped/i.test(mc) && !/residual gap/i.test(mc));
   ok("the ring says how many steps block and how many detect", /steps block an attacker/i.test(mc) && /detect him/i.test(mc));
   ok("kill-chain mitigation counts defended steps, not merely covered ones",
     (await page.locator(".tbl .badge", { hasText: /\d+\/\d+ defended/ }).count()) > 0);
+  // A control is chosen where it is missing. The catalogue is an entry in the list itself:
+  // that is where someone looks for a measure, so that is where "not there? get one" has
+  // to be - and what is chosen arrives already covering that step.
+  {
+    const row = page.locator(".tbl .row-clickable").filter({ hasText: /\d+\/\d+ defended/ }).first();
+    await row.click();
+    await page.waitForTimeout(300);
+    await page.locator(".kcc-lane").first().scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${shots}/ChainMitigation.png` });
+    const sel = page.locator(".kcc-card .multi select").first();
+    const opts = await sel.locator("option").allInnerTexts();
+    ok("the measure list carries the catalogue as its last entry",
+      opts.some((o) => /From a catalogue/i.test(o)));
+    await sel.selectOption({ label: "From a catalogue…" });
+    await page.waitForTimeout(350);
+    const dlg = await page.locator(".modal-lg").innerText();
+    ok("...opening the measure catalogue, with a custom one still possible",
+      /Choose from a catalog/i.test(dlg) && /Create custom/i.test(dlg));
+    await page.locator(".overlay").click({ position: { x: 5, y: 5 } }).catch(() => {});
+    await page.waitForTimeout(200);
+    ok("the picker closes again", (await page.locator(".modal-lg").count()) === 0);
+    await row.click();
+    await page.waitForTimeout(200);
+  }
+  // Putting a measure on a step is what states that it is in use, so the switch has to
+  // follow: otherwise it sits on the chain fulfilling nothing, and cannot be corrected
+  // from the table either, since the switch refuses only the other direction.
+  {
+    const tbl = page.locator(".panel", { has: page.locator(".cell-toggle") }).first();
+    // Take one off the chain out of use first - every measure in the sample is in use,
+    // and the point is what happens to a switched-off one when it is put on a step.
+    const free = tbl.locator("tr:has(.cell-toggle:not(.locked))").first();
+    const name = (await free.locator("td").first().innerText()).trim().split("\n")[0].trim();
+    await free.locator(".cell-toggle").click();
+    await page.waitForTimeout(150);
+    ok("a measure can be taken out of use while off the chain",
+      (await free.locator(".cell-toggle:not(.on)").count()) > 0, name);
+    const before = await tbl.locator(".cell-toggle.locked").count();
+    await page.locator(".row-clickable:not(.expanded)", { hasText: /\d+\/\d+ defended/ }).first().click();
+    await page.waitForSelector(".kcc-mit select", { timeout: 5000 });
+    // A step's picker leaves out what is already on it, so take the first step that
+    // still offers this measure.
+    let picker = null;
+    for (const sel of await page.locator(".kcc-mit select").all()) {
+      const labels = (await sel.locator("option").allInnerTexts()).map((l) => l.trim());
+      if (labels.includes(name)) { picker = sel; break; }
+    }
+    ok("a step that has not got this measure offers it", !!picker, name);
+    await picker.selectOption({ label: name });
+    await page.waitForTimeout(200);
+    const row = tbl.locator("tr", { hasText: name }).first();
+    ok("a measure put on a step is switched into use by that fact",
+      (await row.locator(".cell-toggle.on").count()) > 0, name);
+    ok("...and is held there while it sits on the chain",
+      (await tbl.locator(".cell-toggle.locked").count()) === before + 1);
+  }
   ok("the tactic heatmap carries a colour key", (await page.locator(".hm-key .hm-key-bar i").count()) >= 4);
   ok("the heatmap scrolls instead of clipping its columns", (await page.locator(".hm-scroll").count()) > 0);
   await page.locator(".mc-ring").scrollIntoViewIfNeeded();
@@ -545,30 +621,39 @@ try {
     await tools.locator(".tbl-search input").fill("backup");
     await page.waitForTimeout(200);
     ok("search narrows the table", (await rows()) < all && (await rows()) > 0, `${await rows()} of ${all}`);
-    ok("...and says how many are left", /of \d+/.test(await tools.locator(".tbl-tools-foot .hint").innerText()));
+    ok("...and says how many are left", /of \d+/.test(await tools.locator(".tbl-count").innerText()));
     await tools.locator(".tbl-search input").fill("");
     await page.waitForTimeout(200);
     ok("clearing the search restores every row", (await rows()) === all);
 
-    const chip = tools.locator(".facet", { hasText: "Framework" }).locator(".facet-chip").first();
-    const chipText = (await chip.innerText()).trim();
-    const chipCount = Number(chipText.match(/(\d+)$/)?.[1] ?? 0);
-    await chip.click();
+    // A facet is a menu, not a wall of chips: it says its name and how many values are
+    // picked, and the values sit behind it with their counts.
+    const menu = tools.locator(".facet-menu", { hasText: "Framework" }).first();
+    await menu.locator(".facet-btn").click();
     await page.waitForTimeout(200);
-    ok("a facet chip filters to its own count", (await rows()) === chipCount, `${await rows()} vs ${chipCount}`);
-    ok("the active chip is marked", (await tools.locator(".facet-chip.on").count()) === 1);
+    ok("a facet opens onto its values, each with a count",
+      (await menu.locator(".facet-opt").count()) >= 2
+      && /\d/.test(await menu.locator(".facet-opt .facet-n").first().innerText()));
+    const first = menu.locator(".facet-opt").first();
+    const chipCount = Number((await first.locator(".facet-n").innerText()).replace(/\D/g, ""));
+    await first.click();
+    await page.waitForTimeout(200);
+    ok("picking a value filters to its own count", (await rows()) === chipCount, `${await rows()} vs ${chipCount}`);
+    ok("the facet says one value is picked", (await menu.locator(".facet-btn.on .facet-n").innerText()).trim() === "1");
 
     // A second value on the same field widens rather than narrows: they are alternatives.
-    const second = tools.locator(".facet", { hasText: "Framework" }).locator(".facet-chip").nth(1);
-    await second.click();
+    await menu.locator(".facet-opt").nth(1).click();
     await page.waitForTimeout(200);
     ok("a second value on the same field widens the result", (await rows()) > chipCount);
+    await page.mouse.click(4, 4);                     // outside: the menu closes
+    await page.waitForTimeout(150);
+    ok("the menu closes when the pointer goes elsewhere", (await menu.locator(".facet-pop").count()) === 0);
 
-    await tools.locator(".btn.ghost", { hasText: "Clear filters" }).click();
+    await tools.locator(".tbl-clear").click();
     await page.waitForTimeout(200);
     ok("clearing the filters restores every row", (await rows()) === all);
 
-    await tools.locator(".tbl-group select").selectOption({ label: "Framework" });
+    await tools.locator("select.tbl-group").selectOption({ label: "by framework" });
     await page.waitForTimeout(250);
     const groups = await tools.locator(".tbl .group-row").count();
     ok("grouping splits the table into headed sections", groups >= 3, String(groups));
@@ -578,9 +663,46 @@ try {
     ok("a group collapses", (await rows()) < all);
     await tools.locator(".tbl .group-row").first().click();
     await page.waitForTimeout(200);
-    await tools.locator(".tbl-group select").selectOption({ label: "nothing" });
+    // A two-state field is a switch in the cell: one press, no form. The state it takes
+    // decides what the table filters by first, so the two belong together.
+    {
+      const cells = tools.locator(".cell-toggle");
+      const total = await cells.count();
+      ok("a two-state field is a switch in the cell", total === all, `${total} of ${all}`);
+      const onBefore = await tools.locator(".cell-toggle.on").count();
+      await cells.first().click();
+      await page.waitForTimeout(250);
+      const onAfter = await tools.locator(".cell-toggle.on").count();
+      ok("one press flips it", Math.abs(onAfter - onBefore) === 1, `${onBefore} → ${onAfter}`);
+      await cells.first().click();
+      await page.waitForTimeout(250);
+      ok("...and back", (await tools.locator(".cell-toggle.on").count()) === onBefore);
+      ok("the switched field is the first facet offered",
+        (await tools.locator(".facet-btn").first().innerText()).trim().startsWith("In scope"),
+        await tools.locator(".facet-btn").first().innerText());
+    }
+
+    await tools.locator("select.tbl-group").selectOption({ label: "no grouping" });
     await page.waitForTimeout(200);
     ok("ungrouping restores the plain table", (await tools.locator(".tbl .group-row").count()) === 0 && (await rows()) === all);
+  }
+
+  // The completeness checks judge the study, not the catalogue: a requirement that is out
+  // of scope is not a gap, and a seeded framework of several hundred entries would bury
+  // the findings about the few that are in scope.
+  {
+    const panel = page.locator(".panel", { has: page.locator(".tbl-tools") }).first();
+    const recorded = await panel.locator(".tbl tbody tr.row-clickable").count();
+    const inScope = await panel.locator(".cell-toggle.on").count();
+    await page.locator(".ws-tab", { hasText: "Checks" }).click();
+    await page.waitForTimeout(250);
+    const card = page.locator(".lint-card", { has: page.locator(".lint-title", { hasText: "Requirements not fulfilled by any measure" }) }).first();
+    ok("the requirements check is reported", (await card.count()) === 1);
+    const counted = Number((await card.locator(".lint-count").innerText()).split("/")[1]);
+    ok("a check counts what is in scope, not the whole catalogue",
+      counted === inScope && counted < recorded, `${counted} judged, ${inScope} in scope, ${recorded} recorded`);
+    await page.locator(".ws-tab", { hasText: "Compliance" }).click();
+    await page.waitForTimeout(250);
   }
 
   const reqRow = page.locator(".tbl tbody tr.row-clickable").first();

@@ -5,6 +5,51 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.5.2] — 2026-08-19
+
+The table toolbar became one thing, and a field with two states is now a switch rather
+than a form.
+
+### Added
+- **A two-state field renders as a switch in the cell.** Selecting a requirement no longer
+  means opening the record: the cell is pressed and the state flips, with a hover preview
+  of what the press would take. The compliance table declares its scope field this way, so
+  a seeded framework arrives out of scope and is taken in one press at a time. Such a field
+  sorts to the front of the filters, since what it records is usually what you filter by.
+  Only a recorded state sets a record back: a study written before this release says
+  nothing about the switch, and everything in it stays in use. What is set back is left
+  out of the completeness checks as well, so a seeded framework reports the study rather
+  than itself.
+- **A field can be locked in one direction while something depends on it.** A measure
+  placed on an attack step is in use by that very fact, and switching it out would leave
+  the study saying two things at once — the switch is refused in that direction and names
+  what holds it, naming the records rather than counting them. Switching a record in is
+  never refused. Putting a measure on a step
+  switches it in by the same reasoning, so one taken from a catalogue no longer sits on the
+  chain switched off. A measure not in use fulfils nothing in the coverage matrix or the
+  framework radar either.
+
+- **The catalogue is reachable where a measure is missing.** "From a catalogue…" is the
+  last entry of a kill-chain step's own measure list, rather than a button elsewhere on the
+  page: what is chosen there arrives already covering that step and in use. A custom one
+  starts the same way.
+- **What points at a record is grouped by who points and through which relation.** An asset
+  a hundred requirements name was a flat wall of chips; it reads "Requirements — applies to
+  (93)" now, largest group first, with the first twelve shown and the rest one press away.
+
+### Changed
+- **One table toolbar, used everywhere.** The toolbar moved out of the entity tables into
+  a component of its own and now serves the coverage matrix as well. A facet is a menu
+  rather than a row of every value it holds, so the whole bar fits on one line however many
+  values a field has.
+- **The facet counts follow the current filters.** Which fields and values are offered
+  stays fixed by the whole table — chips that appeared and vanished as you filtered would
+  move under the pointer — but the numbers narrow, and a value left with nothing reads zero
+  instead of disappearing. A field is counted ignoring its own selection, because its
+  values are alternatives: having picked one, the others must still show what picking them
+  instead would give. The row count beside a table's name likewise shows what is shown of
+  how many.
+
 ## [0.5.1] — 2026-08-14
 
 ### Added

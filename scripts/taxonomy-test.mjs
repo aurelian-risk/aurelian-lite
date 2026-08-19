@@ -16,7 +16,7 @@ import { pathToFileURL } from "node:url";
 
 const MOD = process.env.MOD;
 if (!MOD) { console.error("set MOD=<bundled taxonomy.mjs>"); process.exit(2); }
-const { DEFAULT_TAXONOMY, TAXONOMY_SCHEMA_VERSION, reconcileTaxonomy } = await import(pathToFileURL(MOD).href);
+const { DEFAULT_TAXONOMY, TAXONOMY_SCHEMA_VERSION, isSetBack, reconcileTaxonomy } = await import(pathToFileURL(MOD).href);
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("✓", name)) : (fail++, console.log("✗", name)); };
@@ -110,6 +110,23 @@ ok("...but a source the user set is not overwritten",
   fld(reconcileTaxonomy(ownSource)).vocabulary === "meine_quelle");
 if (hadVocabulary === undefined) delete defField.vocabulary; else defField.vocabulary = hadVocabulary;
 ok("the default is left as this check found it", defField.vocabulary === hadVocabulary);
+
+// The same silent kind of loss, one level down: a record stored before the switch existed
+// carries no value for it. Reading that as "set back" would empty an existing study's
+// coverage matrix, framework radar and quantification on the first load after an upgrade.
+{
+  const hasSwitch = (t) => t.fields.find((f) => f.toggle && f.type === "enum" && f.options?.length === 2);
+  const type = DEFAULT_TAXONOMY.entityTypes.find(hasSwitch);
+  const f = type && hasSwitch(type);
+  if (!f) ok("the active default declares a two-state switch", false);
+  else {
+    const r = (values) => ({ id: "r", type: type.key, values, createdAt: "", updatedAt: "" });
+    ok("a record saying nothing about its switch is in play", isSetBack(DEFAULT_TAXONOMY, r({})) === false);
+    ok("...as is one whose value was cleared", isSetBack(DEFAULT_TAXONOMY, r({ [f.key]: "" })) === false);
+    ok("a record recorded on the first option is set back", isSetBack(DEFAULT_TAXONOMY, r({ [f.key]: f.options[0] })) === true);
+    ok("...and one on the second is in play", isSetBack(DEFAULT_TAXONOMY, r({ [f.key]: f.options[1] })) === false);
+  }
+}
 
 console.log(`\n${pass}/${pass + fail} taxonomy-migration assertions passed · ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -7,6 +7,7 @@ import type { EntityRecord, EntityTypeDef, FieldValue, Taxonomy } from "./types"
 import type { Framework, FrameworkItem } from "./frameworks";
 import { requirementValues, measureValues } from "./frameworks";
 import { GROUPS_VOCABULARY, topGroupOf } from "./vocabulary";
+import { toggleStates } from "./taxonomy";
 import { BUNDLED_FRAMEWORKS, BUNDLED_MEASURE_CATALOGS } from "../profile";
 
 /** Write a catalogue item's extra properties into the entity, for every property whose
@@ -17,7 +18,12 @@ import { BUNDLED_FRAMEWORKS, BUNDLED_MEASURE_CATALOGS } from "../profile";
  *  knowing it: declare a field keyed `effort_level`, and an OSCAL catalogue carrying
  *  that property fills it. Declare nothing, and the property is simply not used. */
 function withProps(type: EntityTypeDef, base: Record<string, FieldValue>, it: FrameworkItem): Record<string, FieldValue> {
-  const out = { ...base };
+  // A catalogue entry is what a publisher wrote down, not what this study has adopted, so
+  // it arrives switched off - and says so in writing. A record that leaves the field empty
+  // counts as in play, which is right for one somebody typed in and wrong for a library of
+  // several hundred nobody has looked at yet.
+  const t = toggleStates(type);
+  const out = { ...(t ? { [t.field.key]: t.off } : {}), ...base };
   for (const f of type.fields) {
     // A field may instead name where its value comes from when the catalogue carries it
     // as structure rather than as a property: "@groups" is the top-level grouping the

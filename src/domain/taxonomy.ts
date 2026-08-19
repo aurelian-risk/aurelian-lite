@@ -3,7 +3,7 @@
 // taxonomy - independent of WHICH taxonomy. The taxonomy itself is a product
 // decision and lives in src/profile.
 import type {
-  EntityRecord, EntityTypeDef, FieldDef, FieldValue, Taxonomy,
+  EntityRecord, EntityTypeDef, FieldDef, FieldValue, Study, Taxonomy,
 } from "./types";
 import { DEFAULT_TAXONOMY, TAXONOMY_SCHEMA_VERSION } from "../profile";
 
@@ -122,4 +122,69 @@ export function reconcileTaxonomy(tax: Taxonomy): Taxonomy {
     return typeChanged ? { ...t, fields } : t;
   });
   return { ...tax, schemaVersion: TAXONOMY_SCHEMA_VERSION, entityTypes };
+}
+
+/** The two-state field a type is switched by, if it declares one. */
+export function toggleField(t: EntityTypeDef): FieldDef | undefined {
+  return t.fields.find((f) => f.toggle && f.type === "enum" && f.options?.length === 2);
+}
+
+/** A record that is present but not in play: its switch STANDS RECORDED on the first
+ *  option. A type without a switch is always in play, so this stays false for every other
+ *  table.
+ *
+ *  A record that says nothing counts as in play. Silence is not a decision to set it
+ *  back: a study written before the switch existed carries no value for it, and reading
+ *  that as "not in use" would quietly empty the coverage matrix, the radar and the
+ *  quantification of an existing study on the first load after an upgrade. What arrives
+ *  set back arrives that way because something wrote it - a catalogue seeding an entry
+ *  nobody has adopted yet. */
+export function isSetBack(tax: Taxonomy, r: EntityRecord): boolean {
+  const t = getType(tax, r.type);
+  const f = t && toggleField(t);
+  if (!f?.options) return false;
+  const v = r.values[f.key];
+  if (v == null || v === "") return false;
+  return String(v) === f.options[0];
+}
+
+/** A type's switch and the two values it stands on: `off` is the first option, `on` the
+ *  second, as the toggle contract says. Null for a type without a switch, so a caller can
+ *  spread the result and stay generic. */
+export function toggleStates(t: EntityTypeDef): { field: FieldDef; on: string; off: string } | null {
+  const f = toggleField(t);
+  const [off, on] = f?.options ?? [];
+  return f && on && off ? { field: f, on, off } : null;
+}
+
+/** Why the switch may not be set back right now, or null. Reading, not enforcing: the
+ *  caller disables the control and shows the reason.
+ *
+ *  The message NAMES what holds the record - two of them and a count beyond that. A field
+ *  label and a number ("through \"Acts on attack steps\" (1)") leaves the reader to go and
+ *  find which one, which is the work the message was supposed to save. */
+export function setBackBlocked(tax: Taxonomy, study: Study, r: EntityRecord): string | null {
+  const t = getType(tax, r.type);
+  const f = t && toggleField(t);
+  if (!t || !f?.lockedWhile?.length) return null;
+  for (const key of f.lockedWhile) {
+    const fld = t.fields.find((x) => x.key === key);
+    const v = r.values[key];
+    const held = Array.isArray(v) ? v.map(String).filter(Boolean)
+      : v == null || v === "" ? [] : [String(v)];
+    if (!held.length) continue;
+    const named = (fld?.type === "ref" || fld?.type === "multiref")
+      ? held.map((id) => {
+        const ref = study.entities.find((e) => e.id === id);
+        const rt = ref && getType(tax, ref.type);
+        return ref && rt ? recordTitle(rt, ref) : null;
+      }).filter((x): x is string => !!x)
+      : held;
+    const rest = Math.max(0, named.length - 2);
+    const what = named.length
+      ? `${named.slice(0, 2).join(", ")}${rest > 0 ? ` and ${rest} more` : ""}`
+      : String(held.length);
+    return `In use: ${(fld?.relation ?? fld?.label ?? key).toLowerCase()} ${what}. Take it off there first.`;
+  }
+  return null;
 }

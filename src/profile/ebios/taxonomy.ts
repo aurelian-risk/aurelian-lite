@@ -145,6 +145,11 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
         { key: "status", label: "Status", type: "enum", options: ["Implemented", "Planned", "Missing", "Recommended"] },
         { key: "priority", label: "Priority", type: "scale", scaleLabels: SCALE },
         { key: "implementation_level", label: "Implementation", type: "scale", scaleLabels: ["none", "partial", "substantial", "full"], polarity: "positive" },
+        // A measure on an attack step is in use by that fact, so the switch is refused in
+        // that direction rather than letting the study say two things at once.
+        { key: "scope", label: "In use", type: "enum", options: ["not in use", "in use"], toggle: true,
+          lockedWhile: ["covers"],
+          help: "Whether this measure is actually in place here. A control recorded from a library but not adopted fulfils no requirement and covers no step." },
         { key: "covers", label: "Covers steps", type: "multiref", refType: "kill_chain_step", relation: "covers" },
         { key: "protects", label: "Protects assets", type: "multiref", refType: "supporting_asset", relation: "protects" },
         { key: "fulfills", label: "Fulfills requirements", type: "multiref", refType: "requirement", relation: "fulfills" },
@@ -169,6 +174,11 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
         { key: "ref_id", label: "Reference ID", type: "text" },
         { key: "framework", label: "Framework", type: "text" },
         { key: "category", label: "Category", type: "text" },
+        // A framework is a catalogue, not a to-do list: most of it does not apply to a
+        // given scope. The first option is the state a record starts in, so a seeded
+        // catalogue arrives out of scope and is switched in one press at a time.
+        { key: "scope", label: "In scope", type: "enum", options: ["out of scope", "in scope"], toggle: true,
+          help: "Which of a framework's requirements this study answers for. Switched here rather than in the edit form, and the first thing the table filters by." },
         { key: "description", label: "Description", type: "textarea" },
       ],
     },
