@@ -5,15 +5,27 @@
 // FILE / TABLE import lives in the Documents system (semi-deterministic), not here.
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import type { Study, Taxonomy } from "../domain/types";
+import type { FieldValue, Study, Taxonomy } from "../domain/types";
 import type { CatalogTarget } from "../domain/catalog";
 import { useStore } from "../domain/store";
 import { EntityModal } from "./EntityModal";
 import { Icon } from "./ui";
 
-export function CatalogAdd({ tax, study, target }: { tax: Taxonomy; study: Study; target: CatalogTarget }) {
+/** `preset` is merged into every record created here, and `onAdded` receives the new ids.
+ *  Together they are what lets the picker be opened from somewhere that already knows
+ *  where the result belongs - a step of a kill chain, say - so a control is chosen from
+ *  the catalogue and put to work in one move instead of three. */
+export function CatalogAdd({ tax, study, target, preset, onAdded, open, onClose }:
+  { tax: Taxonomy; study: Study; target: CatalogTarget;
+    preset?: Record<string, FieldValue>; onAdded?: (ids: string[]) => void;
+    /** Controlled: when given, the component renders no trigger of its own and is opened
+     *  from wherever the user actually asked for it - an entry in a list, say. */
+    open?: boolean; onClose?: () => void }) {
   const addEntity = useStore((s) => s.addEntity);
-  const [pick, setPick] = useState(false);
+  const controlled = open !== undefined;
+  const [pickState, setPickState] = useState(false);
+  const pick = controlled ? open : pickState;
+  const setPick = (v: boolean) => { if (controlled) { if (!v) onClose?.(); } else setPickState(v); };
   const [custom, setCustom] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
@@ -24,17 +36,23 @@ export function CatalogAdd({ tax, study, target }: { tax: Taxonomy; study: Study
   const match = (s: string) => q.trim() === "" || s.toLowerCase().includes(q.trim().toLowerCase());
 
   const addSelected = () => {
+    const made: string[] = [];
     for (const fw of target.bundled) fw.items.forEach((it, i) => {
-      if (sel.has(key(fw.name, it.ref_id, i)) && !target.exists(existing, fw, it)) addEntity(target.type.key, target.toValues(fw, it));
+      if (sel.has(key(fw.name, it.ref_id, i)) && !target.exists(existing, fw, it)) {
+        made.push(addEntity(target.type.key, { ...target.toValues(fw, it), ...preset }));
+      }
     });
     setSel(new Set()); setPick(false);
+    if (made.length) onAdded?.(made);
   };
 
   return (
     <>
-      <button className="btn sm primary" onClick={() => { setSel(new Set()); setQ(""); setPick(true); }}>
-        <Icon.plus /> {target.type.label}
-      </button>
+      {controlled ? null : (
+        <button className="btn sm primary" onClick={() => { setSel(new Set()); setQ(""); setPick(true); }}>
+          <Icon.plus /> {target.type.label}
+        </button>
+      )}
 
       {pick && createPortal(
         <div className="overlay" onMouseDown={() => setPick(false)}>
@@ -83,7 +101,8 @@ export function CatalogAdd({ tax, study, target }: { tax: Taxonomy; study: Study
         document.body,
       )}
 
-      {custom && <EntityModal type={target.type} tax={tax} study={study} record={null} onClose={() => setCustom(false)} />}
+      {custom && <EntityModal type={target.type} tax={tax} study={study} record={null} initialValues={preset}
+        onClose={() => setCustom(false)} />}
     </>
   );
 }

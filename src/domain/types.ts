@@ -30,6 +30,15 @@ export interface FieldDef {
   suggest?: string;
   /** enum: allowed values (extensible). */
   options?: string[];
+  /** enum with exactly two options: render the cell as a switch rather than a label, so a
+   *  state that is flipped often is one press away instead of an edit. The SECOND option is
+   *  the engaged one and is shown as such. */
+  toggle?: boolean;
+  /** Fields that hold the record in play while they say anything, naming them on the
+   *  toggle itself. A measure put on an attack step is in use by that very fact, so
+   *  switching it back would leave the study saying two things at once: the switch is
+   *  refused in that direction and says why. Switching a record IN is never refused. */
+  lockedWhile?: string[];
   /** enum: what to SHOW for each option, positionally. The stored value stays the option.
    *  A published vocabulary is an identifier as much as a word — the engine matches on it,
    *  an auditor checks it against the publisher's list, and translating it would break

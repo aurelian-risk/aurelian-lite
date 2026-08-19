@@ -173,6 +173,24 @@ select { cursor: pointer; }
   overflow-wrap: anywhere; }
 .tbl tbody tr { transition: background 0.12s var(--ease); }
 .tbl tbody tr:hover td { background: var(--bg-hover); }
+/* A two-state field as a switch: one press, and the state is the colour. */
+.cell-toggle { font: inherit; font-size: 11px; cursor: pointer; padding: 3px 9px;
+  border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--bg-hover);
+  color: var(--fg-subtle); transition: background 0.12s var(--ease), color 0.12s var(--ease), border-color 0.12s var(--ease),
+    transform 0.12s var(--ease), box-shadow 0.12s var(--ease); }
+/* Hover says two things: that it is pressable at all, and what pressing would do. The
+   chip previews the state it is about to take, so the press is decided before it happens. */
+.cell-toggle:hover { color: var(--fg); transform: translateY(-1px);
+  box-shadow: 0 2px 7px color-mix(in oklch, var(--fg) 18%, transparent); }
+.cell-toggle:not(.on):hover { background: color-mix(in oklch, var(--color-state-success) 26%, transparent);
+  border-color: color-mix(in oklch, var(--color-state-success) 70%, transparent);
+  color: var(--fg); font-weight: 600; }
+.cell-toggle.on:hover { background: var(--bg-hover); border-color: var(--border-strong);
+  color: var(--fg-muted); font-weight: 500; }
+.cell-toggle:active { transform: translateY(0); box-shadow: none; }
+.cell-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.cell-toggle.on { background: color-mix(in oklch, var(--color-state-success) 22%, transparent);
+  border-color: color-mix(in oklch, var(--color-state-success) 55%, transparent); color: var(--fg); font-weight: 600; }
 .tbl .row-actions { display: flex; gap: 4px; justify-content: flex-end; }
 .detail-actions { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .tbl .name { font-weight: 600; display: flex; align-items: center; gap: 5px; }
@@ -1423,35 +1441,93 @@ select.btn { display: inline-block; width: auto; flex: none; line-height: 1.4; }
 .cal-edited.off, .cal-reset.off, .btn.off, .badge.off { visibility: hidden; pointer-events: none; }
 .cal-actions { min-height: 30px; }
 
-/* ── Tabellen-Werkzeugleiste: Suche, Facetten, Gruppierung ────────────
-   Sitzt zwischen Panel-Kopf und Tabelle und übernimmt dessen Polsterung,
-   damit Suchfeld und Titel auf einer Flucht liegen. */
-.tbl-tools { padding: 11px 18px 10px; border-bottom: 1px solid var(--hairline);
-  display: flex; flex-direction: column; gap: 8px; }
-.tbl-tools-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.tbl-search { flex: 1 1 240px; min-width: 200px; display: flex; align-items: center; gap: 7px;
-  padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 9px;
+
+/* ── Table toolbar: search, facets, grouping ──────────────────────────
+   One line between the panel head and the table, taking the head's padding so the
+   search box and the title line up. A facet is a menu, not a row of every value it
+   has: thirty values would make the filter taller than the table it serves. */
+.tbl-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  padding: 8px 18px; border-bottom: 1px solid var(--hairline); }
+.tbl-search { flex: 1 1 200px; min-width: 150px; display: flex; align-items: center; gap: 7px;
+  padding: 0 9px; border: 1px solid var(--border-strong); border-radius: 7px;
   background: var(--bg-0); transition: border-color 0.14s; }
 .tbl-search:focus-within { border-color: var(--primary); }
 .tbl-search .inline-icon { flex: none; color: var(--fg-subtle); }
-.tbl-search input { flex: 1; border: none; background: none; padding: 7px 0; font: inherit;
-  font-size: 13px; color: var(--fg); min-width: 0; }
+.tbl-search input { flex: 1; border: none; background: none; padding: 5px 0; font: inherit;
+  font-size: 12.5px; color: var(--fg); min-width: 0; }
 .tbl-search input:focus { outline: none; }
 .tbl-search input::-webkit-search-cancel-button { filter: grayscale(1); opacity: 0.6; }
-.tbl-group { display: flex; align-items: center; gap: 7px; flex: none; }
-.tbl-group select.btn { display: inline-block; width: auto; }
+/* ── The table filter, compact ────────────────────────────────────── */
+/* One line for search, the facets and the count. A facet is a menu that says its name and
+   how many of its values are picked, not a row of every value it has. */
+.facet-menu { position: relative; }
+.facet-btn { display: inline-flex; align-items: center; gap: 5px; font: inherit; font-size: 12px;
+  padding: 4px 8px; border: 1px solid var(--border); border-radius: 7px; background: none;
+  color: var(--fg-muted); cursor: pointer; white-space: nowrap; }
+.facet-btn:hover { color: var(--fg); border-color: var(--fg-subtle); }
+.facet-btn.on { color: var(--fg); border-color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 10%, transparent); }
+.facet-btn .facet-caret svg { width: 11px; height: 11px; transform: rotate(90deg); opacity: 0.7; }
+.facet-btn[aria-expanded="true"] .facet-caret svg { transform: rotate(-90deg); }
+.facet-n { font-variant-numeric: tabular-nums; font-size: 10.5px; color: var(--fg-subtle);
+  background: var(--hairline); border-radius: 999px; padding: 0 5px; min-width: 16px; text-align: center; }
+.facet-btn.on .facet-n { color: var(--primary-fg); background: var(--primary); }
+.facet-pop { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; min-width: 190px;
+  max-height: 320px; overflow-y: auto; padding: 4px; border: 1px solid var(--border);
+  border-radius: 9px; box-shadow: var(--shadow-md);
+  /* Opaque on purpose: --bg-panel is translucent, and the table header showed through
+     the open menu. */
+  background: var(--bg-0); }
+.facet-opt { display: flex; align-items: center; gap: 7px; width: 100%; font: inherit; font-size: 12px;
+  padding: 5px 7px; border: 0; border-radius: 6px; background: none; color: var(--fg-muted);
+  cursor: pointer; text-align: left; }
+.facet-opt:hover { background: var(--hairline); color: var(--fg); }
+.facet-opt.on { color: var(--fg); font-weight: 600; }
+.facet-opt.more { justify-content: center; color: var(--fg-subtle); font-style: italic; }
+.facet-tick { width: 12px; flex: none; display: inline-flex; color: var(--primary); }
+.facet-tick svg { width: 12px; height: 12px; }
+.facet-v { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tbl-tools .tbl-group { font-size: 12px; padding: 4px 8px; width: auto; border-radius: 7px;
+  color: var(--fg-muted); }
+.tbl-count { margin-left: auto; font-size: 11.5px; color: var(--fg-subtle);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tbl-clear { display: inline-flex; padding: 3px; border: 0; background: none; cursor: pointer;
+  color: var(--fg-subtle); }
+.tbl-clear:hover { color: var(--fg); }
+.tbl-clear svg { width: 13px; height: 13px; }
 
-.facet { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-.facet-label { flex: 0 0 auto; min-width: 88px; font-size: 11.5px; font-weight: 600;
-  color: var(--fg-subtle); letter-spacing: 0.01em; }
-.facet-chip { cursor: pointer; border: 1px solid transparent; font: inherit; font-size: 12px;
-  display: inline-flex; align-items: center; gap: 6px; transition: background 0.14s, color 0.14s, border-color 0.14s; }
-.facet-chip:hover { border-color: var(--border-strong); color: var(--fg); }
-.facet-chip.on { background: color-mix(in oklch, var(--primary) 26%, transparent);
-  border-color: color-mix(in oklch, var(--primary) 55%, transparent); color: var(--fg); }
-.facet-n { font-size: 10.5px; color: var(--fg-subtle); font-variant-numeric: tabular-nums; }
-.facet-chip.on .facet-n { color: var(--fg-muted); }
-.tbl-tools-foot { display: flex; align-items: center; gap: 10px; min-height: 22px; }
+/* Gruppen-Kopfzeile in der Tabelle. Klebt nicht, damit sie nicht mit dem
+   Sticky-Tabellenkopf konkurriert (siehe Flow-Header-Regeln). */
+.tbl .group-row th { text-align: left; padding: 9px 14px; cursor: pointer;
+  background: var(--bg-1); border-top: 1px solid var(--hairline);
+  font-size: 12.5px; font-weight: 600; color: var(--fg-muted); }
+.tbl .group-row:hover th { color: var(--fg); }
+.tbl .group-row th .caret { margin-right: 7px; }
+.tbl .group-row th .badge { margin-left: 9px; }
+.tbl tbody.grouped:first-of-type .group-row th { border-top: none; }
+
+/* Herkunftszeile am Fuß der Seitenleiste. Die ausgelieferte Einzeldatei muss sagen,
+   woher ihr Quellcode stammt (MPL-2.0 §3.2) — leise, aber vorhanden. */
+.colophon .credit { display: block; margin-top: 4px; }
+.colophon { padding: 10px 14px 14px; font-size: 10.5px; line-height: 1.5;
+  color: var(--fg-subtle); border-top: 1px solid var(--hairline); }
+.colophon a { color: var(--fg-muted); text-decoration: none; }
+.colophon a:hover { color: var(--primary); text-decoration: underline; }
+
+/* Spaltenauswahl fürs Body-Feld: mehrere Spalten dürfen zusammen ein Feld füllen. */
+.map-multi .map-cols { display: flex; flex-wrap: wrap; gap: 6px; }
+.map-multi 
+/* Kandidaten-Zeile: umklassifizieren und die Fundstelle im Dokument aufklappen. */
+.ex-cand-tools { display: flex; gap: 6px; align-items: center; flex: none; }
+select.chip.ex-cand-type { display: inline-block; width: auto; cursor: pointer; font-size: 11.5px;
+  padding: 3px 6px; max-width: 180px; }
+.ex-cand-tools .btn.ghost.sm { padding: 2px 6px; }
+.ex-cand-ctx { margin: 8px 0 2px; padding: 10px 12px; border-radius: 8px;
+  background: var(--bg-0); border: 1px solid var(--hairline); max-height: 260px; overflow: auto; }
+.ex-ctx-text { margin: 0; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+.ex-ctx-side { color: var(--fg-subtle); }
+.ex-ctx-text mark { background: color-mix(in oklch, var(--primary) 26%, transparent);
+  color: var(--fg); border-radius: 3px; padding: 1px 2px; }
 
 /* Gruppen-Kopfzeile in der Tabelle. Klebt nicht, damit sie nicht mit dem
    Sticky-Tabellenkopf konkurriert (siehe Flow-Header-Regeln). */
@@ -1487,3 +1563,24 @@ select.chip.ex-cand-type { display: inline-block; width: auto; cursor: pointer; 
 .ex-ctx-side { color: var(--fg-subtle); }
 .ex-ctx-text mark { background: color-mix(in oklch, var(--primary) 26%, transparent);
   color: var(--fg); border-radius: 3px; padding: 1px 2px; }
+/* Measures on a step are a list, so they read as one: every chip the full width of the
+   card, the name cut where it runs out rather than each chip a different length. */
+.kcc-mit .multi { flex-direction: column; align-items: stretch; gap: 5px; }
+.kcc-mit .multi .chip { width: 100%; justify-content: flex-start; }
+.kcc-mit .multi .chip .chip-lbl { flex: 1; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.kcc-mit .multi select { width: 100%; min-width: 0; }
+
+/* "Referenced by", grouped: who points at this record, and through which relation. */
+.d-rel-group { margin-top: 9px; }
+.d-rel-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 5px; }
+.d-rel-what { font-size: 12px; font-weight: 650; color: var(--fg); }
+.d-rel-how { font-size: 11px; color: var(--fg-subtle); }
+.d-rel-group .multi { gap: 5px; }
+.d-rel-group .chip.more { cursor: pointer; }
+
+/* A switch that may not be set back: still readable as the state it holds, but plainly
+   not pressable. The reason is on the title. */
+.cell-toggle.locked { cursor: not-allowed; opacity: 0.75; box-shadow: none; }
+.cell-toggle.locked:hover { transform: none; background: color-mix(in oklch, var(--color-state-success) 22%, transparent);
+  border-color: color-mix(in oklch, var(--color-state-success) 55%, transparent); color: var(--fg); font-weight: 600; }

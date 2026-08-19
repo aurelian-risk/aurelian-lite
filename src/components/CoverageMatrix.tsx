@@ -5,10 +5,11 @@
 // `fulfills`). Requirements themselves are added in the Requirements table above.
 import { Fragment, useState } from "react";
 import type { EntityRecord, EntityTypeDef, Study, Taxonomy } from "../domain/types";
-import { getType, recordTitle } from "../domain/taxonomy";
+import { isSetBack, getType, recordTitle } from "../domain/taxonomy";
 import { useStore } from "../domain/store";
 import { EntityModal } from "./EntityModal";
 import { MultiSelect, Icon } from "./ui";
+import { TableTools, useTableFilter } from "./TableTools";
 
 export function CoverageMatrix({ tax, study, reqType, color }: { tax: Taxonomy; study: Study; reqType: EntityTypeDef; color: string }) {
   const updateEntity = useStore((s) => s.updateEntity);
@@ -21,7 +22,7 @@ export function CoverageMatrix({ tax, study, reqType, color }: { tax: Taxonomy; 
   if (!measureType || !fulfillsF) return null;
 
   const reqs = study.entities.filter((e) => e.type === reqType.key);
-  const measures = study.entities.filter((e) => e.type === measureType.key);
+  const measures = study.entities.filter((e) => e.type === measureType.key && !isSetBack(tax, e));
   const measureOpts = measures.map((m) => ({ id: m.id, label: recordTitle(measureType, m) }));
 
   const fulfils = (m: EntityRecord, rid: string) => Array.isArray(m.values[fulfillsF.key]) && (m.values[fulfillsF.key] as string[]).includes(rid);
@@ -35,17 +36,26 @@ export function CoverageMatrix({ tax, study, reqType, color }: { tax: Taxonomy; 
     }
   };
 
+  // The same filter every long table has. A package of a thousand requirements is not
+  // readable as a matrix without one, and "show me only what nothing fulfils" is the
+  // question this view exists to answer.
+  const f = useTableFilter(reqType, reqs);
+  const [gapsOnly, setGapsOnly] = useState(false);
+  const visible = gapsOnly ? f.shown.filter((r) => !measures.some((m) => fulfils(m, r.id))) : f.shown;
+
   const byFw = new Map<string, EntityRecord[]>();
-  for (const r of reqs) { const k = String(r.values.framework || "Other"); const a = byFw.get(k) ?? []; a.push(r); byFw.set(k, a); }
+  for (const r of visible) { const k = String(r.values.framework || "Other"); const a = byFw.get(k) ?? []; a.push(r); byFw.set(k, a); }
 
   return (
     <div className="panel ws-accent" style={{ ["--ws-color" as string]: color, marginBottom: 20 }}>
       <div className="panel-head">
         <h3>Coverage &amp; traceability</h3>
-        <span className="badge">{reqs.length}</span>
+        <span className="badge">{visible.length === reqs.length ? reqs.length : `${visible.length} / ${reqs.length}`}</span>
         <span className="spacer" />
-        <span className="hint">maps measures to requirements · add requirements in the table above</span>
+        <button className={"facet-btn" + (gapsOnly ? " on" : "")} onClick={() => setGapsOnly((g) => !g)}
+          title="Only the requirements no measure fulfils">Gaps only</button>
       </div>
+      <TableTools type={reqType} f={f} groupable={false} />
       <div className="panel-body">
         {reqs.length === 0
           ? <div className="empty" style={{ padding: "24px 16px" }}>No requirements yet — add them in the Requirements table above (e.g. “+ From framework…”).</div>
@@ -72,7 +82,7 @@ export function CoverageMatrix({ tax, study, reqType, color }: { tax: Taxonomy; 
                       {isOpen && (
                         <tr className="detail-row">
                           <td colSpan={3}>
-                            {list.map((r) => {
+                            {list.slice(0, 400).map((r) => {
                               const gap = !measures.some((m) => fulfils(m, r.id));
                               return (
                                 <div key={r.id} className={"kcm-step" + (gap ? " gap" : "")}>
@@ -89,6 +99,8 @@ export function CoverageMatrix({ tax, study, reqType, color }: { tax: Taxonomy; 
                                 </div>
                               );
                             })}
+                            {list.length > 400 && <div className="hint" style={{ padding: "6px 4px" }}>
+                              +{list.length - 400} more - narrow the filter to see them.</div>}
                           </td>
                         </tr>
                       )}

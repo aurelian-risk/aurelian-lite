@@ -9,7 +9,7 @@
 import { pathToFileURL } from "node:url";
 
 const need = (n) => { const v = process.env[n]; if (!v) { console.error(`set ${n}`); process.exit(2); } return v; };
-const { facetsOf, filterItems, groupItems, matchesQuery, haystack, activeCount, TOOLBAR_MIN_ROWS } =
+const { facetsOf, countFacets, filterItems, groupItems, matchesQuery, haystack, activeCount, TOOLBAR_MIN_ROWS } =
   await import(pathToFileURL(need("MOD_TF")).href);
 
 let pass = 0, fail = 0;
@@ -110,6 +110,53 @@ ok("counts what is active", activeCount({ framework: ["NIS2", "NIST CSF"], categ
 ok("grouping by nothing yields one group", groupItems(ITEMS, null, display).length === 1);
 
 ok("the toolbar threshold is a small table, not a large one", TOOLBAR_MIN_ROWS >= 5 && TOOLBAR_MIN_ROWS <= 15, String(TOOLBAR_MIN_ROWS));
+
+// ── counts follow the current filters ────────────────────────────────────
+//
+// A count that stays put while the table narrows tells the reader nothing. What must NOT
+// move is which chips exist - they would slide under the pointer.
+{
+  const base = facetsOf(TYPE, ITEMS, display);
+  const narrowed = countFacets(base, ITEMS, TYPE, "", { category: ["Control family"] }, display);
+  const fw = narrowed.find((f) => f.field.key === "framework");
+  ok("counts narrow under another field's filter",
+    fw.values.find((v) => v.value === "NIST 800-53").count === 2 && fw.values.find((v) => v.value === "NIS2").count === 0,
+    JSON.stringify(fw.values));
+  ok("values that are left with nothing stay listed, at zero",
+    fw.values.length === base.find((f) => f.field.key === "framework").values.length);
+
+  // Its own selection is ignored: the alternatives must still show what they would give.
+  const own = countFacets(base, ITEMS, TYPE, "", { framework: ["NIS2"] }, display)
+    .find((f) => f.field.key === "framework");
+  ok("a field is counted ignoring its own selection",
+    own.values.find((v) => v.value === "NIST CSF").count === 2, JSON.stringify(own.values));
+
+  const bySearch = countFacets(base, ITEMS, TYPE, "security", {}, display).find((f) => f.field.key === "framework");
+  ok("counts follow the search box too", bySearch.values.find((v) => v.value === "NIS2").count === 1,
+    JSON.stringify(bySearch.values));
+  ok("with nothing selected the counts are the plain ones",
+    JSON.stringify(countFacets(base, ITEMS, TYPE, "", {}, display)) === JSON.stringify(base));
+}
+
+// A two-state field rendered as a switch is what the register is FOR; the others describe
+// what is in it. It comes first among the facets, whatever its cardinality.
+{
+  const t = { key: "r", label: "R", labelPlural: "Rs", group: "g", fields: [
+    { key: "name", label: "Name", type: "text", required: true },
+    { key: "kind", label: "Kind", type: "enum", options: ["a", "b", "c"] },
+    { key: "scope", label: "In scope", type: "enum", options: ["out", "in"], toggle: true },
+  ] };
+  const rows = [
+    { id: "1", type: "r", values: { name: "one", kind: "a", scope: "in" }, createdAt: "", updatedAt: "" },
+    { id: "2", type: "r", values: { name: "two", kind: "b", scope: "out" }, createdAt: "", updatedAt: "" },
+    { id: "3", type: "r", values: { name: "three", kind: "c", scope: "out" }, createdAt: "", updatedAt: "" },
+    { id: "4", type: "r", values: { name: "four", kind: "a", scope: "out" }, createdAt: "", updatedAt: "" },
+  ];
+  const fs = facetsOf(t, rows, (f, v) => String(v ?? ""));
+  ok("the switch field is offered as the first facet", fs[0]?.field.key === "scope",
+    fs.map((f) => f.field.key).join(","));
+  ok("...and the others are still offered", fs.some((f) => f.field.key === "kind"));
+}
 
 console.log(`\n${pass}/${pass + fail} table-filter assertions passed · ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -148,8 +148,11 @@ function groupOptions(opts: { id: string; label: string; group?: string }[]) {
   );
 }
 
+/** The value the action entry carries. Not a record id, so it cannot collide with one. */
+const ADD_NEW = "__multiselect_action__";
+
 export function MultiSelect({
-  options, selected, onChange, placeholder = "add …", emptyHint, onClickChip, renderChipExtra,
+  options, selected, onChange, placeholder = "add …", emptyHint, onClickChip, renderChipExtra, action,
 }: {
   options: { id: string; label: string; group?: string }[];
   selected: string[];
@@ -160,6 +163,10 @@ export function MultiSelect({
   onClickChip?: (id: string) => void;
   /** Optional extra content rendered inside each chip (e.g. a status mini-bar). */
   renderChipExtra?: (id: string) => import("react").ReactNode;
+  /** One more entry at the foot of the list, for what is NOT in it yet - a catalogue to
+   *  choose from, say. Belongs here rather than beside the control: the list is where
+   *  someone looks for a thing, so it is where "not there? get one" has to be. */
+  action?: { label: string; onPick: () => void };
 }) {
   const avail = options.filter((o) => !selected.includes(o.id));
   const labelOf = (id: string) => options.find((o) => o.id === id)?.label ?? "(?)";
@@ -176,13 +183,20 @@ export function MultiSelect({
           <button type="button" onClick={(e) => { e.stopPropagation(); onChange(selected.filter((x) => x !== id)); }} aria-label="remove">×</button>
         </span>
       ))}
-      {options.length === 0 ? (
+      {options.length === 0 && !action ? (
         <span className="hint">{emptyHint ?? "no options"}</span>
       ) : (
         <select value="" style={{ width: "auto", minWidth: 160 }}
-          onChange={(e) => e.target.value && onChange([...selected, e.target.value])}>
+          onChange={(e) => {
+            const v = e.target.value;
+            if (!v) return;
+            if (v === ADD_NEW) action?.onPick();
+            else onChange([...selected, v]);
+          }}>
           <option value="">{placeholder}</option>
           {avail.some((o) => o.group) ? groupOptions(avail) : avail.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+          {action && avail.length > 0 && <option disabled>──────────</option>}
+          {action && <option value={ADD_NEW}>{action.label}</option>}
         </select>
       )}
     </div>

@@ -5,6 +5,7 @@
 // deterministic and taxonomy-guarded: a rule is skipped if its types are absent.
 import type { EntityRecord, Study, Taxonomy } from "./types";
 import { declaredClass, effectClassOf, hasEffectField } from "./controls";
+import { isSetBack } from "./taxonomy";
 
 export type Severity = "high" | "medium" | "low";
 
@@ -19,7 +20,11 @@ export interface LintCheck {
 
 export function lintStudy(tax: Taxonomy, study: Study): LintCheck[] {
   const has = (key: string) => tax.entityTypes.some((t) => t.key === key);
-  const ents = (key: string) => study.entities.filter((e) => e.type === key);
+  // A record that is set back is present but not in play - a catalogue entry nobody has
+  // taken up yet. Judging it reports the catalogue rather than the study: several hundred
+  // published requirements with no measure against them bury the finding about the eight
+  // that are in scope.
+  const ents = (key: string) => study.entities.filter((e) => e.type === key && !isSetBack(tax, e));
   // ids referenced by `fromType.fieldKey` (handles ref + multiref)
   const referenced = (fromType: string, fieldKey: string): Set<string> => {
     const out = new Set<string>();

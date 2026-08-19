@@ -5,14 +5,21 @@
 // assign the security measures that mitigate it (writes the measures' `covers`).
 import { Fragment, useState } from "react";
 import type { EntityRecord, Study, Taxonomy } from "../domain/types";
-import { getType, recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
+import { getType, toggleStates, recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
 import { useStore } from "../domain/store";
 import { effectClassOf, EFFECT_CHANNEL } from "../domain/controls";
 import { statusColor } from "../domain/viz";
 import { EntityModal } from "./EntityModal";
 import { MultiSelect, Icon } from "./ui";
+import { CatalogAdd } from "./CatalogAdd";
+import { targetByKind } from "../domain/catalog";
 
 export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; study: Study; color: string }) {
+  // Where a measure is missing is exactly where someone goes looking for one, so the
+  // catalogue is the last entry of the list itself rather than a button beside it.
+  const measureTarget = targetByKind(tax, "measure");
+  // Which step it was opened from, so what is chosen lands on that step, already in use.
+  const [pickFor, setPickFor] = useState<string | null>(null);
   const updateEntity = useStore((s) => s.updateEntity);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [rec, setRec] = useState<EntityRecord | null>(null);
@@ -33,6 +40,8 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
 
   const ops = study.entities.filter((e) => e.type === opType.key);
   const measures = study.entities.filter((e) => e.type === measureType.key);
+  // Where this taxonomy records that a measure is in use, if it says so at all.
+  const inPlay = toggleStates(measureType);
   const measureOpts = measures.map((m) => ({ id: m.id, label: recordTitle(measureType, m) }));
   // Implementation mini-bar on each measure chip: fill AND colour both track the
   // implementation level itself, so the signal is unambiguous — full=green, then
@@ -83,7 +92,12 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
     for (const m of measures) {
       const cur = Array.isArray(m.values[coversF.key]) ? (m.values[coversF.key] as string[]) : [];
       const has = cur.includes(stepId), should = ids.includes(m.id);
-      if (should && !has) updateEntity(m.id, { ...m.values, [coversF.key]: [...cur, stepId] });
+      // Putting a measure on a step states that it acts there, so it is in use by that
+      // fact. Without this a measure taken from a catalogue stays switched off while
+      // sitting on the chain: it fulfils nothing in the coverage matrix or the radar, and
+      // the switch cannot correct it either, since it refuses only the other direction.
+      if (should && !has) updateEntity(m.id, { ...m.values, [coversF.key]: [...cur, stepId],
+        ...(inPlay ? { [inPlay.field.key]: inPlay.on } : {}) });
       else if (!should && has) updateEntity(m.id, { ...m.values, [coversF.key]: cur.filter((x) => x !== stepId) });
     }
   };
@@ -92,6 +106,11 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
     .sort((a, b) => Number(a.values[orderF.key] || 0) - Number(b.values[orderF.key] || 0));
 
   return (
+    <>
+    {measureTarget && pickFor && (
+      <CatalogAdd tax={tax} study={study} target={measureTarget} open onClose={() => setPickFor(null)}
+        preset={{ [coversF.key]: [pickFor], ...(inPlay ? { [inPlay.field.key]: inPlay.on } : {}) }} />
+    )}
     <div className="panel ws-accent" style={{ ["--ws-color" as string]: color, marginBottom: 20 }}>
       <div className="panel-head">
         <h3>Kill-chain mitigation</h3>
@@ -154,7 +173,8 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
                                             <MultiSelect options={measureOpts} selected={mit.map((m) => m.id)} onChange={(ids) => assign(s.id, ids)}
                                               placeholder="+ measure" emptyHint="no security measures yet"
                                               onClickChip={(id) => { const m = measures.find((x) => x.id === id); if (m) setRec(m); }}
-                                              renderChipExtra={chipExtra} />
+                                              renderChipExtra={chipExtra}
+                                              action={measureTarget ? { label: "From a catalogue…", onPick: () => setPickFor(s.id) } : undefined} />
                                           </div>
                                         </div>
                                         {i < steps.length - 1 && <span className="kcc-arrow" aria-hidden>→</span>}
@@ -175,5 +195,6 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
       </div>
       {rec && <EntityModal type={getType(tax, rec.type)!} tax={tax} study={study} record={rec} onClose={() => setRec(null)} />}
     </div>
+    </>
   );
 }

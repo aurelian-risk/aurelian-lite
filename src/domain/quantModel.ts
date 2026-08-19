@@ -5,7 +5,7 @@
 // Only the loss magnitudes stay as user-estimated distributions. Each factor
 // carries its provenance so the tree can show where it comes from.
 import type { EntityRecord, Study, Taxonomy } from "./types";
-import { getType, scaleLabel, scaleMax } from "./taxonomy";
+import { getType, isSetBack, scaleLabel, scaleMax } from "./taxonomy";
 import { stepFields } from "./killchain";
 import { effectClassOf, type EffectClass } from "./controls";
 import { PERT_LAMBDA, type ChainStep, type QuantInputs, type Range } from "./montecarlo";
@@ -125,7 +125,10 @@ export function coverageOf(study: Study, tax: Taxonomy, op: EntityRecord, cal: C
   const { stepType, parentF, measureType, coversF, implF } = chainTypes(tax);
   if (!stepType || !parentF || !measureType || !coversF) return { mitigated: 0, total: 0, impl: 0, value: 0, steps: [] };
   const steps = study.entities.filter((e) => e.type === stepType.key && e.values[parentF.key] === op.id);
-  const measures = study.entities.filter((e) => e.type === measureType.key);
+  // A measure that is present but set back defends nothing - the coverage matrix and the
+  // framework radar already read it that way, and a quantification that counted it would
+  // answer the same question differently.
+  const measures = study.entities.filter((e) => e.type === measureType.key && !isSetBack(tax, e));
   const implMax = implF ? scaleMax(implF) : 4;
   const implFrac = (m: EntityRecord) => (implF ? Number(m.values[implF.key] ?? 1) : implMax) / implMax;
   let mitigated = 0, covSum = 0, implSum = 0;
