@@ -26,7 +26,7 @@
   ],
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && VITE_LLM=1 vite build",
     "spdx": "node scripts/spdx.mjs",
     "spdx:check": "node scripts/spdx.mjs --check",
     "preview": "vite preview",

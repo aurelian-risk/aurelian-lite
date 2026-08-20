@@ -8,7 +8,7 @@ import { exportToFile, type ExportWhat, type Format } from "../domain/persistenc
 import { cryptoAvailable } from "../domain/crypto";
 import { exportDocs } from "../domain/documents";
 import { getModelId } from "../domain/embeddings";
-import { getGenModelId } from "../domain/generative";
+import { gen } from "../domain/gen";
 import { ImportDialog } from "./ImportDialog";
 import { Icon } from "./ui";
 
@@ -32,7 +32,7 @@ export function DataMenu({ studyScope, label = "Data" }: { studyScope?: Study; l
     let documents; let settings;
     if (what !== "taxonomy") {
       documents = await exportDocs(studyScope ? [studyScope.id] : undefined);
-      settings = { modelId: getModelId(), genModelId: getGenModelId(), theme: document.documentElement.classList.contains("light") ? "light" as const : "dark" as const };
+      settings = { modelId: getModelId(), genModelId: (await gen())?.getGenModelId(), theme: document.documentElement.classList.contains("light") ? "light" as const : "dark" as const };
     }
     await exportToFile(store.exportState(), what, format, { studies: scoped, nameHint, documents, settings, password: encrypt ? password : undefined });
     if (encrypt) setPassword("");
