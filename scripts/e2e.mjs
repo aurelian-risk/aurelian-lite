@@ -6,10 +6,14 @@
 import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const file = "file://" + resolve(here, "../dist/index.html");
+const distPath = resolve(here, "../dist/index.html");
+const file = "file://" + distPath;
+// Built with the generative branch or without it? The artefact says so, so one test file
+// serves both and neither has to be kept in a second version by hand.
+const llmBuild = readFileSync(distPath, "utf8").includes("Smart engine · Language model");
 const shots = "/tmp/ebios-e2e";
 mkdirSync(shots, { recursive: true });
 
@@ -907,7 +911,9 @@ try {
   await page.locator(".page-head button", { hasText: "Extract" }).click();
   await page.waitForTimeout(200);
   ok("extraction dialog opens", (await page.locator(".overlay .modal-lg").count()) > 0);
-  ok("extraction offers fast + smart engines", (await page.locator(".modal-lg .seg-btn", { hasText: "embeddings" }).count()) > 0 && (await page.locator(".modal-lg .seg-btn", { hasText: "local LLM" }).count()) > 0);
+  ok(llmBuild ? "extraction offers fast + smart engines" : "extraction offers the embedding engine alone",
+    (await page.locator(".modal-lg .seg-btn", { hasText: "embeddings" }).count()) > 0
+    && (await page.locator(".modal-lg .seg-btn", { hasText: "local LLM" }).count()) === (llmBuild ? 1 : 0));
   ok("extraction defers model loading to the Model section", (await page.locator(".modal-lg", { hasText: "managed in the" }).count()) > 0);
   ok("extract disabled until a model is loaded", await page.locator(".modal-lg button", { hasText: "Extract" }).isDisabled());
   await page.screenshot({ path: `${shots}/Extraction.png` });
@@ -920,8 +926,14 @@ try {
   const modelBody = await page.locator(".content").innerText();
   ok("model section renders", modelBody.includes("Model") && modelBody.includes("all-MiniLM"));
   ok("model section lists options", (await page.locator(".model-row").count()) >= 2);
-  ok("model section manages the language models too", modelBody.includes("Language model") && modelBody.includes("SmolLM2") && modelBody.includes("Qwen2.5"));
-  ok("model section offers Qwen-3B (WebLLM, level-2 default)", modelBody.includes("Qwen2.5-3B"));
+  // One file, two builds: what the section must show depends on which one this is.
+  if (llmBuild) {
+    ok("model section manages the language models too", modelBody.includes("Language model") && modelBody.includes("SmolLM2") && modelBody.includes("Qwen2.5"));
+    ok("model section offers Qwen-3B (WebLLM, level-2 default)", modelBody.includes("Qwen2.5-3B"));
+  } else {
+    ok("model section is embedding-only (no language model)",
+      !modelBody.includes("Language model") && !modelBody.includes("SmolLM2") && !modelBody.includes("Qwen2.5"));
+  }
   await page.screenshot({ path: `${shots}/Model.png` });
 } catch (e) {
   errors.push("exception: " + (e?.message ?? String(e)));
