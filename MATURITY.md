@@ -10,6 +10,9 @@ analysis aid** that runs entirely in your browser from one HTML file. The data f
 a study written by an earlier version is read by a later one, and where the schema grows, the
 change is stated in the [CHANGELOG](CHANGELOG.md).
 
+**Download:** [`aurelian-lite.html` from the latest release](https://github.com/aurelian-risk/aurelian-lite/releases/latest/download/aurelian-lite.html)
+- one file, no installation.
+
 ## What it is
 
 - A structured **cyber risk analysis** tool inspired by EBIOS RM and ISO/IEC 27005 — for modelling

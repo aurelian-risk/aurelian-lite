@@ -7,6 +7,12 @@
     <a href="MATURITY.md"><img src="https://img.shields.io/badge/status-stable-1f9d55.svg" alt="Status: Stable"></a>
   </p>
   <p>
+    <a href="https://github.com/aurelian-risk/aurelian-lite/releases/latest/download/aurelian-lite.html"><img src="https://img.shields.io/badge/download-aurelian--lite.html-14b8a6.svg?style=for-the-badge" alt="Download aurelian-lite.html"></a>
+  </p>
+  <p>
+    <strong><a href="https://github.com/aurelian-risk/aurelian-lite/releases/latest/download/aurelian-lite.html">Download the latest release</a></strong> — one file, no installation. Double-click to open.
+  </p>
+  <p>
     <a href="CHANGELOG.md">Changelog</a> · <a href="MATURITY.md">Maturity &amp; suitability</a>
   </p>
 </div>
@@ -151,8 +157,10 @@ any modern browser - ideal for sensitive assessments that must stay on a control
 
 ## Getting started
 
-**Run it** - download `index.html` from the [latest release](https://github.com/aurelian-risk/aurelian-lite/releases/latest),
-double-click to open it, and choose **Load sample study** to explore a worked example.
+**Run it** - [download `aurelian-lite.html`](https://github.com/aurelian-risk/aurelian-lite/releases/latest/download/aurelian-lite.html)
+and double-click to open it, then choose **Load sample study** to explore a worked example.
+That link always serves the newest release; the [releases page](https://github.com/aurelian-risk/aurelian-lite/releases)
+lists the earlier ones.
 
 **Build from source**
 
