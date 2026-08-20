@@ -907,6 +907,7 @@ try {
   await page.locator(".page-head button", { hasText: "Extract" }).click();
   await page.waitForTimeout(200);
   ok("extraction dialog opens", (await page.locator(".overlay .modal-lg").count()) > 0);
+  ok("extraction offers fast + smart engines", (await page.locator(".modal-lg .seg-btn", { hasText: "embeddings" }).count()) > 0 && (await page.locator(".modal-lg .seg-btn", { hasText: "local LLM" }).count()) > 0);
   ok("extraction defers model loading to the Model section", (await page.locator(".modal-lg", { hasText: "managed in the" }).count()) > 0);
   ok("extract disabled until a model is loaded", await page.locator(".modal-lg button", { hasText: "Extract" }).isDisabled());
   await page.screenshot({ path: `${shots}/Extraction.png` });
@@ -918,8 +919,9 @@ try {
   await page.waitForTimeout(200);
   const modelBody = await page.locator(".content").innerText();
   ok("model section renders", modelBody.includes("Model") && modelBody.includes("all-MiniLM"));
-  ok("model section lists embedding options", (await page.locator(".model-row").count()) >= 2);
-  ok("model section is embedding-only (no language model)", !modelBody.includes("Language model") && !modelBody.includes("SmolLM2") && !modelBody.includes("Qwen2.5"));
+  ok("model section lists options", (await page.locator(".model-row").count()) >= 2);
+  ok("model section manages the language models too", modelBody.includes("Language model") && modelBody.includes("SmolLM2") && modelBody.includes("Qwen2.5"));
+  ok("model section offers Qwen-3B (WebLLM, level-2 default)", modelBody.includes("Qwen2.5-3B"));
   await page.screenshot({ path: `${shots}/Model.png` });
 } catch (e) {
   errors.push("exception: " + (e?.message ?? String(e)));

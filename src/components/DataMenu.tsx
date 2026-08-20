@@ -5,9 +5,10 @@ import { useState } from "react";
 import type { Study } from "../domain/types";
 import { useStore } from "../domain/store";
 import { exportToFile, type ExportWhat, type Format } from "../domain/persistence";
+import { cryptoAvailable } from "../domain/crypto";
 import { exportDocs } from "../domain/documents";
 import { getModelId } from "../domain/embeddings";
-import { cryptoAvailable } from "../domain/crypto";
+import { getGenModelId } from "../domain/generative";
 import { ImportDialog } from "./ImportDialog";
 import { Icon } from "./ui";
 
@@ -31,7 +32,7 @@ export function DataMenu({ studyScope, label = "Data" }: { studyScope?: Study; l
     let documents; let settings;
     if (what !== "taxonomy") {
       documents = await exportDocs(studyScope ? [studyScope.id] : undefined);
-      settings = { modelId: getModelId(), theme: document.documentElement.classList.contains("light") ? "light" as const : "dark" as const };
+      settings = { modelId: getModelId(), genModelId: getGenModelId(), theme: document.documentElement.classList.contains("light") ? "light" as const : "dark" as const };
     }
     await exportToFile(store.exportState(), what, format, { studies: scoped, nameHint, documents, settings, password: encrypt ? password : undefined });
     if (encrypt) setPassword("");
@@ -54,16 +55,6 @@ export function DataMenu({ studyScope, label = "Data" }: { studyScope?: Study; l
                 </button>
               ))}
             </div>
-            <div className="menu-label">Export {studyScope ? "(this study)" : "(everything)"}</div>
-            <button className="menu-item" onClick={() => doExport("bundle")}>
-              <Icon.download /> Portable session <span className="menu-hint">taxonomy + data + docs + settings</span>
-            </button>
-            <button className="menu-item" onClick={() => doExport("data")}>
-              <Icon.download /> {studyScope ? "This study" : "Studies"} <span className="menu-hint">data only</span>
-            </button>
-            <button className="menu-item" onClick={() => doExport("taxonomy")}>
-              <Icon.schema /> Taxonomy <span className="menu-hint">schema only</span>
-            </button>
             {canEncrypt && (
               <>
                 <div className="menu-label">Protection</div>
@@ -77,6 +68,16 @@ export function DataMenu({ studyScope, label = "Data" }: { studyScope?: Study; l
                 )}
               </>
             )}
+            <div className="menu-label">Export {studyScope ? "(this study)" : "(everything)"}</div>
+            <button className="menu-item" onClick={() => doExport("bundle")}>
+              <Icon.download /> Portable session <span className="menu-hint">taxonomy + data + docs + settings</span>
+            </button>
+            <button className="menu-item" onClick={() => doExport("data")}>
+              <Icon.download /> {studyScope ? "This study" : "Studies"} <span className="menu-hint">data only</span>
+            </button>
+            <button className="menu-item" onClick={() => doExport("taxonomy")}>
+              <Icon.schema /> Taxonomy <span className="menu-hint">schema only</span>
+            </button>
             <div className="menu-sep" />
             <button className="menu-item" onClick={() => { setOpen(false); setImporting(true); }}>
               <Icon.upload /> Import data… <span className="menu-hint">file or paste</span>
