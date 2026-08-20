@@ -27,9 +27,10 @@ self.addEventListener("unhandledrejection", (ev: any) => {
 let genId: string | null = null;
 let run: ((messages: any[], maxTokens: number, onToken: (t: string) => void, prime: string, schema?: string) => Promise<string>) | null = null;
 let webllmEngine: any = null;   // for interruptGenerate()
+let abort: AbortController | null = null;   // for the endpoint path
 let stopper: any = null;        // Transformers.js InterruptableStoppingCriteria
 
-async function load(model: { id: string; backend: string }): Promise<void> {
+async function load(model: { id: string; backend: string; endpoint?: string }): Promise<void> {
   if (run && genId === model.id) return;
   run = null; genId = null; webllmEngine = null;
   if (model.backend === "webllm") {
@@ -53,6 +54,45 @@ async function load(model: { id: string; backend: string }): Promise<void> {
       const stream = await engine.chat.completions.create({ messages, temperature: 0, max_tokens: maxTokens, frequency_penalty: 0.6, presence_penalty: 0.3, stream: true, response_format });
       let full = "";
       for await (const chunk of stream) { const t = chunk.choices?.[0]?.delta?.content || ""; if (t) { full += t; onToken(t); } }
+      return full;
+    };
+  } else if (model.backend === "endpoint") {
+    // Nothing to download and nothing to compile: the model is already running next to
+    // the browser. All that is needed is the address, and the OpenAI shape we already
+    // speak - the same call as WebLLM, over http instead of into the tab.
+    const base = String(model.endpoint || "").replace(/\/+$/, "");
+    if (!base) throw new Error("No address for the local server.");
+    post({ type: "progress", progress: 1, status: `Using the model served at ${base.replace(/^https?:\/\//, "")}` });
+    run = async (messages, maxTokens, onToken, _prime, schema) => {
+      abort = new AbortController();
+      let format: unknown;
+      if (schema) { try { format = { type: "json_schema", schema: JSON.parse(schema) }; } catch { format = { type: "json_object" }; } }
+      const res = await fetch(`${base}/v1/chat/completions`, {
+        method: "POST", headers: { "content-type": "application/json" }, signal: abort.signal,
+        body: JSON.stringify({ model: model.id, messages, temperature: 0, max_tokens: maxTokens,
+          stream: true, ...(format ? { response_format: format } : {}) }),
+      });
+      if (!res.ok || !res.body) throw new Error(`the server at ${base} answered ${res.status}`);
+      // Server-sent events: one "data:" line per delta, "[DONE]" at the end.
+      const reader = res.body.getReader(), dec = new TextDecoder();
+      let buf = "", full = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice(5).trim();
+          if (!payload || payload === "[DONE]") continue;
+          try {
+            const t = JSON.parse(payload)?.choices?.[0]?.delta?.content || "";
+            if (t) { full += t; onToken(t); }
+          } catch { /* a partial line: the next chunk completes it */ }
+        }
+      }
       return full;
     };
   } else {
@@ -92,7 +132,7 @@ async function load(model: { id: string; backend: string }): Promise<void> {
 
 // Retry the load on transient download errors — WebLLM caches each shard, so a
 // re-attempt resumes from the cache and eventually completes over a flaky link.
-async function loadRetry(model: { id: string; backend: string }): Promise<void> {
+async function loadRetry(model: { id: string; backend: string; endpoint?: string }): Promise<void> {
   let lastErr: any;
   for (let i = 0; i < 12; i++) {
     try { await load(model); return; }
@@ -108,7 +148,7 @@ async function loadRetry(model: { id: string; backend: string }): Promise<void> 
 
 self.onmessage = async (e: MessageEvent) => {
   const d = e.data;
-  if (d.type === "cancel") { try { webllmEngine?.interruptGenerate?.(); } catch { /* ignore */ } try { stopper?.interrupt?.(); } catch { /* ignore */ } return; }
+  if (d.type === "cancel") { try { webllmEngine?.interruptGenerate?.(); } catch { /* ignore */ } try { stopper?.interrupt?.(); } catch { /* ignore */ } try { abort?.abort(); } catch { /* ignore */ } return; }
   try {
     if (d.type === "load") { await loadRetry(d.model); post({ type: "loaded", modelId: d.model.id }); }
     else if (d.type === "generate") {
