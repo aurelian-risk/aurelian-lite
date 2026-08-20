@@ -54,5 +54,16 @@ distributed with Aurelian Lite. The built-in default models and their licenses:
                             sentence-transformers/all-MiniLM-L6-v2)
   Xenova/bge-small-en-v1.5  MIT         (port of BAAI/bge-small-en-v1.5)
 
-Each model remains subject to its own license and to the Hugging Face Hub terms.
-Any additional model you add yourself is your responsibility.
+A build made with the generative branch enabled (VITE_LLM=1) also offers extraction
+with a local language model, again downloaded at runtime and never bundled. The
+released build does not carry it:
+
+  HuggingFaceTB/SmolLM2-360M-Instruct        Apache-2.0, Hugging Face
+  Qwen2.5-{0.5B,1.5B,3B}-Instruct (MLC)      Qwen team, Alibaba Cloud; the WebGPU
+                                             builds are converted by MLC AI
+
+The Qwen models are governed by the license the Qwen team publishes with each of
+them, which is not the same for every size — read it before putting one to work.
+
+Each model remains subject to its own license and to the terms of the hub it is
+fetched from. Any additional model you add yourself is your responsibility.
