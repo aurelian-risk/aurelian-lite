@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { embedModelList, getModelId, isLoaded, loadEmbedder, loadedModelId, setModelId } from "../domain/embeddings";
 import { MODEL_FILE, clearModelCache, exportModelPack, importModelPack, isModelCached, tryLoadLocalPack } from "../domain/modelCache";
-import { genModelList, getGenModelId, setGenModelId, genModelById, loadGenModel, isGenLoaded, loadedGenId, hasWebGPU } from "../domain/generative";
+import { genModelList, getGenModelId, setGenModelId, genModelById, loadGenModel, isGenLoaded, loadedGenId, hasWebGPU, probeEndpoint, endpointModelsFound, getEndpoint, setEndpoint, canReachEndpoint } from "../domain/generative";
 import { GEN_FILE, exportGenPack, importGenPack, isGenFilesCached, clearGenFiles } from "../domain/genFileCache";
 import { addUserModel, removeUserModel, isUserModel } from "../domain/modelRegistry";
 import { Icon } from "./ui";
@@ -55,8 +55,18 @@ export function ModelView() {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [endpoint, setEndpointField] = useState(getEndpoint());
+  const [probing, setProbing] = useState(canReachEndpoint());
 
   useEffect(() => { isModelCached().then(setCached); }, [status]);
+  // A model may already be running next to the browser. Ask once on arrival; no answer
+  // is the ordinary case, so it fails quietly and simply offers nothing.
+  useEffect(() => {
+    if (!canReachEndpoint()) return;
+    let live = true;
+    probeEndpoint().then(() => { if (live) { setProbing(false); bump(); } });
+    return () => { live = false; };
+  }, []);
   // Best-effort auto-detect: if a model file sits next to the HTML and the
   // browser allows reading it, load it automatically — no click needed.
   useEffect(() => {
@@ -156,7 +166,10 @@ export function ModelView() {
     setGenBusy(true); setGenPct(0); setGenStatus(`Loading ${m.label} …`);
     try {
       await loadGenModel(m, genProgress(`Loading ${m.label}`));
-      setGenReady(true); setGenCached(true); setGenStatus(`${m.label} ready — runs in your browser.`);
+      setGenReady(true); setGenCached(true);
+      setGenStatus(m.backend === "endpoint"
+        ? `${m.label} ready — served on this machine, outside the browser.`
+        : `${m.label} ready — runs in your browser.`);
     } catch (e) { setGenStatus("Failed: " + (e instanceof Error ? e.message : String(e))); }
     setGenBusy(false);
   };
@@ -240,6 +253,27 @@ export function ModelView() {
           <div className="meta" style={{ color: "var(--fg-subtle)", marginBottom: 10 }}>
             Reads free-form prose and emits structured entities — best for narrative documents. Large (~0.25–2.2 GB); WebGPU recommended; runs in a background worker.
           </div>
+          {/* A model running next to the browser rather than inside it: the only way to
+              one larger than a tab can hold, and it stops without taking the browser
+              with it. The address is where this page came from, because the launcher
+              script has one process serve the page and answer for the model. */}
+          <div className="ep-row">
+            <span className={"ep-dot" + (endpointModelsFound().length ? " on" : "")} />
+            <span className="meta">
+              {probing ? "Looking for a model server on this machine …"
+                : endpointModelsFound().length
+                  ? `${endpointModelsFound().length} model(s) served on this machine — listed below.`
+                  : canReachEndpoint()
+                    ? "No model server answering on this machine. Start one with the launcher script to use a larger model."
+                    : "Opened as a file, so a server on this machine cannot be asked. Start the app with the launcher script to use one."}
+            </span>
+            <input className="ep-addr mono" value={endpoint} spellCheck={false} aria-label="Server address"
+              onChange={(e) => setEndpointField(e.target.value)} />
+            <button className="btn ghost sm" disabled={probing}
+              onClick={() => { setEndpoint(endpoint); setProbing(true); probeEndpoint().then(() => { setProbing(false); bump(); }); }}>
+              Look again
+            </button>
+          </div>
           {genModelList().map((m) => {
             const disabled = m.needsWebGPU && !hasWebGPU();
             return (
@@ -253,7 +287,10 @@ export function ModelView() {
           })}
           <AddModel kind="gen" onAdd={bump} />
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}>
-            <button className="btn primary" disabled={genBusy} onClick={loadGen}><Icon.download /> {genBusy ? "Loading…" : genReady ? "Reload" : "Download & load"}</button>
+            {/* A model that already runs next to the browser is not downloaded, it is used. */}
+            <button className="btn primary" disabled={genBusy} onClick={loadGen}><Icon.download /> {
+              genBusy ? "Loading…" : genReady ? "Reload"
+                : genModelById(genSel).backend === "endpoint" ? "Use this model" : "Download & load"}</button>
             <button className="btn" disabled={genBusy || !genFileCapable} onClick={() => genFileRef.current?.click()}
               title={genFileCapable ? "Pick a saved aurelian-llm.bin — no download" : "Only the SmolLM2 (Transformers.js) model can be saved to a file"}><Icon.upload /> Use file…</button>
             <button className="btn" disabled={genBusy || !genFileCapable || !genCached} onClick={saveGenFile}

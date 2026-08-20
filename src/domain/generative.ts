@@ -13,9 +13,10 @@ import type { TypeCandidates, Candidate } from "./extraction";
 import { getUserModels } from "./modelRegistry";
 
 type Progress = { status?: string; text?: string; progress?: number; file?: string; tokens?: number; chunk?: number; chunks?: number };
-export type GenBackend = "webllm" | "transformers";
+export type GenBackend = "webllm" | "transformers" | "endpoint";
 
-export interface GenModel { id: string; label: string; size: string; note: string; backend: GenBackend; needsWebGPU: boolean }
+export interface GenModel { id: string; label: string; size: string; note: string; backend: GenBackend; needsWebGPU: boolean;
+  /** endpoint backend only: where the model answers. */ endpoint?: string }
 // Curated: WebLLM-Qwen (grammar-constrained JSON, the reliable path) in three
 // sizes, plus one no-WebGPU fallback. Any other model can be added via the hub.
 export const GEN_MODELS: GenModel[] = [
@@ -30,10 +31,64 @@ export const defaultGenModel = (): GenModel => (hasWebGPU() ? GEN_MODELS[0] : GE
 
 /** Built-in generative models + user-added ones from the registry. */
 export function genModelList(): GenModel[] {
-  return [...GEN_MODELS, ...getUserModels().filter((m) => m.kind === "gen").map((m) => ({
+  return [...endpointModels, ...GEN_MODELS, ...getUserModels().filter((m) => m.kind === "gen").map((m) => ({
     id: m.id, label: m.label, size: m.size ?? "custom", note: m.note ?? "user-added",
     backend: m.backend, needsWebGPU: m.backend === "webllm" ? true : !!m.needsWebGPU,
   }))];
+}
+
+// ── A model that answers on this machine, outside the browser ────────────────────
+// The third way to run one: not in the tab, but as a process next to it, reached over
+// http. It is the only way to a model larger than a browser tab can hold, and it is the
+// safer one - a process can be stopped without taking the browser with it.
+//
+// The default address is wherever this page came from. That is not a guess: llama-server
+// serves static files with --path, so the page and the model answer on ONE address, which
+// is what the launcher script sets up. Anything else is entered by hand.
+const LS_ENDPOINT = "ebios_offline_gen_endpoint";
+const sameOrigin = (): string =>
+  typeof location !== "undefined" && /^https?:/.test(location.protocol) ? location.origin : "http://127.0.0.1:8127";
+export function getEndpoint(): string {
+  try { return localStorage.getItem(LS_ENDPOINT) || sameOrigin(); } catch { return sameOrigin(); }
+}
+export function setEndpoint(url: string): void {
+  try { url.trim() ? localStorage.setItem(LS_ENDPOINT, url.trim().replace(/\/+$/, "")) : localStorage.removeItem(LS_ENDPOINT); } catch { /* ignore */ }
+}
+
+/** Worth asking at all? A page opened from a file has no origin a server would accept,
+ *  so the request is refused before it is sent - and the only thing it would achieve is
+ *  an error in the console on every visit. Served over http, asking makes sense: it is
+ *  how the page got here. */
+export const canReachEndpoint = (): boolean =>
+  typeof location !== "undefined" && /^https?:/.test(location.protocol);
+
+let endpointModels: GenModel[] = [];
+export const endpointModelsFound = (): GenModel[] => endpointModels;
+
+/** Ask an OpenAI-shaped server what it serves. Never throws: no server is the normal
+ *  case, not an error, and the answer has to come back quickly enough to be asked on
+ *  every visit to the model section. */
+export async function probeEndpoint(base = getEndpoint()): Promise<GenModel[]> {
+  const where = base.replace(/^https?:\/\//, "");
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 1500);
+    const r = await fetch(`${base}/v1/models`, { signal: ctl.signal });
+    clearTimeout(t);
+    if (!r.ok) throw new Error(String(r.status));
+    const data = (await r.json())?.data;
+    endpointModels = (Array.isArray(data) ? data : []).map((m: { id?: string }) => {
+      const id = String(m?.id ?? "");
+      return {
+        id, backend: "endpoint" as GenBackend, needsWebGPU: false, endpoint: base,
+        label: id.replace(/\.gguf$/i, "").split(/[\\/]/).pop()!.slice(0, 44) || id,
+        size: "on the server", note: `runs outside the browser · ${where}`,
+      };
+    }).filter((m) => m.id);
+  } catch {
+    endpointModels = [];
+  }
+  return endpointModels;
 }
 
 const LS_GEN = "ebios_offline_gen_model";
@@ -90,7 +145,7 @@ export async function loadGenModel(model: GenModel, onProgress?: (p: Progress) =
   if (genId === model.id) return;
   if (model.needsWebGPU && !hasWebGPU()) throw new Error("This model needs WebGPU — pick the SmolLM2 (WASM) model, or use a browser with WebGPU.");
   const w = await ensureWorker();
-  await new Promise<void>((resolve, reject) => { loadWaiter = { resolve, reject, onProgress }; w.postMessage({ type: "load", model: { id: model.id, backend: model.backend } }); });
+  await new Promise<void>((resolve, reject) => { loadWaiter = { resolve, reject, onProgress }; w.postMessage({ type: "load", model: { id: model.id, backend: model.backend, endpoint: model.endpoint } }); });
   genId = model.id;
 }
 
