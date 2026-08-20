@@ -24,16 +24,18 @@ It runs on the main thread (no web worker) so it works from a `file://` URL.
 
 ## Loaded at runtime from a public CDN (NOT bundled)
 
-Assisted extraction dynamically imports Transformers.js from a public CDN only
-when the user enables it; it is not part of the distributed file.
+Assisted extraction dynamically imports these from a public CDN only when the
+user enables it; neither is part of the distributed file.
 
 | Package | License | Copyright |
 | --- | --- | --- |
 | `@huggingface/transformers` (Transformers.js) | Apache-2.0 | Copyright (c) Hugging Face |
+| `@mlc-ai/web-llm` (WebLLM) | Apache-2.0 | Copyright (c) MLC AI |
 
-Transformers.js is used under the Apache License, Version 2.0. The full license
-text is available at https://www.apache.org/licenses/LICENSE-2.0 and the
-project's own `NOTICE` at https://github.com/huggingface/transformers.js .
+Both are used under the Apache License, Version 2.0. The full license text is
+available at https://www.apache.org/licenses/LICENSE-2.0, and each project's own
+`NOTICE` at https://github.com/huggingface/transformers.js and
+https://github.com/mlc-ai/web-llm .
 
 ---
 
@@ -75,7 +77,7 @@ PERFORMANCE OF THIS SOFTWARE.
 
 ### Apache License 2.0 (summary reference)
 
-PDF.js (`pdfjs-dist`, bundled) and Transformers.js (runtime CDN) are licensed
+PDF.js (`pdfjs-dist`, bundled), Transformers.js and WebLLM (both runtime CDN) are licensed
 under the Apache License, Version 2.0 ("License"); you may not use those
 components except in compliance with the License. A copy of the License is
 available at:
