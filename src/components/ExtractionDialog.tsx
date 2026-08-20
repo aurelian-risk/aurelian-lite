@@ -9,7 +9,7 @@ import { useActiveStudy, useStore } from "../domain/store";
 import { getType } from "../domain/taxonomy";
 import { getDocText, viewTextTransient } from "../domain/documents";
 import { extractByEmbeddings, type TypeCandidates, type Candidate } from "../domain/extraction";
-import { extractByLLM, genModelById, loadedGenId, cancelGeneration, GEN_MAX_TOKENS } from "../domain/generative";
+import { LLM, gen, genNow } from "../domain/gen";
 import { isLoaded } from "../domain/embeddings";
 import { Icon } from "./ui";
 
@@ -34,7 +34,11 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
 
   // Which models are loaded (loading is done in the Model section, not here).
   const embLoaded = isLoaded();
-  const genLoaded = loadedGenId();
+  // The generative branch is a build away, not an import away: a build made without it
+  // never resolves this, and every use below is guarded on the result.
+  const [G, setG] = useState(genNow());
+  useEffect(() => { let live = true; gen().then((m) => { if (live && m) setG(m); }); return () => { live = false; }; }, []);
+  const genLoaded = G?.loadedGenId() ?? null;
   const [engine, setEngine] = useState<"fast" | "smart">(embLoaded ? "fast" : genLoaded ? "smart" : "fast");
   const engineReady = engine === "fast" ? embLoaded : !!genLoaded;
 
@@ -56,7 +60,7 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
       if (engine === "smart") {
         setPhase("load"); setStatus("Preparing model …");
         const t0 = performance.now();
-        g = await extractByLLM(tax, text, genModelById(genLoaded!), (p) => {
+        g = await G!.extractByLLM(tax, text, G!.genModelById(genLoaded!), (p) => {
           if (p.status !== "generating") {
             setPhase("load"); setPct(Math.round((p.progress ?? 0) * 100));
             setStatus(p.file ? `Loading ${p.file} …` : "Preparing model …");
@@ -65,7 +69,7 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
           const txt = p.text ?? "";
           setLive(txt);
           setPhase("read");
-          setPct(Math.min(99, Math.round(((p.tokens ?? 0) / GEN_MAX_TOKENS) * 100)));
+          setPct(Math.min(99, Math.round(((p.tokens ?? 0) / G!.GEN_MAX_TOKENS) * 100)));
           const ents = (txt.match(/"type"\s*:/g) || []).length;
           const secs = Math.max(1, Math.round((performance.now() - t0) / 1000));
           const rate = Math.round((p.tokens ?? 0) / secs);
@@ -87,7 +91,7 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
     } catch (e) { setStatus("Extraction failed: " + (e instanceof Error ? e.message : String(e))); }
     setBusy(false); setPhase("");
   };
-  const cancel = () => { cancelGeneration(); setStatus("Stopping — keeping whatever was extracted so far …"); };
+  const cancel = () => { G?.cancelGeneration(); setStatus("Stopping — keeping whatever was extracted so far …"); };
   const toggle = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const addSelected = () => {
     if (!active || !groups) return;
@@ -164,9 +168,11 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
               <button className={"seg-btn" + (engine === "fast" ? " on" : "")} disabled={!embLoaded}
                 title={embLoaded ? "Embeddings — best for structured text" : "Load the embedding model in the Model section"}
                 onClick={() => { setEngine("fast"); setGroups(null); }}>Fast · embeddings{embLoaded ? "" : " (not loaded)"}</button>
-              <button className={"seg-btn" + (engine === "smart" ? " on" : "")} disabled={!genLoaded}
-                title={genLoaded ? "Local LLM — reads free-form prose" : "Load a language model in the Model section"}
-                onClick={() => { setEngine("smart"); setGroups(null); }}>Smart · local LLM{genLoaded ? "" : " (not loaded)"}</button>
+              {LLM && (
+                <button className={"seg-btn" + (engine === "smart" ? " on" : "")} disabled={!genLoaded}
+                  title={genLoaded ? "Local LLM — reads free-form prose" : "Load a language model in the Model section"}
+                  onClick={() => { setEngine("smart"); setGroups(null); }}>Smart · local LLM{genLoaded ? "" : " (not loaded)"}</button>
+              )}
             </div>
           </div>
 
@@ -174,8 +180,8 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
             {engineReady
               ? (engine === "fast"
                 ? <span><strong>Fast engine.</strong> Embeddings classify sentences into the taxonomy — best for structured / list-like documents.</span>
-                : <span><strong>Smart engine ({genModelById(genLoaded!).label}).</strong> A local language model reads narrative prose and emits structured entities.</span>)
-              : <span><strong>No extraction model is loaded.</strong> Models are managed in the <strong>Model</strong> section (sidebar): open it, download &amp; load the fast embedding model and/or a smart language model, then come back here to extract.</span>}
+                : <span><strong>Smart engine ({G!.genModelById(genLoaded!).label}).</strong> A local language model reads narrative prose and emits structured entities.</span>)
+              : <span><strong>No extraction model is loaded.</strong> Models are managed in the <strong>Model</strong> section (sidebar): open it, download &amp; load the fast embedding model{LLM ? " and/or a smart language model" : ""}, then come back here to extract.</span>}
 
             <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
               <button className="btn primary" disabled={busy || !engineReady} onClick={run}>
