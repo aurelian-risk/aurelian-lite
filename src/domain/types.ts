@@ -209,10 +209,11 @@ export interface RefDocRecord {
 }
 
 /** App-level settings that travel with a fully portable export. Model WEIGHTS
- *  are never included (too large — the embedding model is a separate .bin);
- *  only the selections. */
+ *  are never included (too large — the embedding model is a separate .bin, the
+ *  language model is re-fetched/cached by its library); only the selections. */
 export interface PortableSettings {
   modelId?: string;      // selected embedding model
+  genModelId?: string;   // selected generative (language) model
   theme?: "light" | "dark";
 }
 
