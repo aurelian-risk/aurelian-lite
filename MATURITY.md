@@ -3,11 +3,12 @@
 This document states honestly what Aurelian Lite **is** and **is not**, so that institutions can
 weigh the investment fairly. Read it alongside the [LICENSE](LICENSE) (Mozilla Public License 2.0 — provided "as is").
 
-## Status: Beta
+## Status: Stable
 
-Aurelian Lite is usable and actively developed, but pre-1.0. It is a **single-user, desktop-class
-analysis aid** that runs entirely in your browser from one HTML file. Expect the data format and
-some interfaces to still change between minor versions.
+Aurelian Lite is in productive use and actively developed. It is a **single-user, desktop-class
+analysis aid** that runs entirely in your browser from one HTML file. The data format is settled:
+a study written by an earlier version is read by a later one, and where the schema grows, the
+change is stated in the [CHANGELOG](CHANGELOG.md).
 
 ## What it is
 
@@ -36,8 +37,8 @@ some interfaces to still change between minor versions.
 
 ## Data & format stability
 
-- Studies and the taxonomy are stored/exported as JSON/YAML. The schema may evolve; older exports
-  may need re-import or a taxonomy "Reset default" after upgrades. Keep your own backups.
+- Studies and the taxonomy are stored/exported as JSON/YAML. The schema is migrated forward on
+  load, so an older export opens in a newer build. Keep your own backups all the same.
 - Model weights are never bundled or exported; on-device embedding models are fetched at runtime by
   their library and cached.
 

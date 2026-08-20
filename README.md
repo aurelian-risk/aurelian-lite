@@ -4,7 +4,7 @@
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MPL--2.0-14b8a6.svg" alt="License: MPL-2.0"></a>
     <img src="https://img.shields.io/badge/runs-100%25%20offline-1f9d55" alt="Runs 100% offline">
-    <a href="MATURITY.md"><img src="https://img.shields.io/badge/status-beta-e0a13a.svg" alt="Status: Beta"></a>
+    <a href="MATURITY.md"><img src="https://img.shields.io/badge/status-stable-1f9d55.svg" alt="Status: Stable"></a>
   </p>
   <p>
     <a href="CHANGELOG.md">Changelog</a> · <a href="MATURITY.md">Maturity &amp; suitability</a>
