@@ -9,6 +9,7 @@ import { pickTextFile, parseBundle } from "../domain/persistence";
 import { isEncrypted, decryptText } from "../domain/crypto";
 import { importDocs } from "../domain/documents";
 import { setModelId } from "../domain/embeddings";
+import { gen } from "../domain/gen";
 import { diffBundle, diffTotals, demoRevision, type StudyDiff, type FieldDelta } from "../domain/importdiff";
 import { verifyLog, verdictText, type LogVerdict } from "../domain/audit";
 import type { Bundle, FieldValue } from "../domain/types";
@@ -81,6 +82,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
     if (b.documents?.length) await importDocs(b.documents);
     if (b.settings) {
       if (b.settings.modelId) setModelId(b.settings.modelId);
+      if (b.settings.genModelId) (await gen())?.setGenModelId(b.settings.genModelId);
       if (b.settings.theme) { const el = document.documentElement; el.classList.toggle("light", b.settings.theme === "light"); el.classList.toggle("dark", b.settings.theme !== "light"); }
     }
     onClose();

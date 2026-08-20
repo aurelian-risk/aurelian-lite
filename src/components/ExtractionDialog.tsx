@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
-// Extraction view: load a document's text (transiently) and run the embedding
-// model that is already loaded (managed entirely in the Model section) to propose
-// candidate entities grouped by the taxonomy. This view never downloads or loads
-// models — if none is loaded there is nothing to run.
+// Extraction view: load a document's text (transiently) and run a model that is
+// already loaded (managed entirely in the Model section) to propose candidate
+// entities grouped by the taxonomy. This view never downloads or loads models —
+// if none is loaded there is nothing to run.
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useActiveStudy, useStore } from "../domain/store";
 import { getType } from "../domain/taxonomy";
 import { getDocText, viewTextTransient } from "../domain/documents";
 import { extractByEmbeddings, type TypeCandidates, type Candidate } from "../domain/extraction";
+import { LLM, gen, genNow } from "../domain/gen";
 import { isLoaded } from "../domain/embeddings";
 import { Icon } from "./ui";
 
@@ -20,6 +21,9 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
   const [text, setText] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [live, setLive] = useState("");
+  const [phase, setPhase] = useState<"load" | "read" | "validate" | "">("");
+  const [pct, setPct] = useState(0);
   const [groups, setGroups] = useState<TypeCandidates[] | null>(null);
   /** Candidates the user re-classified: original id → the type it should become. The id
    *  stays the one it was found under, so the selection survives a re-classification. */
@@ -28,8 +32,15 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
   const [opened, setOpened] = useState<Set<string>>(new Set());
   const [sel, setSel] = useState<Set<string>>(new Set());
 
-  // The embedding model is loaded in the Model section, not here.
+  // Which models are loaded (loading is done in the Model section, not here).
   const embLoaded = isLoaded();
+  // The generative branch is a build away, not an import away: a build made without it
+  // never resolves this, and every use below is guarded on the result.
+  const [G, setG] = useState(genNow());
+  useEffect(() => { let live = true; gen().then((m) => { if (live && m) setG(m); }); return () => { live = false; }; }, []);
+  const genLoaded = G?.loadedGenId() ?? null;
+  const [engine, setEngine] = useState<"fast" | "smart">(embLoaded ? "fast" : genLoaded ? "smart" : "fast");
+  const engineReady = engine === "fast" ? embLoaded : !!genLoaded;
 
   // Auto-load the reference's cached text when opened from a specific document.
   useEffect(() => {
@@ -41,21 +52,46 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
     try { const v = await viewTextTransient(); if (v) { setText(v.text); if (!name) setName(v.name); setGroups(null); } } catch { /* ignore */ }
   };
   const run = async () => {
-    if (!embLoaded) return;
+    if (!engineReady) return;
     if (!text.trim()) { setStatus("Add document text first — paste it or use “Open file”."); return; }
-    setBusy(true); setGroups(null); setSel(new Set());
+    setBusy(true); setGroups(null); setSel(new Set()); setLive(""); setPct(0); setPhase("");
     try {
-      setStatus("Extracting …");
-      await new Promise((r) => setTimeout(r, 30)); // let the spinner paint first
-      const g = await extractByEmbeddings(tax, text, { studyEntities: active?.entities });
+      let g: TypeCandidates[];
+      if (engine === "smart") {
+        setPhase("load"); setStatus("Preparing model …");
+        const t0 = performance.now();
+        g = await G!.extractByLLM(tax, text, G!.genModelById(genLoaded!), (p) => {
+          if (p.status !== "generating") {
+            setPhase("load"); setPct(Math.round((p.progress ?? 0) * 100));
+            setStatus(p.file ? `Loading ${p.file} …` : "Preparing model …");
+            return;
+          }
+          const txt = p.text ?? "";
+          setLive(txt);
+          setPhase("read");
+          setPct(Math.min(99, Math.round(((p.tokens ?? 0) / G!.GEN_MAX_TOKENS) * 100)));
+          const ents = (txt.match(/"type"\s*:/g) || []).length;
+          const secs = Math.max(1, Math.round((performance.now() - t0) / 1000));
+          const rate = Math.round((p.tokens ?? 0) / secs);
+          const chunk = p.chunks && p.chunks > 1 ? `chunk ${p.chunk}/${p.chunks} · ` : "";
+          setStatus(`Generating — ${chunk}${p.tokens ?? 0} tokens · ~${ents} entities · ${secs}s · ${rate} tok/s`);
+        });
+        setPhase("validate"); setPct(100); setStatus("Validating extracted entities …");
+        await new Promise((r) => setTimeout(r, 20));
+      } else {
+        setStatus("Extracting …");
+        await new Promise((r) => setTimeout(r, 30)); // let the spinner paint first
+        g = await extractByEmbeddings(tax, text, { studyEntities: active?.entities });
+      }
       // Pre-select confident candidates; leave "uncertain" ones for the user.
       const pre = new Set<string>();
       g.forEach((grp) => grp.candidates.forEach((c, i) => { if (!c.uncertain) pre.add(grp.typeKey + ":" + i); }));
       setGroups(g); setSel(pre);
       setStatus(`Found candidates in ${g.length} type(s) — ${pre.size} pre-selected.`);
     } catch (e) { setStatus("Extraction failed: " + (e instanceof Error ? e.message : String(e))); }
-    setBusy(false);
+    setBusy(false); setPhase("");
   };
+  const cancel = () => { G?.cancelGeneration(); setStatus("Stopping — keeping whatever was extracted so far …"); };
   const toggle = (id: string) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const addSelected = () => {
     if (!active || !groups) return;
@@ -126,20 +162,54 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
           <div className="field"><label>Text</label>
             <textarea style={{ minHeight: 130 }} value={text} onChange={(e) => { setText(e.target.value); setGroups(null); }} placeholder="Paste document text, or use “Open file” (content is read transiently, not stored)…" /></div>
 
+          <div className="field" style={{ marginBottom: 8 }}>
+            <label>Engine</label>
+            <div className="seg" style={{ padding: 0 }}>
+              <button className={"seg-btn" + (engine === "fast" ? " on" : "")} disabled={!embLoaded}
+                title={embLoaded ? "Embeddings — best for structured text" : "Load the embedding model in the Model section"}
+                onClick={() => { setEngine("fast"); setGroups(null); }}>Fast · embeddings{embLoaded ? "" : " (not loaded)"}</button>
+              {LLM && (
+                <button className={"seg-btn" + (engine === "smart" ? " on" : "")} disabled={!genLoaded}
+                  title={genLoaded ? "Local LLM — reads free-form prose" : "Load a language model in the Model section"}
+                  onClick={() => { setEngine("smart"); setGroups(null); }}>Smart · local LLM{genLoaded ? "" : " (not loaded)"}</button>
+              )}
+            </div>
+          </div>
+
           <div className="guide" style={{ marginTop: 4 }}>
-            {embLoaded
-              ? <span><strong>Embedding extraction.</strong> The model classifies sentences into the taxonomy — best for structured / list-like documents.</span>
-              : <span><strong>No extraction model is loaded.</strong> The embedding model is managed in the <strong>Model</strong> section (sidebar): open it, download &amp; load the model, then come back here to extract.</span>}
+            {engineReady
+              ? (engine === "fast"
+                ? <span><strong>Fast engine.</strong> Embeddings classify sentences into the taxonomy — best for structured / list-like documents.</span>
+                : <span><strong>Smart engine ({G!.genModelById(genLoaded!).label}).</strong> A local language model reads narrative prose and emits structured entities.</span>)
+              : <span><strong>No extraction model is loaded.</strong> Models are managed in the <strong>Model</strong> section (sidebar): open it, download &amp; load the fast embedding model{LLM ? " and/or a smart language model" : ""}, then come back here to extract.</span>}
 
             <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
-              <button className="btn primary" disabled={busy || !embLoaded} onClick={run}>
+              <button className="btn primary" disabled={busy || !engineReady} onClick={run}>
                 <Icon.spark /> {busy ? "Working…" : "Extract"}
               </button>
+              {busy && engine === "smart" && <button className="btn ghost danger" onClick={cancel}>Stop</button>}
               {busy && <span className="spinner" aria-hidden />}
             </div>
 
+            {busy && engine === "smart" && (
+              <div style={{ marginTop: 12 }}>
+                <div className="phases">
+                  {([["load", "Load model"], ["read", "Read document"], ["validate", "Validate"]] as const).map(([k, lbl], i) => {
+                    const order = { load: 0, read: 1, validate: 2 } as const;
+                    const cur = phase ? order[phase] : -1;
+                    const st = cur > i ? "done" : cur === i ? "on" : "";
+                    return <span key={k} className={"phase " + st}><span className="phase-dot">{cur > i ? "✓" : i + 1}</span>{lbl}</span>;
+                  })}
+                </div>
+                <div className="pbar"><span style={{ width: pct + "%" }} /></div>
+              </div>
+            )}
+
             {(busy || status) && <div className="hint" style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
               {busy && <span className="spinner sm" aria-hidden />}<span>{status}</span></div>}
+            {engine === "smart" && live && (
+              <pre className="gen-live" ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}>{live.slice(-900)}</pre>
+            )}
           </div>
 
           {groups && (groups.length === 0
