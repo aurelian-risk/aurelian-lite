@@ -12,10 +12,9 @@
 </div>
 
 > **This is the `development` branch.** It carries everything the released version has, plus
-> **generative extraction with a local language model** — the "smart" engine beside the
-> embedding one. That path is being developed and tested; it is not part of a release yet.
-> The language model runs in your browser like the embedding model does, and is downloaded
-> once from a public source on first use.
+> whatever is currently being built and tested. Those parts are not in a release yet and may
+> still change or be withdrawn. What has settled moves to `main` and ships there; the
+> [CHANGELOG](CHANGELOG.md) records it when it does.
 >
 > For the released, tested version, use
 > [`main`](https://github.com/aurelian-risk/aurelian-lite/tree/main) or
@@ -151,14 +150,8 @@ nothing is added automatically, and nothing is ever uploaded.
 
 The model (for example `all-MiniLM-L6-v2`, ~25 MB) is downloaded once from a public source and
 then cached locally - or kept as a portable file next to the app - so from then on extraction
-works fully offline.
-
-On this branch a second engine sits beside it: a **local language model** (SmolLM2-360M on
-WASM, or Qwen2.5 on WebGPU) that reads the same passages and proposes entities with their
-fields filled in, rather than matching them. It runs on your device exactly as the embedding
-model does. Both engines are optional and opt-in: they only ever propose, you decide what
-enters the study, and everything else in Aurelian Lite is deterministic and works without
-either.
+works fully offline. It is the one optional, opt-in piece of intelligence in an otherwise
+deterministic tool; everything else in Aurelian Lite works without it.
 
 ## Private and offline by design
 
@@ -241,9 +234,6 @@ Full details are in [`NOTICE`](NOTICE) (data sources and trademarks) and
 - **On-device embedding models** (`all-MiniLM-L6-v2`, Apache-2.0;
   `bge-small-en-v1.5`, MIT) download from the Hugging Face Hub at runtime and are
   not bundled with the app.
-- **On-device language models** (`SmolLM2-360M-Instruct`, Apache-2.0, Hugging Face;
-  `Qwen2.5-Instruct`, Qwen team / Alibaba Cloud, WebGPU builds converted by MLC AI)
-  likewise download at runtime and are not bundled. See [NOTICE](NOTICE).
 
 None of the organisations named above endorse or are affiliated with this project.
 
