@@ -28,6 +28,11 @@ export interface ClassificationLink {
   /** The catalogue-backed type whose items name the classes they apply to. */
   itemType: string;
   itemField: FieldDef;
+  /** Where the account of WHY an item was placed here belongs, if the type has somewhere
+   *  to put it. Found by the taxonomy declaring `accountsForDerivation` on a text field -
+   *  not by a fixed key, which was a product's word sitting in engine code and made the
+   *  engine unusable by any product that spells it differently. */
+  accountField?: FieldDef;
 }
 
 /** Find the classification the taxonomy declares, if it declares one.
@@ -46,7 +51,8 @@ export function classificationLink(tax: Taxonomy): ClassificationLink | null {
         if (ot.key === t.type.key) continue;
         const objectField = ot.fields.find((f) => f.vocabulary === itemField.vocabulary && f.type === "enum");
         if (objectField) {
-          return { source: itemField.vocabulary, objectType: ot.key, objectField, itemType: t.type.key, itemField };
+          return { source: itemField.vocabulary, objectType: ot.key, objectField, itemType: t.type.key, itemField,
+            accountField: t.type.fields.find((f) => f.accountsForDerivation) };
         }
       }
     }

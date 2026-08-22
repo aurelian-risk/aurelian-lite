@@ -682,26 +682,45 @@ try {
   // itself; anyone holding the file can recompute it, so it catches accident rather than
   // intent. A seal signs the head, so rewriting the past needs a private key.
   {
-    ok("the timeline offers seals", (await page.locator(".panel", { has: page.locator(".sp-keys") }).count()) === 1);
-    const panel = page.locator(".panel", { has: page.locator(".sp-keys") });
-    ok("...saying plainly that a signature carries no time",
-      /does not prove when it was made/i.test(await panel.innerText()));
-    ok("...and refusing to seal before there is a key",
-      await panel.locator("button", { hasText: "Seal this study" }).isDisabled());
-    await panel.locator("button", { hasText: "Create one" }).click();
-    await page.waitForTimeout(600);
-    const withKey = await panel.innerText();
-    ok("a signing key can be made here", /Signing as/.test(withKey), withKey.split("\n").find((l) => /Signing as/.test(l)) ?? "");
-    ok("...and the loss of it is stated before it can happen", /cannot seal as this identity again/i.test(withKey));
+    const panel = page.locator(".panel.sp");
+    ok("the timeline offers seals", (await panel.count()) === 1);
+    ok("...refusing to seal before there is a key", await panel.locator(".panel-head .btn.primary").isDisabled());
+    // The explanation is a dialog, not a wall on the page: the panel says the verdict, and
+    // what a signature does and does not prove is one click away for whoever wants it.
+    await panel.locator("button", { hasText: "What does a seal prove" }).click();
+    await page.waitForSelector(".sp-modal", { timeout: 5000 });
+    const proves = await page.locator(".sp-modal").innerText();
+    ok("...and explains itself in a dialog rather than on the page",
+      /does not prove when/i.test(proves) && /does not prove who/i.test(proves));
+    await page.locator(".sp-modal button", { hasText: "Close" }).click();
+    await page.waitForTimeout(250);
 
-    page.once("dialog", (d) => d.accept("M. Westerberg"));
-    await panel.locator("button", { hasText: "Seal this study" }).click();
+    await panel.locator("button", { hasText: "Keys" }).click();
+    await page.waitForSelector(".sp-modal", { timeout: 5000 });
+    await page.locator(".sp-modal button", { hasText: "Create a key" }).click();
+    await page.waitForTimeout(700);
+    const keysDlg = await page.locator(".sp-modal").innerText();
+    ok("a signing key is made in the keys dialog", /Save public key/.test(keysDlg));
+    ok("...and the public half can be saved as a file too", /Save public key/.test(keysDlg) && /Save private key/.test(keysDlg));
+    // Close by the overlay only: the last ghost button in this dialog is the "forget this
+    // key" bin, and clicking it emptied the ring the next assertion is about.
+    await page.locator(".overlay").click({ position: { x: 5, y: 5 } });
+    await page.waitForTimeout(300);
+
+    await panel.locator(".panel-head .btn.primary").click();
+    await page.waitForSelector(".sp-modal", { timeout: 5000 });
+    await page.locator(".sp-modal input").first().fill("M. Westerberg");
+    await page.locator(".sp-modal .btn.primary").click();
     await page.waitForTimeout(900);
-    ok("the study can be sealed", (await panel.locator(".sp-seal.sp-ok").count()) === 1,
-      await panel.locator(".sp-seal").first().innerText().catch(() => ""));
-    ok("...and the seal reads as covering the log so far",
-      /covers \d+ entries/.test(await panel.locator(".sp-seal").first().innerText()));
-    // A seal is an entry like any other, so the chain still has to verify with it in.
+    const sealed = await panel.locator(".sp-seal").first().innerText().catch(() => "");
+    ok("the study can be sealed from a dialog", (await panel.locator(".sp-seal").count()) === 1, sealed);
+    // The seal's own key was named when it was created, so it reads as verified rather
+    // than merely valid.
+    if ((await panel.locator(".sp-seal.sp-verified").count()) !== 1) console.log("   seal row:", sealed.replace(/\n/g, " | "));
+    ok("...and reads as verified, because the key is one you named",
+      (await panel.locator(".sp-seal.sp-verified").count()) === 1);
+    ok("...saying what it covers, and that nothing followed it",
+      /covers entries 1–\d+/.test(sealed) && /records unchanged since/.test(sealed), sealed);
     ok("...while the chain itself still verifies",
       /integrity verified/i.test(await page.locator(".tl-stats").innerText()));
   }
@@ -1073,8 +1092,17 @@ try {
     await page.waitForSelector(".menu-pop", { timeout: 8000 });
     const menu = page.locator(".menu-pop").first();
     const body = await menu.innerText().catch(() => "");
-    ok("the export offers both kinds of protection", /Password/.test(body) && /To a key/.test(body), body.split("\n").slice(0, 4).join(" · "));
-    await menu.locator(".seg-btn", { hasText: "To a key" }).click();
+    // Escape closes a drop-down. Without it the backdrop takes the click and nothing else,
+    // and a reader reaching for the habitual way out finds the page apparently stuck -
+    // which then fails a later, unrelated interaction.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(250);
+    ok("Escape closes the export menu", (await page.locator(".menu-pop").count()) === 0);
+    await page.locator("button", { hasText: "Export / Import" }).first().click();
+    await page.waitForSelector(".menu-pop", { timeout: 8000 });
+    if (!(/Password/.test(body) && /Key/.test(body))) console.log("   menu:", body.replace(/\n/g, " | ").slice(0, 160));
+    ok("the export offers both kinds of protection", /Password/.test(body) && /\bKey\b/.test(body));
+    await menu.locator(".seg-btn", { hasText: /^Key$/ }).click();
     await page.waitForTimeout(250);
     const rows = await menu.locator(".menu-to-row").count();
     ok("...listing the keys that have been named", rows >= 1, `${rows} recipients`);

@@ -83,7 +83,23 @@ for (let i = 0; i < stopped.length; i++) {
   ok(`scenario ${i + 1}: stopped + through accounts for every attempt`, Math.abs(sum - 100) <= 1, `${sum}%`);
 }
 
-// ── 4. still offline ────────────────────────────────────────────────────────
+// ── 4. the loss figures are readable, and true ──────────────────────────────
+// A curve nobody can read is a picture, not a finding. The report has to say which
+// ordinary year actually costs anything - and it must not invent one that does not.
+{
+  ok("the report says how many years cost nothing", /\d+ years in 100 cost nothing at all/.test(md));
+  const ref = md.match(/one year in (two|five|ten|twenty|fifty|a hundred)/);
+  ok("...and names an ordinary year, in words", !!ref, ref?.[0]);
+  // With N% of years quiet, the marked year cannot be more frequent than the rest.
+  const quiet = Number(md.match(/(\d+) years in 100 cost nothing/)?.[1] ?? 0);
+  const chance = { "two": 50, "five": 20, "ten": 10, "twenty": 5, "fifty": 2, "a hundred": 1 }[ref?.[1] ?? ""] ?? 0;
+  ok("...one that actually happens, given how many years are quiet", chance <= 100 - quiet,
+    `${ref?.[0]} against ${100 - quiet}% of years with any loss`);
+  ok("the curve is read as frequencies, not as bare percentages", /1 in 50|1 in 20|1 in 10/.test(md));
+  ok("...and no longer as a bare probability axis", !/P\(loss/.test(md));
+}
+
+// ── 5. still offline ────────────────────────────────────────────────────────
 // The report renders its own SVG on purpose; a diagram fetched at read time is a diagram
 // that is blank on the machine it matters on.
 // Nothing is FETCHED at read time. A link the reader may follow is fine; a resource the

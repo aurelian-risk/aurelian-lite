@@ -35,11 +35,13 @@ export function ModellingPanel({ tax, study, color }: { tax: Taxonomy; study: St
   const apply = () => {
     if (!target) return;
     for (const { item, reasons } of missing) {
+      // The account of why this record is here travels with it - without it the package is
+      // a list somebody has to take on trust. WHERE it goes is the taxonomy's to say: a
+      // fixed field name here was one product's word in shared code.
+      const account = pkg.link.accountField;
       addEntity(target.type.key, {
         ...target.toValues(fw, item),
-        // The account of why this requirement is here travels with the record. Without it
-        // the package is a list somebody has to take on trust.
-        begruendung: `Modelled from: ${reasons.join("; ")}.`,
+        ...(account ? { [account.key]: `Modelled from: ${reasons.join("; ")}.` } : {}),
       });
     }
     setMsg(`${missing.length} added to ${itemType?.labelPlural ?? "the table"}, each carrying the rule that placed it.`);

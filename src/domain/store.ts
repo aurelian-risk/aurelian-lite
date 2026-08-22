@@ -192,6 +192,7 @@ function migrateStudyLog(tax: Taxonomy, study: Study): Study {
 function importEntries(
   tax: Taxonomy, incoming: Study, result: EntityRecord[], removed: EntityRecord[],
   ts: string, from: string, mode: "replace" | "merge", known?: ChangeEntry[],
+  sealNote?: string,
 ): LogInput[] {
   const base = migrateStudyLog(tax, incoming);
   // The verdict shown to the analyst is about the FILE, and only about the file - that is
@@ -199,9 +200,13 @@ function importEntries(
   const verdict = verifyLog(base.log, base.entities);
   const editor = getEditor() || "anonymous";
   const seen = new Set((known ?? []).map(entryKey));
-  const strip = ({ seq, hash, prevHash, ...rest }: ChangeEntry): LogInput => {
+  // A seal from the file is taken over as a RECEIVED one. It was made about that file's
+  // chain and is being re-chained here, so it can never bind to this log again - asking it
+  // to would report tampering where nothing was tampered with. What it was worth is
+  // checked before the import and written into the closing entry below.
+  const strip = ({ seq, hash, prevHash, seal, ...rest }: ChangeEntry): LogInput => {
     void seq; void hash; void prevHash;
-    return rest;
+    return seal ? { ...rest, seal: { ...seal, received: from } } : rest;
   };
   const adopted = (base.log ?? []).map(strip).filter((e) => !seen.has(entryKey(e)));
 
@@ -226,7 +231,12 @@ function importEntries(
   }));
   return [...adopted, ...drops, ...fixes, {
     ts, editor, kind: "import" as const, entity: STUDY_SCOPE, entityType: "", title: base.name,
+    // The seal verdict belongs IN the chain. Once written here, "this file arrived sealed
+    // by that key, and the signature checked out" is itself a tamper-evident record - which
+    // is the only durable answer, since the seal itself cannot be re-verified against this
+    // log after being re-chained into it.
     comment: `${mode === "replace" ? "Replaced by" : "Merged with"} ${from} - ${verdictText(verdict)}. `
+      + (sealNote ? `${sealNote} ` : "Carried no seal. ")
       + `Confirmed, and the chain continues from here.`,
   }];
 }
@@ -268,7 +278,11 @@ export interface StoreState {
    *  `source` names the file: confirming an import re-seals the affected study's log and
    *  records the import in it, which is how a chain broken by an outside edit is put
    *  back on a defensible footing. */
-  applyBundle: (b: Bundle, opts: { studiesMode: "replace" | "merge"; source?: string }) => void;
+  applyBundle: (b: Bundle, opts: { studiesMode: "replace" | "merge"; source?: string;
+    /** What the file's seals were worth, checked BEFORE the import - one line per study,
+     *  by study id. Written into the chain, because a seal cannot be re-verified against
+     *  this log once it has been re-chained into it. */
+    sealNotes?: Record<string, string> }) => void;
   mergeStudies: (studies: Study[]) => number;
 
   createStudy: (name: string, organization?: string, scope?: string) => ID;
@@ -337,7 +351,8 @@ export const useStore = create<StoreState>((set, get) => ({
         const dropped = cur && !keepOwn ? cur.entities.filter((e) => !ents.has(e.id)) : [];
         return {
           ...(cur ?? {}), ...inc, entities, updatedAt: ts,
-          log: appendAll(cur?.log, importEntries(tax, inc, entities, dropped, ts, from, opts.studiesMode, cur?.log)),
+          log: appendAll(cur?.log, importEntries(tax, inc, entities, dropped, ts, from, opts.studiesMode, cur?.log,
+            opts.sealNotes?.[inc.id])),
         } as Study;
       });
       if (opts.studiesMode === "merge") {

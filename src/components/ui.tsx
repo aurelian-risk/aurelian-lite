@@ -151,6 +151,22 @@ function groupOptions(opts: { id: string; label: string; group?: string }[]) {
 /** The value the action entry carries. Not a record id, so it cannot collide with one. */
 const ADD_NEW = "__multiselect_action__";
 
+/** Escape closes it, and the backdrop is inert to the keyboard.
+ *
+ *  Every drop-down here lays a full-screen catcher over the page so a click anywhere
+ *  dismisses it. A catcher takes clicks and nothing else: with no key handler the menu
+ *  survives Escape, and a reader who reaches for the habitual way out finds the page
+ *  apparently frozen - and, in a test, a later interaction failing somewhere unrelated.
+ *  One hook, used by every one of them, so the habit does not have to be remembered. */
+export function useDismissOnEscape(open: boolean, close: () => void): void {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [open, close]);
+}
+
 export function MultiSelect({
   options, selected, onChange, placeholder = "add …", emptyHint, onClickChip, renderChipExtra, action,
 }: {

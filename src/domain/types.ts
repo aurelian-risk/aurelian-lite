@@ -44,6 +44,11 @@ export interface FieldDef {
    *  an auditor checks it against the publisher's list, and translating it would break
    *  both. This is how a product can read in one language while recording in another. */
   optionLabels?: string[];
+  /** This field is where a derivation writes its account of itself - why a record was
+   *  placed here, in the words of the rule that placed it. A method that requires a
+   *  justification says so by declaring this, rather than the engine knowing a product's
+   *  field name. */
+  accountsForDerivation?: boolean;
   /** Where this field's values come from in a published catalogue, so the vocabulary can
    *  be refreshed from the source instead of being maintained by hand:
    *   · a property name  — the values that property takes across the catalogue
@@ -134,7 +139,12 @@ export interface ChangeEntry {
   /** Present on a `seal` entry: a signature over the head of the chain as it stood, so
    *  rewriting anything before it needs the private key. See keys.ts for what that does
    *  and does not prove. */
-  seal?: { jws: string; kid: string; jwk: JsonWebKey };
+  seal?: { jws: string; kid: string; jwk: JsonWebKey;
+    /** Set when this seal arrived with an imported file. Such a seal was made about
+     *  ANOTHER log, so it cannot bind to this one - re-chaining it here moved it. What it
+     *  still proves is that the sender held the key, and what it was worth at the moment
+     *  of import is recorded in the import entry. */
+    received?: string };
   prevHash: string;
   hash: string;
 }

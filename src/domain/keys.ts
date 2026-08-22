@@ -24,6 +24,7 @@
 // for the same sentence. Measured to verify with plain `openssl dgst`, which is the point:
 // a recipient checks the seal with tools that owe this product nothing.
 import type { Study } from "./types";
+import { hashValues } from "./audit";
 
 const enc = new TextEncoder();
 
@@ -99,12 +100,21 @@ export interface Seal {
    *  Trusting it still needs the fingerprint checked elsewhere - that is the whole of the
    *  difference between "intact" and "from whom you think". */
   jwk: JsonWebKey;
+  /** Where this seal came from, when it arrived with an imported file. See SealVerdict. */
+  received?: string;
 }
 
 /** A fingerprint over the records themselves, so a seal covers the data and not only the
- *  log's account of it. Order-independent: re-exporting cannot change it. */
+ *  log's account of it.
+ *
+ *  Canonical in both directions, and it has to be: the first version used
+ *  `JSON.stringify(values)`, which is sensitive to the order the keys happen to sit in.
+ *  The export writes them sorted, so a study that was sealed, exported and opened again
+ *  read as "records edited outside the application" - a false accusation, produced by
+ *  nothing but a round trip. `hashValues` is the same canonical fingerprint the change log
+ *  already uses for every entry, so the two now agree by construction. */
 export function stateDigestInput(study: Study): string {
-  return study.entities.map((e) => `${e.id}:${JSON.stringify(e.values)}`).sort().join("\n");
+  return study.entities.map((e) => `${e.id}:${hashValues(e.values)}`).sort().join("\n");
 }
 
 export async function sealStudy(
@@ -121,41 +131,85 @@ export async function sealStudy(
   return { jws: `${input}.${b64u(sig)}`, kid, jwk: publicJwk };
 }
 
+/** What a seal is asked, in the order the answers matter.
+ *
+ *  These used to be collapsed into "matches or not", which said "the log has moved on" for
+ *  every seal that was not the last one - reading as a fault where the truth was simply
+ *  that work continued afterwards. A seal covers the history UP TO ITS OWN POINT. Whether
+ *  anything happened after it is a separate fact, and an ordinary one. */
 export interface SealVerdict {
-  /** The signature checks out against the key that travelled with it. */
+  /** The signature checks out, and the key it carries is the key it names. */
   signed: boolean;
-  /** The sealed head matches the log as it stands now. */
-  matchesLog: boolean;
-  /** The sealed record fingerprint matches the data as it stands now. */
-  matchesData: boolean;
+  /** The sealed head and count match this log AT THE POINT THE SEAL SITS. This is the
+   *  strong statement: every entry before the seal is exactly what was signed. */
+  bindsHistory: boolean;
+  /** The records still are what they were when this was sealed. Only asked of the newest
+   *  seal - for an earlier one the answer is "no" by construction and means nothing. */
+  coversCurrentState: boolean | null;
+  /** How many entries were recorded after this seal. Not a fault; ordinary work. */
+  changesSince: number;
   kid: string;
   payload?: SealPayload;
-  /** Why it failed, in one line, where it did. */
-  reason?: string;
+  /** Set only where something is actually wrong. */
+  problem?: string;
+  /** This seal came in with a file. It was made about that file's log, so it cannot bind
+   *  to this one; the signature is still checked, and what the seal was worth when it
+   *  arrived is written into the import entry. */
+  received?: string;
 }
 
-export async function verifySeal(seal: Seal, study: Study, head: string, seq: number): Promise<SealVerdict> {
-  const out: SealVerdict = { signed: false, matchesLog: false, matchesData: false, kid: seal.kid };
+/** Verify one seal against the log it sits in.
+ *
+ *  `head`/`seq` describe the position the seal occupies: the hash of the entry before it,
+ *  and how many entries preceded it. `changesSince` is how many came after. */
+export async function verifySeal(
+  seal: Seal, study: Study, head: string, seq: number, changesSince = 0,
+): Promise<SealVerdict> {
+  const out: SealVerdict = { signed: false, bindsHistory: false, coversCurrentState: null, changesSince, kid: seal.kid };
   try {
     const [h, p, s] = seal.jws.split(".");
-    if (!h || !p || !s) return { ...out, reason: "not a well-formed seal" };
+    if (!h || !p || !s) return { ...out, problem: "not a well-formed seal" };
     // The key that travelled with the seal has to be the key the seal names, or the
     // fingerprint a reader compared means nothing.
-    if ((await fingerprint(seal.jwk)) !== seal.kid) return { ...out, reason: "the seal names a different key than it carries" };
+    if ((await fingerprint(seal.jwk)) !== seal.kid) return { ...out, problem: "the seal names a different key than it carries" };
     const key = await crypto.subtle.importKey("jwk", seal.jwk, ALG, true, ["verify"]);
     out.signed = await crypto.subtle.verify(SIGN, key, bs(unb64u(s)), bs(enc.encode(`${h}.${p}`)));
-    if (!out.signed) return { ...out, reason: "the signature does not match what it seals" };
+    if (!out.signed) return { ...out, problem: "the signature does not match what it seals" };
     const payload = JSON.parse(new TextDecoder().decode(unb64u(p))) as SealPayload;
     out.payload = payload;
-    out.matchesLog = payload.head === head && payload.seq === seq;
-    const state = b64u(await crypto.subtle.digest("SHA-256", bs(enc.encode(stateDigestInput(study)))));
-    out.matchesData = payload.state === state;
-    if (!out.matchesLog) out.reason = "the log has moved on since this seal";
-    else if (!out.matchesData) out.reason = "the records no longer match what was sealed";
+    // A seal that arrived with a file was made about that file's chain. Asking it to fit
+    // this one would report tampering where the truth is that it was legitimately taken
+    // over - so the question is not asked, and the entry says where it came from.
+    if (seal.received) { out.received = seal.received; out.bindsHistory = true; return out; }
+    out.bindsHistory = payload.head === head && payload.seq === seq;
+    if (!out.bindsHistory) {
+      out.problem = "this seal does not fit the history it sits in - an entry before it was altered, removed or reordered";
+      return out;
+    }
+    if (changesSince === 0) {
+      const state = b64u(await crypto.subtle.digest("SHA-256", bs(enc.encode(stateDigestInput(study)))));
+      out.coversCurrentState = payload.state === state;
+      if (!out.coversCurrentState) out.problem = "the records were edited outside the application after this seal";
+    }
     return out;
   } catch (e) {
-    return { ...out, reason: e instanceof Error ? e.message : "unreadable seal" };
+    return { ...out, problem: e instanceof Error ? e.message : "unreadable seal" };
   }
+}
+
+/** Every seal in a study, verified in place, newest first. One call so that the timeline,
+ *  the import dialog and any test all ask the same question and get the same answer. */
+export async function verifyAllSeals(study: Study): Promise<{ seq: number; ts: string; editor: string; seal: Seal; verdict: SealVerdict }[]> {
+  const log = study.log ?? [];
+  const out = [];
+  for (let i = 0; i < log.length; i++) {
+    const e = log[i];
+    if (e.kind !== "seal" || !e.seal) continue;
+    const head = i > 0 ? log[i - 1].hash : "";
+    out.push({ seq: e.seq, ts: e.ts, editor: e.editor, seal: e.seal as Seal,
+      verdict: await verifySeal(e.seal as Seal, study, head, i, log.length - 1 - i) });
+  }
+  return out.reverse();
 }
 
 // ── the keyring ─────────────────────────────────────────────────────────────
@@ -192,6 +246,26 @@ export function ownKey(): JsonWebKey | null {
 }
 export function setOwnKey(jwk: JsonWebKey | null): void {
   try { jwk ? localStorage.setItem(OWN_KEY, JSON.stringify(jwk)) : localStorage.removeItem(OWN_KEY); } catch { /* ignore */ }
+}
+
+/** A public key as a file, so it can be handed over the way any other document is - and
+ *  so a recipient can put it straight into their own ring. Carries the fingerprint next to
+ *  the key, because that is what gets compared. */
+export const publicKeyFile = (kid: string, name: string, jwk: JsonWebKey): string =>
+  JSON.stringify({ "aurelian-public-key": 1, kid, name, jwk }, null, 2);
+
+/** Read a public-key file back. Returns null for anything that is not one, and verifies
+ *  that the fingerprint it claims is the fingerprint it has - a file that disagrees with
+ *  itself is the one case worth refusing loudly. */
+export async function readPublicKeyFile(text: string): Promise<{ kid: string; name: string; jwk: JsonWebKey } | null> {
+  try {
+    const o = JSON.parse(text);
+    const jwk: JsonWebKey | undefined = o?.jwk ?? (o?.kty ? o : undefined);
+    if (!jwk?.kty) return null;
+    const kid = await fingerprint(jwk);
+    if (o?.kid && o.kid !== kid) return null;
+    return { kid, name: typeof o?.name === "string" ? o.name : "", jwk };
+  } catch { return null; }
 }
 
 /** The one-liner a recipient can run to check a seal without this application. Printed

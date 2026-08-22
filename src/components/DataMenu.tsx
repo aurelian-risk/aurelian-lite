@@ -11,10 +11,11 @@ import { exportDocs } from "../domain/documents";
 import { getModelId } from "../domain/embeddings";
 import { gen } from "../domain/gen";
 import { ImportDialog } from "./ImportDialog";
-import { Icon } from "./ui";
+import { Icon, useDismissOnEscape } from "./ui";
 
 export function DataMenu({ studyScope, label = "Data" }: { studyScope?: Study; label?: string }) {
   const [open, setOpen] = useState(false);
+  useDismissOnEscape(open, () => setOpen(false));
   const [importing, setImporting] = useState(false);
   const [format, setFormat] = useState<Format>("yaml");
   // Two ways to protect an export, and they answer different problems. A password has to
@@ -69,11 +70,11 @@ export function DataMenu({ studyScope, label = "Data" }: { studyScope?: Study; l
               <>
                 <div className="menu-label">Protection</div>
                 <div className="seg">
-                  <button className={"seg-btn" + (encrypt === "off" ? " on" : "")} onClick={() => setEncrypt("off")}>Plain</button>
+                  <button className={"seg-btn" + (encrypt === "off" ? " on" : "")} onClick={() => setEncrypt("off")}>None</button>
                   <button className={"seg-btn" + (encrypt === "password" ? " on" : "")} onClick={() => setEncrypt("password")}>Password</button>
                   <button className={"seg-btn" + (encrypt === "keys" ? " on" : "")} disabled={!ring.length}
                     title={ring.length ? "Encrypt to the keys you have named" : "No keys named yet - name one in the Timeline's seal panel first"}
-                    onClick={() => setEncrypt("keys")}>To a key</button>
+                    onClick={() => setEncrypt("keys")}>Key</button>
                 </div>
                 {encrypt === "password" && (
                   <input className="menu-pw" type="password" autoComplete="new-password" placeholder="Password (AES-256)"

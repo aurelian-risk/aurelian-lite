@@ -129,14 +129,34 @@ One migration detail worth keeping: `payloadOf` adds the seal to the hashed payl
 when one is present**. Adding the key unconditionally — even as `null` — would have changed
 the hash of every entry ever written. `npm run test:audit` (50/50) is what proves it did not.
 
-**Three verdicts, not one.** A seal can be genuine and still not describe the study any more,
-and the two must read differently:
+**A seal covers the history up to its own point.** The first version of this collapsed
+everything into "matches or not", and so reported *"the log has moved on"* for every seal
+that was not the last one — reading as a fault where the truth was that work continued. Four
+separate questions now, asked in the order the answers matter:
 
-| verdict | means |
+| question | what a "no" means |
 |---|---|
-| sealed and unchanged | signature valid, log head matches, records match |
-| sealed, then changed | signature valid, but work continued or a record drifted |
-| does not check out | the signature does not verify, or the key does not match the name |
+| `signed` | the signature does not verify, or the key carried is not the key named |
+| `bindsHistory` | an entry **before** the seal was altered, removed or reordered |
+| `changesSince` | not a question — a count. Ordinary work, reported as such |
+| `coversCurrentState` | records edited outside the application. Asked only of the newest seal; for an earlier one the answer is "no" by construction and means nothing |
+
+Which gives three states a reader sees:
+
+| state | means |
+|---|---|
+| **verified** | signature valid, history intact, and the key is one you have named |
+| **signature valid · key not named** | everything checks out, but nobody has vouched for whose key it is |
+| **does not check out** | one of the first two questions answered no |
+
+The middle state is the important one: it is not a warning, it is a **task**. Compare the
+fingerprint by another route, name the key, and the same seal reads as verified.
+
+**Verification happens at import, before anything is taken in.** A signature that only
+becomes visible after the data is in the study is a signature nobody acted on. The import
+dialog therefore shows, next to the diff: who sealed the file, up to which entry, how many
+changes followed, whether the key is one you have named — and, separately, **which records
+the log accounts for nothing about**, since no seal covers those either.
 
 ---
 

@@ -386,32 +386,6 @@ const fmtRate = (v: number) => `${v >= 10 ? Math.round(v) : v.toFixed(2)}/yr`;
 
 /** Loss-exceedance curve as an inline SVG (offline): P(annual loss ≥ x), comparing
  *  inherent (without controls) vs residual (with controls). */
-function lossCurveSvg(rW: QuantResult, rWo: QuantResult): string {
-  const W = 640, H = 250, PL = 54, PR = 118, PT = 16, PB = 42, PAD = 12;
-  const top = Math.max(rW.curve[rW.curve.length - 1].loss, rWo.curve[rWo.curve.length - 1].loss, 1);
-  const X = (loss: number) => PL + (loss / top) * (W - PL - PR);
-  const Y = (p: number) => PT + (1 - p) * (H - PT - PB);
-  const path = (r: QuantResult) => r.curve.map((d, i) => `${i ? "L" : "M"}${X(d.loss).toFixed(1)} ${Y(d.exceedance).toFixed(1)}`).join(" ");
-  const cy = PT + (H - PT - PB) / 2;
-  const p: string[] = [`<svg xmlns="http://www.w3.org/2000/svg" width="${W + PAD * 2}" height="${H + PAD * 2}" viewBox="0 0 ${W + PAD * 2} ${H + PAD * 2}" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif">`];
-  p.push(`<rect x="0.5" y="0.5" width="${W + PAD * 2 - 1}" height="${H + PAD * 2 - 1}" rx="14" fill="${HEX.card}" stroke="${HEX.edge}"/>`);
-  p.push(`<g transform="translate(${PAD} ${PAD})">`);
-  for (const q of [0, 0.25, 0.5, 0.75, 1]) {
-    p.push(`<line x1="${PL}" y1="${Y(q)}" x2="${W - PR}" y2="${Y(q)}" stroke="${HEX.track}"/>`);
-    p.push(`<text x="${PL - 8}" y="${Y(q) + 3.5}" text-anchor="end" font-size="10.5" fill="${HEX.muted}">${q * 100}%</text>`);
-  }
-  for (const f of [0, 0.5, 1]) p.push(`<text x="${X(f * top)}" y="${H - 22}" text-anchor="middle" font-size="10.5" fill="${HEX.muted}">${esc(fmtMoney(f * top))}</text>`);
-  p.push(`<text x="${PL + (W - PL - PR) / 2}" y="${H - 6}" text-anchor="middle" font-size="11" font-weight="600" fill="${HEX.muted}">Annual loss →</text>`);
-  p.push(`<text x="12" y="${cy}" text-anchor="middle" font-size="11" font-weight="600" fill="${HEX.muted}" transform="rotate(-90 12 ${cy})">P(loss ≥ x)</text>`);
-  p.push(`<path d="${path(rWo)}" fill="none" stroke="${HEX.orange}" stroke-width="2" stroke-dasharray="5 3"/>`);
-  p.push(`<path d="${path(rW)}" fill="none" stroke="${HEX.green}" stroke-width="2.4"/>`);
-  const lx = W - PR + 12;
-  p.push(`<line x1="${lx}" y1="${PT + 10}" x2="${lx + 20}" y2="${PT + 10}" stroke="${HEX.green}" stroke-width="2.4"/><text x="${lx + 26}" y="${PT + 13.5}" font-size="10.5" fill="${HEX.ink}">with controls</text>`);
-  p.push(`<line x1="${lx}" y1="${PT + 28}" x2="${lx + 20}" y2="${PT + 28}" stroke="${HEX.orange}" stroke-width="2" stroke-dasharray="5 3"/><text x="${lx + 26}" y="${PT + 31.5}" font-size="10.5" fill="${HEX.ink}">without</text>`);
-  p.push("</g></svg>");
-  return p.join("");
-}
-
 /** What becomes of an attack attempt, as one bar: blocked, detected in time, or through
  *  to the objective. The same three outcomes the app's chain-defence ring shows, and the
  *  same traversal produced them - a reader who sees both must not have to reconcile two
@@ -451,6 +425,83 @@ function outcomeBarSvg(r: QuantResult): string {
 }
 
 const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
+
+/** How bad a year gets: the chance per year of exceeding a given loss, with and without
+ *  controls. Both axes logarithmic, and the vertical one labelled as frequencies - "one
+ *  year in fifty" is a sentence a reader can quote, "2 %" is one they have to translate.
+ *
+ *  What stood here was the same data on linear axes, which put every rare year in the last
+ *  few pixels and made the two runs impossible to compare. The app draws the same chart
+ *  (QuantificationView), and deliberately so: a reader who sees both must not have to
+ *  reconcile two pictures of one simulation. */
+function lossCurveSvg(rW: QuantResult, rWo: QuantResult, refP: number): string {
+  const W = 640, H = 268, PL = 76, PR = 20, PT = 22, PB = 46, PAD = 12;
+  const base = H - PB, plotH = H - PT - PB;
+  const P_HI = 0.5;
+  const drawn = (r: QuantResult) => r.curve.filter((d) => d.loss > 0 && d.exceedance <= P_HI && d.exceedance > 0);
+  const all = [...drawn(rW), ...drawn(rWo)];
+  if (!all.length) return "";
+  const P_LO = Math.max(0.002, Math.min(...all.map((d) => d.exceedance), 0.05) * 0.8);
+  const lo = Math.max(1, Math.min(...all.map((d) => d.loss)) / 1.7);
+  const hi = Math.max(...all.map((d) => d.loss), lo * 10) * 1.35;
+  const Llo = Math.log10(lo), Lspan = Math.log10(hi) - Llo || 1;
+  const X = (v: number) => PL + ((Math.log10(Math.min(Math.max(v, lo), hi)) - Llo) / Lspan) * (W - PL - PR);
+  const Ylo = Math.log10(P_LO), Yspan = Math.log10(P_HI) - Ylo || 1;
+  const Y = (q: number) => base - ((Math.log10(Math.min(Math.max(q, P_LO), P_HI)) - Ylo) / Yspan) * plotH;
+  const path = (r: QuantResult) => {
+    const pts = drawn(r);
+    return pts.length < 2 ? "" : pts.map((d, i) => `${i ? "L" : "M"}${X(d.loss).toFixed(1)} ${Y(d.exceedance).toFixed(1)}`).join(" ");
+  };
+  const bands = [[0.5, "1 in 2"], [0.2, "1 in 5"], [0.1, "1 in 10"], [0.05, "1 in 20"],
+    [0.02, "1 in 50"], [0.01, "1 in 100"], [0.005, "1 in 200"], [0.002, "1 in 500"]] as [number, string][];
+  const ticks: number[] = [];
+  for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++)
+    for (const m of [1, 3]) { const t = m * Math.pow(10, e); if (t >= lo * 0.999 && t <= hi * 1.001) ticks.push(t); }
+
+  const p: string[] = [`<svg xmlns="http://www.w3.org/2000/svg" width="${W + PAD * 2}" height="${H + PAD * 2}" viewBox="0 0 ${W + PAD * 2} ${H + PAD * 2}" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif">`];
+  p.push(`<rect x="0.5" y="0.5" width="${W + PAD * 2 - 1}" height="${H + PAD * 2 - 1}" rx="14" fill="${HEX.card}" stroke="${HEX.edge}"/>`);
+  p.push(`<g transform="translate(${PAD} ${PAD})">`);
+  for (const [q, label] of bands) {
+    if (q > P_HI * 1.001 || q < P_LO * 0.999) continue;
+    p.push(`<line x1="${PL}" y1="${Y(q)}" x2="${W - PR}" y2="${Y(q)}" stroke="${HEX.track}" stroke-opacity="${Math.abs(q - refP) < 1e-9 ? 1 : 0.6}"/>`);
+    p.push(`<text x="${PL - 9}" y="${Y(q) + 3.5}" text-anchor="end" font-size="10.5" fill="${HEX.muted}">${label}</text>`);
+  }
+  for (const t of ticks) p.push(`<line x1="${X(t)}" y1="${PT}" x2="${X(t)}" y2="${base}" stroke="${HEX.track}" stroke-opacity="0.5"/>`);
+  p.push(`<line x1="${PL}" y1="${PT}" x2="${PL}" y2="${base}" stroke="${HEX.edge}"/>`);
+  p.push(`<path d="${path(rWo)}" fill="none" stroke="${HEX.orange}" stroke-width="2" stroke-dasharray="5 3"/>`);
+  p.push(`<path d="${path(rW)}" fill="none" stroke="${HEX.green}" stroke-width="2.4"/>`);
+  for (const t of ticks) p.push(`<text x="${X(t)}" y="${H - 22}" text-anchor="middle" font-size="10.5" fill="${HEX.muted}">${esc(fmtMoney(t))}</text>`);
+  p.push(`<text x="${W - PR}" y="${H - 6}" text-anchor="end" font-size="10.5" fill="${HEX.muted}">annual loss (log €) →</text>`);
+  p.push(`<text x="${PL - 9}" y="${PT - 6}" text-anchor="end" font-size="10.5" fill="${HEX.muted}">chance per year</text>`);
+  const lx = PL + 10;
+  p.push(`<line x1="${lx}" y1="${PT + 6}" x2="${lx + 18}" y2="${PT + 6}" stroke="${HEX.green}" stroke-width="2.4"/><text x="${lx + 24}" y="${PT + 9.5}" font-size="10.5" fill="${HEX.ink}">with controls</text>`);
+  p.push(`<line x1="${lx + 112}" y1="${PT + 6}" x2="${lx + 130}" y2="${PT + 6}" stroke="${HEX.orange}" stroke-width="2" stroke-dasharray="5 3"/><text x="${lx + 136}" y="${PT + 9.5}" font-size="10.5" fill="${HEX.ink}">without</text>`);
+  p.push("</g></svg>");
+  return p.join("");
+}
+
+/** The reading of that curve, in words - the same sentence the app shows, from the same
+ *  numbers. Only over the POSITIVE part of the curve: it starts at loss 0 with exceedance
+ *  1 and jumps to 1 − zeroShare, and interpolating across that jump invents a loss level
+ *  for a chance the run never produced. */
+function lossAtChance(r: QuantResult, q: number): number | null {
+  if (q > 1 - r.zeroShare) return null;
+  const c = r.curve.filter((d) => d.loss > 0);
+  for (let i = 1; i < c.length; i++) {
+    if (c[i].exceedance <= q && c[i - 1].exceedance >= q) {
+      const a = c[i - 1], b = c[i];
+      const t = (a.exceedance - q) / Math.max(1e-9, a.exceedance - b.exceedance);
+      return a.loss + t * (b.loss - a.loss);
+    }
+  }
+  return null;
+}
+
+const CHANCE_RANKS: { p: number; l: string }[] = [
+  { p: 0.5, l: "one year in two" }, { p: 0.2, l: "one year in five" },
+  { p: 0.1, l: "one year in ten" }, { p: 0.05, l: "one year in twenty" },
+  { p: 0.02, l: "one year in fifty" }, { p: 0.01, l: "one year in a hundred" },
+];
 
 /** Derived Monte-Carlo quantification per operational scenario (with vs without
  *  controls), honouring any persisted per-factor overrides so the report matches
@@ -510,7 +561,18 @@ function quantSection(tax: Taxonomy, study: Study): string[] | null {
         + "</tbody></table>");
     }
     L.push("");
-    L.push(`<div align="center">${lossCurveSvg(rW, rWo)}</div>`);
+    // The same reading the app gives, from the same run: which ordinary year actually
+    // costs anything, and what it costs with and without the controls in place.
+    const ref = CHANCE_RANKS.find((b) => b.p <= 1 - rW.zeroShare) ?? CHANCE_RANKS[CHANCE_RANKS.length - 1];
+    const badW = lossAtChance(rW, ref.p), badWo = lossAtChance(rWo, ref.p);
+    const quiet = Math.round(rW.zeroShare * 100);
+    L.push(`<div align="center">${lossCurveSvg(rW, rWo, ref.p)}</div>`);
+    L.push("");
+    L.push((quiet > 0 ? `**${quiet} years in 100 cost nothing at all.** ` : "")
+      + (badW != null
+        ? `The worst of the rest — **${ref.l}** — costs more than **${fmtMoney(badW)}**`
+          + (badWo != null ? `, against **${fmtMoney(badWo)}** with no controls` : "") + "."
+        : "Even the rarest year modelled here costs nothing; the percentiles above give the figures."));
     L.push("");
   }
   return L;
@@ -680,6 +742,11 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
     return `<div class="kc-wrap"><div class="kc-h">Kill chain · ${steps.length} step${steps.length === 1 ? "" : "s"}</div><ol class="kc">${rows}</ol></div>`;
   };
 
+  // Where the chain-defence block belongs: with the scenarios whose chains it is about.
+  // It needs the measures and so is computed further down; a marker holds its place.
+  const CHAIN_MARK = "@@chain-defence@@";
+  const chainGroup = kcParentF?.refType ? getType(tax, kcParentF.refType)?.group : undefined;
+
   for (const g of tax.groups) {
     const types = tax.entityTypes.filter((t) => t.group === g.key);
     if (!types.some((t) => study.entities.some((e) => e.type === t.key))) continue;
@@ -715,10 +782,13 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
         L.push("");
       }
     }
+    if (g.key === chainGroup) L.push(CHAIN_MARK);
   }
 
   // Deterministic chain defence: each step against what actually stops or catches an
-  // attacker there, as opposed to what merely names it.
+  // attacker there, as opposed to what merely names it. Built here, printed with the
+  // operational scenarios.
+  const chainDefence: string[] = [];
   const stepType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
   const parentF = stepType?.fields.find((f) => f.type === "ref" && f.refType);
   const orderF = stepType?.fields.find((f) => f.type === "number");
@@ -788,7 +858,10 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
     const ops = study.entities.filter((e) => e.type === opType.key
       && study.entities.some((s) => s.type === stepType.key && s.values[parentF.key] === e.id));
     if (ops.length) {
-      L.push("---\n");
+      // Written into its own list and emitted with the operational scenarios below, not
+      // here: a reader who has just read a kill chain wants to know what defends it, and
+      // sending them to a later section to find out breaks the argument in half.
+      const L = chainDefence;
       L.push("## Chain defence\n");
       L.push("_A step is **defended** only where something stops or catches the attacker there. "
         + "Corrective, deterrent and avoidance measures on a step are real work and move the risk "
@@ -817,6 +890,11 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
       }
     }
   }
+
+  // The chain-defence block goes where the marker was left, next to the scenarios it is
+  // about; with no marker (a taxonomy that models no chain) it simply never appears.
+  const markAt = L.indexOf(CHAIN_MARK);
+  if (markAt >= 0) L.splice(markAt, 1, ...(chainDefence.length ? ["---\n", ...chainDefence] : []));
 
   // Risk treatment - plan table + residual risk matrix.
   const treat = treatmentSection(tax, study);
@@ -902,6 +980,23 @@ function mdToHtml(md: string): string {
       i++; continue;
     }
     if (trimmed.startsWith("<")) { closeLists(); out.push(trimmed); i++; continue; } // raw HTML / SVG
+    // A pipe table. Without this the whole table falls through to the paragraph branch and
+    // arrives as a wall of vertical bars - which is what the document-control and
+    // change-record sections looked like, at the very top of every report.
+    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+      closeLists();
+      const cells = (l: string) => l.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+      const head = cells(lines[i]);
+      i += 2;
+      const body: string[][] = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { body.push(cells(lines[i])); i++; }
+      const th = head.map((c) => `<th>${inline(c)}</th>`).join("");
+      const tr = body.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`).join("");
+      // A leading row of empty headers is a two-column key/value table written without a
+      // header - render it without an empty strip on top.
+      out.push(`<table class="qt-tbl">${head.some((c) => c !== "") ? `<thead><tr>${th}</tr></thead>` : ""}<tbody>${tr}</tbody></table>`);
+      continue;
+    }
     const li = line.match(/^(\s*)-\s+(.*)$/);
     if (li) {
       const indent = li[1].length;
