@@ -23,7 +23,7 @@ import { GraphView } from "./GraphView";
 import { CompletenessView } from "./CompletenessView";
 import { CanvasView } from "./CanvasView";
 import { DataMenu } from "./DataMenu";
-import { Icon } from "./ui";
+import { Icon, useDismissOnEscape } from "./ui";
 
 const reportSlug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "study";
 
@@ -31,6 +31,7 @@ const reportSlug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "
 // (new tab) or a Markdown file.
 function ReportMenu({ tax, study }: { tax: Taxonomy; study: Study }) {
   const [open, setOpen] = useState(false);
+  useDismissOnEscape(open, () => setOpen(false));
   const slug = reportSlug(study.name);
   return (
     <div style={{ position: "relative" }}>

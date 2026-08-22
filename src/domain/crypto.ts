@@ -41,6 +41,82 @@ export async function encryptText(plaintext: string, password: string): Promise<
   }, null, 2);
 }
 
+// ── Encrypting to a recipient's key ─────────────────────────────────────────
+//
+// A password has to reach the recipient somehow, and in practice it travels the same way
+// the file does. Encrypting to a public key removes that step: no shared secret, and each
+// recipient opens the file with the key they already hold.
+//
+// One random content key encrypts the study once; it is then wrapped for each recipient
+// with a key agreed by ECDH (P-256, an ephemeral key per recipient) and stretched through
+// HKDF. Adding a recipient costs one wrapped key, not a second copy of the data.
+//
+// The recipient list is NOT secret: an envelope says which fingerprints can open it. That
+// is a deliberate trade - it lets someone see whether they are on it before trying, and
+// hiding it would mean trial-decryption against every key.
+const P256 = { name: "ECDH", namedCurve: "P-256" } as const;
+
+async function wrapFor(recipientJwk: JsonWebKey, content: Uint8Array): Promise<{ kid: string; epk: JsonWebKey; iv: string; ct: string }> {
+  const pub = await crypto.subtle.importKey("jwk", recipientJwk, P256, true, []);
+  const eph = await crypto.subtle.generateKey(P256, true, ["deriveBits"]);
+  const shared = await crypto.subtle.deriveBits({ name: "ECDH", public: pub }, eph.privateKey, 256);
+  const base = await crypto.subtle.importKey("raw", shared, "HKDF", false, ["deriveKey"]);
+  const kek = await crypto.subtle.deriveKey(
+    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(16), info: enc.encode("aurelian-recipient-v1") },
+    base, { name: "AES-GCM", length: 256 }, false, ["encrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: bs(iv) }, kek, bs(content));
+  const spki = await crypto.subtle.exportKey("spki", pub);
+  const fp = await crypto.subtle.digest("SHA-256", spki);
+  const kid = b64(fp).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "").slice(0, 16);
+  return { kid, epk: await crypto.subtle.exportKey("jwk", eph.publicKey), iv: b64(iv), ct: b64(ct) };
+}
+
+export interface Recipient { kid: string; name?: string; jwk: JsonWebKey }
+
+/** Encrypt once, wrapped for each recipient. */
+export async function encryptToRecipients(plaintext: string, recipients: Recipient[]): Promise<string> {
+  if (!recipients.length) throw new Error("No recipients: nobody could open this file.");
+  const contentKeyRaw = crypto.getRandomValues(new Uint8Array(32));
+  const contentKey = await crypto.subtle.importKey("raw", bs(contentKeyRaw), { name: "AES-GCM" }, false, ["encrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: bs(iv) }, contentKey, bs(enc.encode(plaintext)));
+  const to = [];
+  for (const r of recipients) to.push({ ...(await wrapFor(r.jwk, contentKeyRaw)), name: r.name ?? "" });
+  return JSON.stringify({
+    "ebios-encrypted": 1, cipher: "AES-256-GCM", kdf: "ECDH-P256+HKDF-SHA256",
+    iv: b64(iv), ct: b64(ct), to,
+  }, null, 2);
+}
+
+/** Open an envelope addressed to a key we hold. Returns null when it is not addressed to
+ *  this key at all, which is a different thing from a wrong key and reads differently. */
+export async function decryptForKey(envelope: string, privateJwk: JsonWebKey, kid: string): Promise<string | null> {
+  const o = JSON.parse(envelope);
+  if (!Array.isArray(o?.to)) throw new Error("Not an envelope addressed to a key.");
+  const mine = o.to.find((t: { kid: string }) => t.kid === kid);
+  if (!mine) return null;
+  const priv = await crypto.subtle.importKey("jwk", privateJwk, P256, false, ["deriveBits"]);
+  const epk = await crypto.subtle.importKey("jwk", mine.epk, P256, true, []);
+  const shared = await crypto.subtle.deriveBits({ name: "ECDH", public: epk }, priv, 256);
+  const base = await crypto.subtle.importKey("raw", shared, "HKDF", false, ["deriveKey"]);
+  const kek = await crypto.subtle.deriveKey(
+    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(16), info: enc.encode("aurelian-recipient-v1") },
+    base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+  const raw = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bs(unb64(mine.iv)) }, kek, bs(unb64(mine.ct)));
+  const contentKey = await crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["decrypt"]);
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bs(unb64(o.iv)) }, contentKey, bs(unb64(o.ct)));
+  return dec.decode(pt);
+}
+
+/** Who can open this envelope, if it is addressed to keys rather than a password. */
+export function envelopeRecipients(envelope: string): { kid: string; name: string }[] {
+  try {
+    const o = JSON.parse(envelope);
+    return Array.isArray(o?.to) ? o.to.map((t: { kid: string; name?: string }) => ({ kid: t.kid, name: t.name ?? "" })) : [];
+  } catch { return []; }
+}
+
 /** Detect our encrypted envelope (so import can prompt for a password). */
 export function isEncrypted(text: string): boolean {
   try { const o = JSON.parse(text); return !!o && o["ebios-encrypted"] === 1 && typeof o.ct === "string"; }

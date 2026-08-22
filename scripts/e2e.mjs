@@ -140,6 +140,22 @@ try {
   ok("measures on the chain show their effect class", (await page.locator(".ft-card .ft-cls").count()) >= 1);
   ok("the chain distinguishes resisting from detecting measures",
     /PREVENTIVE/i.test(ft) && /DETECTIVE/i.test(ft));
+  // A branch per effect class: which one moved THIS factor, and by how much. The tree
+  // showed the factors and the arithmetic, but not which piece of work bought which -
+  // and "the bill fell" is three different achievements depending on the class.
+  ok("the factor says what the measures did to it", /what your measures did to it/i.test(ft));
+  {
+    const rows = page.locator(".ft-card .ft-chan-row");
+    const n = await rows.count();
+    ok("...with a branch per effect class that acts on it", n >= 1, String(n));
+    const first = await rows.first().innerText();
+    ok("...naming the class and what it does in the model's words",
+      /(PREVENTIVE|DETECTIVE|CORRECTIVE|DETERRENT|AVOIDANCE)/i.test(first) && /step|attacker|caught/i.test(first));
+    // A gate is not a multiplier: the bar is raised by steps an attacker must pass, not
+    // by a percentage off a range, and showing it as one would misstate the mechanism.
+    ok("...measuring a gate in steps rather than as a percentage",
+      /\d+ steps?$/.test(first.trim()) || !/^−\d+%$/.test(first.trim().split("\n").pop() ?? ""));
+  }
   ok("the popup no longer describes the retired averaged model", !/avg implementation|steps mitigated/i.test(ft));
   // A rare event is not a zero event: rates below 1/yr used to render as "0.0/yr", which
   // made the whole chain read as "0 x €8.7M = €274k".
@@ -334,8 +350,44 @@ try {
   ok("flow lanes present", await page.locator(".flow-lane").count() > 5);
   ok("flow nodes present", await page.locator(".flow-node").count() > 5);
   await page.screenshot({ path: `${shots}/Flow.png` });
-  await page.locator(".flow-node").filter({ hasText: "Ransomware encryption" }).first().click({ force: true });
-  await page.waitForTimeout(600);
+  // Where the reader is scrolled to survives a selecting click - the FIRST one too. The
+  // lanes narrow for a few frames while the tree is laid out, and a browser clamps the
+  // scroll to what fits in that moment and leaves it there; restoring once lands inside
+  // that window. The tree still overflows afterwards, so snapping to the left does not
+  // reveal it whole - it only moves the reader off the node they just clicked.
+  {
+    const sc = page.locator(".flow-scroll");
+    const over = await sc.evaluate((el) => el.scrollWidth - el.clientWidth);
+    if (over > 200) {
+      await sc.evaluate((el) => { el.scrollLeft = 200; });
+      await page.waitForTimeout(200);
+      // A node the reader can SEE from there. Clicking one that is off-screen is a
+      // different case: the browser scrolls it into view, and rightly so.
+      const visible = await page.evaluate(() => {
+        const el = document.querySelector(".flow-scroll");
+        const r = el.getBoundingClientRect();
+        const n = [...document.querySelectorAll(".flow-node")]
+          .filter((x) => { const b = x.getBoundingClientRect(); return b.left >= r.left && b.right <= r.right; }).pop();
+        return n ? n.getAttribute("data-nk") : null;
+      });
+      ok("a node is visible from a scrolled position", !!visible);
+      await page.locator(`[data-nk="${visible}"]`).click();
+      await page.waitForTimeout(900);
+      const left = await sc.evaluate((el) => el.scrollLeft);
+      const overAfter = await sc.evaluate((el) => el.scrollWidth - el.clientWidth);
+      // The assertion is only about something if the selection leaves the lanes wider
+      // than the viewport. Where the tree collapses to one lane, 0 is the only position
+      // there is and the browser clamps for a good reason - that is not this behaviour
+      // failing, it is the case being empty, and it has to read differently.
+      ok("...the selected tree still has more width than the viewport", overAfter >= 200);
+      if (left !== 200) console.log(`   left=${left} overflow before=${over} after=${overAfter}`);
+      ok("...and a selecting click keeps the reader where they were", left === 200);
+      await page.keyboard.press("Escape");        // leave highlight mode for what follows
+      await page.waitForTimeout(400);
+    }
+    await page.locator(".flow-node").filter({ hasText: "Ransomware encryption" }).first().click({ force: true });
+    await page.waitForTimeout(600);
+  }
   ok("flow highlights path (dims others)", await page.locator(".flow-node.ef-dimmed, .flow-node.ef-orphan").count() > 0);
   ok("flow lane headers fly with their columns", await page.locator(".lane-header.ef-lane-flown").count() > 0);
   ok("flow docks info panel under the flow", await page.locator(".detail-dock .info-panel .ip-title").count() > 0);
@@ -582,6 +634,39 @@ try {
   await page.locator('.modal-lg .btn.ghost[aria-label="Close"]').click().catch(() => {});
   await page.waitForTimeout(150);
 
+  // A record taken from a catalogue arrives NOT in use, and says so in writing. The cell
+  // cannot show the difference - it renders the first option for an empty value as well as
+  // for a recorded one - so the stored value is read off the record's own form. That
+  // difference is the whole of it: an empty field counts as in play, which is right for a
+  // record somebody typed and wrong for a library nobody has adopted.
+  {
+    // The import happens in Documents; the measures land in the treatment workshop.
+    await page.locator(".sidebar .nav-item", { hasText: "Studies" }).click();
+    await page.waitForTimeout(250);
+    if (!(await page.locator(".ws-tabs").count())) {
+      await page.getByText("Riverside General Hospital").first().click();
+      await page.waitForSelector(".ws-tabs", { timeout: 10000 });
+    }
+    await page.locator(".ws-tab", { hasText: "Treatment" }).click();
+    await page.waitForTimeout(300);
+    const row = page.locator(".tbl tbody tr.row-clickable", { hasText: "Just-in-time admin" }).first();
+    ok("the imported measure is in the table", (await row.count()) === 1);
+    ok("...and its switch does not read as in use", (await row.locator(".cell-toggle.on").count()) === 0);
+    await row.locator(".name").click();
+    await page.waitForTimeout(200);
+    await page.locator(".detail-actions button", { hasText: "Edit" }).first().click();
+    await page.waitForSelector(".modal-lg .field", { timeout: 5000 });
+    const inUse = page.locator(".modal-lg .field", { hasText: /^In use/ }).locator("select").first();
+    ok("...because the state was written, not left empty",
+      (await inUse.inputValue()) === "not in use", await inUse.inputValue());
+    // Cancel, by name: the first ghost button in this footer is Delete.
+    await page.locator(".modal-lg-foot .btn.ghost", { hasText: "Cancel" }).click();
+    await page.waitForTimeout(200);
+    ok("...and the record is still there after looking", (await row.count()) === 1);
+    await row.locator(".name").click();          // collapse the detail again
+    await page.waitForTimeout(150);
+  }
+
   // Timeline (global change history) — left-nav view; the sample seeds history
   await page.locator(".sidebar .nav-item", { hasText: "Timeline" }).click();
   await page.waitForTimeout(250);
@@ -593,8 +678,55 @@ try {
   ok("every record in the study is accounted for in the log", tlItems >= 55);
   ok("the study log verifies as a whole", /integrity verified/i.test(await page.locator(".tl-stats").innerText()));
   ok("no drift warning on an untouched sample", (await page.locator(".tl-warn").count()) === 0);
+  // Seals: the half the hash chain cannot do. The chain proves a log is consistent with
+  // itself; anyone holding the file can recompute it, so it catches accident rather than
+  // intent. A seal signs the head, so rewriting the past needs a private key.
+  {
+    const panel = page.locator(".panel.sp");
+    ok("the timeline offers seals", (await panel.count()) === 1);
+    ok("...refusing to seal before there is a key", await panel.locator(".panel-head .btn.primary").isDisabled());
+    // The explanation is a dialog, not a wall on the page: the panel says the verdict, and
+    // what a signature does and does not prove is one click away for whoever wants it.
+    await panel.locator("button", { hasText: "What does a seal prove" }).click();
+    await page.waitForSelector(".sp-modal", { timeout: 5000 });
+    const proves = await page.locator(".sp-modal").innerText();
+    ok("...and explains itself in a dialog rather than on the page",
+      /does not prove when/i.test(proves) && /does not prove who/i.test(proves));
+    await page.locator(".sp-modal button", { hasText: "Close" }).click();
+    await page.waitForTimeout(250);
+
+    await panel.locator("button", { hasText: "Keys" }).click();
+    await page.waitForSelector(".sp-modal", { timeout: 5000 });
+    await page.locator(".sp-modal button", { hasText: "Create a key" }).click();
+    await page.waitForTimeout(700);
+    const keysDlg = await page.locator(".sp-modal").innerText();
+    ok("a signing key is made in the keys dialog", /Save public key/.test(keysDlg));
+    ok("...and the public half can be saved as a file too", /Save public key/.test(keysDlg) && /Save private key/.test(keysDlg));
+    // Close by the overlay only: the last ghost button in this dialog is the "forget this
+    // key" bin, and clicking it emptied the ring the next assertion is about.
+    await page.locator(".overlay").click({ position: { x: 5, y: 5 } });
+    await page.waitForTimeout(300);
+
+    await panel.locator(".panel-head .btn.primary").click();
+    await page.waitForSelector(".sp-modal", { timeout: 5000 });
+    await page.locator(".sp-modal input").first().fill("M. Westerberg");
+    await page.locator(".sp-modal .btn.primary").click();
+    await page.waitForTimeout(900);
+    const sealed = await panel.locator(".sp-seal").first().innerText().catch(() => "");
+    ok("the study can be sealed from a dialog", (await panel.locator(".sp-seal").count()) === 1, sealed);
+    // The seal's own key was named when it was created, so it reads as verified rather
+    // than merely valid.
+    if ((await panel.locator(".sp-seal.sp-verified").count()) !== 1) console.log("   seal row:", sealed.replace(/\n/g, " | "));
+    ok("...and reads as verified, because the key is one you named",
+      (await panel.locator(".sp-seal.sp-verified").count()) === 1);
+    ok("...saying what it covers, and that nothing followed it",
+      /covers entries 1–\d+/.test(sealed) && /records unchanged since/.test(sealed), sealed);
+    ok("...while the chain itself still verifies",
+      /integrity verified/i.test(await page.locator(".tl-stats").innerText()));
+  }
   await page.screenshot({ path: `${shots}/Timeline.png` });
-  await page.locator(".tl-item").first().click();
+  // A study-scope entry - a seal, an import - is not about one record and opens nothing.
+  await page.locator(".tl-item:not(.tl-scope)").first().click();
   await page.waitForSelector(".modal-lg .hist-item");
   ok("timeline item opens change-history popup", (await page.locator(".modal-lg .hist-item").count()) > 0);
   await page.locator('.modal-lg .btn.ghost[aria-label="Close"]').click();
@@ -684,6 +816,32 @@ try {
       ok("the switched field is the first facet offered",
         (await tools.locator(".facet-btn").first().innerText()).trim().startsWith("In scope"),
         await tools.locator(".facet-btn").first().innerText());
+    }
+
+    // A fold is a layout, and a layout has to survive leaving the tab and coming back.
+    // It must NOT survive into the study: it belongs to whoever is reading, and a study
+    // that recorded it would carry it into the export, the import diff and the log.
+    {
+      await tools.locator(".tbl .group-row").first().click();
+      await page.waitForTimeout(250);
+      const foldedRows = await rows();
+      const label = (await tools.locator(".tbl .group-row").first().innerText()).trim();
+      ok("a group can be folded away", foldedRows < all);
+      await page.locator(".ws-tab", { hasText: "Treatment" }).click();
+      await page.waitForTimeout(300);
+      await page.locator(".ws-tab", { hasText: "Compliance" }).click();
+      await page.waitForTimeout(400);
+      const back = page.locator(".panel", { has: page.locator(".tbl-tools") }).first();
+      const backRows = await back.locator(".tbl tbody tr.row-clickable").count();
+      const backGroups = await back.locator(".tbl .group-row").count();
+      if (backRows !== foldedRows) console.log(`   rows back=${backRows} folded=${foldedRows} all=${all} groupRows=${backGroups} groupSel=${await back.locator("select.tbl-group").inputValue()}`);
+      ok("...and is still folded on the way back", backRows === foldedRows);
+      ok("...the same group, not just the same count",
+        (await back.locator(".tbl .group-row").first().innerText()).trim() === label);
+      const inStudy = await page.evaluate(() => JSON.stringify(window.localStorage.getItem("aurelian_view_folds") ?? "").length > 2);
+      ok("...remembered outside the study", inStudy);
+      await back.locator(".tbl .group-row").first().click();   // leave it as we found it
+      await page.waitForTimeout(250);
     }
 
     await tools.locator("select.tbl-group").selectOption({ label: "no grouping" });
@@ -919,6 +1077,42 @@ try {
   await page.screenshot({ path: `${shots}/Extraction.png` });
   await page.keyboard.press("Escape").catch(() => {});
   await page.locator(".overlay").click({ position: { x: 5, y: 5 } }).catch(() => {});
+
+  // Two ways to protect an export, answering different problems: a password has to reach
+  // the recipient somehow, a key does not. The second is only offered once a key has been
+  // named, because encrypting to nobody is an unopenable file.
+  await page.locator(".sidebar .nav-item", { hasText: "Studies" }).click();
+  await page.waitForTimeout(250);
+  {
+    if (!(await page.locator(".ws-tabs").count())) {
+      await page.getByText("Riverside General Hospital").first().click();
+      await page.waitForSelector(".ws-tabs", { timeout: 10000 });
+    }
+    await page.locator("button", { hasText: "Export / Import" }).first().click();
+    await page.waitForSelector(".menu-pop", { timeout: 8000 });
+    const menu = page.locator(".menu-pop").first();
+    const body = await menu.innerText().catch(() => "");
+    // Escape closes a drop-down. Without it the backdrop takes the click and nothing else,
+    // and a reader reaching for the habitual way out finds the page apparently stuck -
+    // which then fails a later, unrelated interaction.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(250);
+    ok("Escape closes the export menu", (await page.locator(".menu-pop").count()) === 0);
+    await page.locator("button", { hasText: "Export / Import" }).first().click();
+    await page.waitForSelector(".menu-pop", { timeout: 8000 });
+    if (!(/Password/.test(body) && /Key/.test(body))) console.log("   menu:", body.replace(/\n/g, " | ").slice(0, 160));
+    ok("the export offers both kinds of protection", /Password/.test(body) && /\bKey\b/.test(body));
+    await menu.locator(".seg-btn", { hasText: /^Key$/ }).click();
+    await page.waitForTimeout(250);
+    const rows = await menu.locator(".menu-to-row").count();
+    ok("...listing the keys that have been named", rows >= 1, `${rows} recipients`);
+    ok("...and saying the recipient list is readable in the file",
+      /readable in the file/i.test(await menu.innerText()));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    await page.locator("body").click({ position: { x: 5, y: 5 } }).catch(() => {});
+    await page.waitForTimeout(200);
+  }
 
   // Model configuration section
   await page.locator(".sidebar .nav-item", { hasText: "Model" }).click();

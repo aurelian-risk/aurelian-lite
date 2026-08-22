@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue, Study, Taxonomy } from "../domain/types";
 import { columnFields, getType, optionLabel, recordTitle, refFields, scaleLabel, scaleMax, setBackBlocked, titleField } from "../domain/taxonomy";
+import { foldScope, getFolds, setFolds } from "../domain/viewstate";
 import { TOOLBAR_MIN_ROWS } from "../domain/tablefilter";
 import { TableTools, useTableFilter } from "./TableTools";
 import { useStore } from "../domain/store";
@@ -85,19 +86,29 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
   const [expanded, setExpanded] = useState<string | null>(null);
   const [modal, setModal] = useState<{ typeKey: string; record: EntityRecord | null } | null>(null);
 
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-
   const items = study.entities.filter((e) => e.type === type.key);
   const cols = columnFields(type);
   const title = titleField(type);
 
   // One filter, shared with every other long table - see TableTools.
-  const f = useTableFilter(type, items, () => setCollapsed(new Set()));
+  // The table's own name, so its arrangement is remembered per study and per type.
+  const tableScope = foldScope(study.id, type.key);
+  const f = useTableFilter(type, items, () => setCollapsed(new Set()), tableScope);
   const { shown, groups, groupField, filtered } = f;
+  // What this reader folded away here last time. Kept out of the study on purpose: a fold
+  // belongs to whoever is reading, not to the analysis - see viewstate.ts. Grouping by a
+  // different field is a different layout, so the axis is part of the name.
+  const scope = foldScope(study.id, type.key, groupField?.key ?? "");
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => getFolds(scope));
+  useEffect(() => { setCollapsed(getFolds(scope)); }, [scope]);
   // Only worth showing once a table is long enough to be hard to read.
   const showTools = items.length >= TOOLBAR_MIN_ROWS;
   const clearAll = f.clearAll;
-  const toggleGroup = (k: string) => setCollapsed((c) => { const n = new Set(c); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  const toggleGroup = (k: string) => setCollapsed((c) => {
+    const n = new Set(c); n.has(k) ? n.delete(k) : n.add(k);
+    setFolds(scope, n);        // coalesced; a burst of clicks writes once
+    return n;
+  });
 
   const refTargets = (typeKey: string) => study.entities.filter((e) => e.type === typeKey);
   const missingReq = type.fields.find((f) => f.type === "ref" && f.required && refTargets(f.refType ?? "").length === 0);

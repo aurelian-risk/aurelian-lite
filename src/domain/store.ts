@@ -3,6 +3,8 @@
 // the taxonomy, plus data-layer swap (bundle/taxonomy/data import) and
 // migration from the legacy v1 fixed-schema format. Auto-persists (debounced).
 import { create } from "zustand";
+import { ownKey, sealStudy } from "./keys";
+import { forgetStudy } from "./viewstate";
 import type {
   AppState, Bundle, ChangeEntry, EntityRecord, FieldValue, ID, QuantTuning, Study, Taxonomy,
 } from "./types";
@@ -190,6 +192,7 @@ function migrateStudyLog(tax: Taxonomy, study: Study): Study {
 function importEntries(
   tax: Taxonomy, incoming: Study, result: EntityRecord[], removed: EntityRecord[],
   ts: string, from: string, mode: "replace" | "merge", known?: ChangeEntry[],
+  sealNote?: string,
 ): LogInput[] {
   const base = migrateStudyLog(tax, incoming);
   // The verdict shown to the analyst is about the FILE, and only about the file - that is
@@ -197,9 +200,13 @@ function importEntries(
   const verdict = verifyLog(base.log, base.entities);
   const editor = getEditor() || "anonymous";
   const seen = new Set((known ?? []).map(entryKey));
-  const strip = ({ seq, hash, prevHash, ...rest }: ChangeEntry): LogInput => {
+  // A seal from the file is taken over as a RECEIVED one. It was made about that file's
+  // chain and is being re-chained here, so it can never bind to this log again - asking it
+  // to would report tampering where nothing was tampered with. What it was worth is
+  // checked before the import and written into the closing entry below.
+  const strip = ({ seq, hash, prevHash, seal, ...rest }: ChangeEntry): LogInput => {
     void seq; void hash; void prevHash;
-    return rest;
+    return seal ? { ...rest, seal: { ...seal, received: from } } : rest;
   };
   const adopted = (base.log ?? []).map(strip).filter((e) => !seen.has(entryKey(e)));
 
@@ -224,7 +231,12 @@ function importEntries(
   }));
   return [...adopted, ...drops, ...fixes, {
     ts, editor, kind: "import" as const, entity: STUDY_SCOPE, entityType: "", title: base.name,
+    // The seal verdict belongs IN the chain. Once written here, "this file arrived sealed
+    // by that key, and the signature checked out" is itself a tamper-evident record - which
+    // is the only durable answer, since the seal itself cannot be re-verified against this
+    // log after being re-chained into it.
     comment: `${mode === "replace" ? "Replaced by" : "Merged with"} ${from} - ${verdictText(verdict)}. `
+      + (sealNote ? `${sealNote} ` : "Carried no seal. ")
       + `Confirmed, and the chain continues from here.`,
   }];
 }
@@ -266,12 +278,19 @@ export interface StoreState {
    *  `source` names the file: confirming an import re-seals the affected study's log and
    *  records the import in it, which is how a chain broken by an outside edit is put
    *  back on a defensible footing. */
-  applyBundle: (b: Bundle, opts: { studiesMode: "replace" | "merge"; source?: string }) => void;
+  applyBundle: (b: Bundle, opts: { studiesMode: "replace" | "merge"; source?: string;
+    /** What the file's seals were worth, checked BEFORE the import - one line per study,
+     *  by study id. Written into the chain, because a seal cannot be re-verified against
+     *  this log once it has been re-chained into it. */
+    sealNotes?: Record<string, string> }) => void;
   mergeStudies: (studies: Study[]) => number;
 
   createStudy: (name: string, organization?: string, scope?: string) => ID;
   updateStudy: (id: ID, patch: Partial<Pick<Study, "name" | "organization" | "scope" | "sector">>) => void;
   deleteStudy: (id: ID) => void;
+  /** Sign the head of the active study's log. Resolves to the fingerprint used, or null
+   *  when there is no key or nothing to seal. */
+  sealActive: (by: string) => Promise<string | null>;
   setActiveStudy: (id: ID | null) => void;
 
   addEntity: (type: string, values: Record<string, FieldValue>, source?: string, comment?: string) => ID;
@@ -332,7 +351,8 @@ export const useStore = create<StoreState>((set, get) => ({
         const dropped = cur && !keepOwn ? cur.entities.filter((e) => !ents.has(e.id)) : [];
         return {
           ...(cur ?? {}), ...inc, entities, updatedAt: ts,
-          log: appendAll(cur?.log, importEntries(tax, inc, entities, dropped, ts, from, opts.studiesMode, cur?.log)),
+          log: appendAll(cur?.log, importEntries(tax, inc, entities, dropped, ts, from, opts.studiesMode, cur?.log,
+            opts.sealNotes?.[inc.id])),
         } as Study;
       });
       if (opts.studiesMode === "merge") {
@@ -373,7 +393,26 @@ export const useStore = create<StoreState>((set, get) => ({
       studies: get().studies.filter((s) => s.id !== id),
       activeStudyId: get().activeStudyId === id ? null : get().activeStudyId,
     });
+    forgetStudy(id);   // its folds have nothing left to describe
     schedulePersist(get);
+  },
+  sealActive: async (by) => {
+    const study = get().studies.find((s) => s.id === get().activeStudyId);
+    const key = ownKey();
+    if (!study || !key) return null;
+    const log = study.log ?? [];
+    const head = log.length ? log[log.length - 1].hash : "";
+    const ts = new Date().toISOString();
+    const seal = await sealStudy(study, head, log.length, by, key, ts);
+    // The seal is an entry like any other, so the next change chains onto it and a later
+    // seal covers the earlier ones. Its own hash covers the signature (see payloadOf).
+    set({ studies: get().studies.map((s) => s.id !== study.id ? s : {
+      ...s, updatedAt: ts,
+      log: appendLog(s.log, { ts, editor: by, kind: "seal", entity: STUDY_SCOPE,
+        entityType: "", title: "Sealed", comment: `Sealed by ${seal.kid}`, seal }),
+    }) });
+    schedulePersist(get);
+    return seal.kid;
   },
   setActiveStudy: (id) => { set({ activeStudyId: id }); schedulePersist(get); },
 

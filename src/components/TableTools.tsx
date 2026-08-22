@@ -11,6 +11,7 @@
 // The state and the filtering live in useTableFilter, so a view that is not a plain
 // entity table (the coverage matrix, say) gets the same behaviour by calling one hook.
 import { useMemo, useRef, useState, useEffect } from "react";
+import { getGroupKey, setGroupKey as storeGroupKey } from "../domain/viewstate";
 import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue } from "../domain/types";
 import { scaleLabel } from "../domain/taxonomy";
 import { facetsOf, countFacets, filterItems, groupItems, activeCount, type Selection } from "../domain/tablefilter";
@@ -41,10 +42,13 @@ export interface TableFilter {
   total: number;
 }
 
-export function useTableFilter(type: EntityTypeDef, items: EntityRecord[], onGroupChange?: () => void): TableFilter {
+export function useTableFilter(type: EntityTypeDef, items: EntityRecord[], onGroupChange?: () => void, scope?: string): TableFilter {
   const [query, setQuery] = useState("");
   const [sel, setSel] = useState<Selection>({});
-  const [groupKey, setGroupKeyRaw] = useState("");
+  // How the table is ARRANGED comes back with the reader; what it is filtered to does not.
+  // A table that silently holds fewer rows than it has, because of a facet set on a
+  // previous visit, is a trap - see viewstate.ts.
+  const [groupKey, setGroupKeyRaw] = useState(() => (scope ? getGroupKey(scope) : ""));
 
   const facetSet = useMemo(() => facetsOf(type, items, displayValue), [type, items]);
   const facets = useMemo(() => countFacets(facetSet, items, type, query, sel, displayValue), [facetSet, items, type, query, sel]);
@@ -59,7 +63,7 @@ export function useTableFilter(type: EntityTypeDef, items: EntityRecord[], onGro
     if (!next.length) delete out[key];
     return out;
   });
-  const setGroupKey = (k: string) => { setGroupKeyRaw(k); onGroupChange?.(); };
+  const setGroupKey = (k: string) => { setGroupKeyRaw(k); if (scope) storeGroupKey(scope, k); onGroupChange?.(); };
 
   return {
     query, setQuery, sel, toggleFacet, groupKey, setGroupKey, facets, shown,

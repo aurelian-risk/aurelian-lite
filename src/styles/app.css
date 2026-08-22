@@ -1571,6 +1571,95 @@ select.chip.ex-cand-type { display: inline-block; width: auto; cursor: pointer; 
   text-overflow: ellipsis; white-space: nowrap; }
 .kcc-mit .multi select { width: 100%; min-width: 0; }
 
+/* What each class of measure did to one factor. A row per class, its effect on the right
+   where the eye already goes for a number. */
+.ft-chan { display: flex; flex-direction: column; gap: 5px; margin: 4px 0 2px; }
+.ft-chan-row { display: flex; align-items: baseline; gap: 9px;
+  padding: 7px 10px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--bg-0); }
+.ft-chan-cls { flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em;
+  text-transform: uppercase; padding: 2px 7px; border-radius: 999px;
+  background: color-mix(in oklch, var(--fg-subtle) 18%, transparent); color: var(--fg-muted); }
+.ft-chan-cls.cls-preventive { background: color-mix(in oklch, var(--color-state-success) 20%, transparent); color: var(--fg); }
+.ft-chan-cls.cls-detective { background: color-mix(in oklch, var(--primary) 20%, transparent); color: var(--fg); }
+.ft-chan-cls.cls-corrective { background: color-mix(in oklch, var(--color-state-warning) 22%, transparent); color: var(--fg); }
+.ft-chan-cls.cls-deterrent, .ft-chan-cls.cls-avoidance { background: color-mix(in oklch, var(--fg-subtle) 20%, transparent); color: var(--fg); }
+.ft-chan-what { flex: 1; min-width: 0; font-size: 12px; color: var(--fg-muted); }
+.ft-chan-eff { flex: none; font-size: 12px; font-weight: 700; color: var(--fg);
+  font-variant-numeric: tabular-nums; cursor: help; }
+
+/* Checking a seal against a key the recipient already holds - the offer, and its answer. */
+.idiff-seal .sp-seal-t { align-items: center; }
+.idiff-match { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.idiff-match-msg { margin-top: 8px; padding: 8px 10px; border-radius: 8px; font-size: 12px; line-height: 1.5; }
+.idiff-match-msg.ok { background: color-mix(in oklch, var(--color-state-success) 14%, transparent); color: var(--fg); }
+.idiff-match-msg.bad { background: color-mix(in oklch, var(--color-state-error) 14%, transparent); color: var(--fg); }
+
+/* What the log does not account for: a count you can act on, names one click away. */
+.idiff-untracked summary { cursor: pointer; }
+.idiff-untracked-list { margin-top: 8px; max-height: 140px; overflow-y: auto; font-size: 11.5px;
+  line-height: 1.7; color: var(--fg-muted); }
+
+/* Format and protection, as one segmented control each rather than loose buttons: a
+   single track with the choice filled in. Three separate pills in a 250 px menu came out
+   unequal, chunky and out of rhythm with the two-way row above them. */
+.menu-pop .seg { display: flex; gap: 0; margin: 0 10px 8px; padding: 2px;
+  border: 1px solid var(--border); border-radius: 9px; background: var(--bg-0); }
+.menu-pop .seg .seg-btn { flex: 1 1 0; min-width: 0; white-space: nowrap;
+  padding: 5px 4px; border: 0; border-radius: 7px; background: none;
+  font-size: 11.5px; font-weight: 600; letter-spacing: 0.01em; color: var(--fg-subtle); }
+.menu-pop .seg .seg-btn:hover:not(.on):not(:disabled) { color: var(--fg); background: var(--hairline); }
+.menu-pop .seg .seg-btn.on { background: var(--primary); color: var(--primary-fg); box-shadow: var(--shadow-sm); }
+.menu-pop .seg .seg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Choosing who an export is addressed to. */
+.menu-to { display: flex; flex-direction: column; gap: 3px; padding: 4px 10px 8px; }
+.menu-to-row { display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer;
+  padding: 3px 0; margin: 0; }
+.menu-to-row > span:nth-of-type(1) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-to-kid { font-size: 10.5px; color: var(--fg-subtle); }
+
+/* Seals: one verdict per seal, and dialogs for everything that is not state. */
+.sp-badge { font-size: 11px; font-weight: 700; letter-spacing: 0.01em; padding: 2px 8px;
+  border-radius: 999px; background: color-mix(in oklch, var(--fg-subtle) 18%, transparent); color: var(--fg-muted); }
+.sp-badge.sp-verified { background: color-mix(in oklch, var(--color-state-success) 22%, transparent); color: var(--fg); }
+.sp-badge.sp-intact { background: color-mix(in oklch, var(--color-state-warning) 22%, transparent); color: var(--fg); }
+.sp-badge.sp-broken { background: color-mix(in oklch, var(--color-state-error) 22%, transparent); color: var(--fg); }
+.sp-verified .sp-dot { background: var(--color-state-success); }
+.sp-intact .sp-dot { background: var(--color-state-warning); }
+.sp-broken .sp-dot { background: var(--color-state-error); }
+.sp-problem { margin-top: 4px; font-size: 12px; color: var(--color-state-error); }
+.sp-fp { font-size: 14px; letter-spacing: 0.06em; padding: 9px 12px; border-radius: 8px;
+  background: var(--bg-0); border: 1px solid var(--hairline); margin: 8px 0; user-select: all; }
+.sp-sec { margin-bottom: 18px; }
+.sp-sec-t { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--fg-subtle); margin-bottom: 6px; }
+.sp-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.modal-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+/* The seal dialogs are small: a question and its answer, not a workbench. */
+.sp-modal { width: min(440px, 94vw); height: auto; max-height: 88vh; }
+.sp-modal-w { width: min(560px, 94vw); }
+.sp-modal .modal-lg-body p { margin: 0 0 10px; font-size: 13px; line-height: 1.55; }
+.sp-modal .field { margin-bottom: 0; }
+.sp-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.sp-seal { display: flex; align-items: flex-start; gap: 9px; padding: 8px 10px;
+  border: 1px solid var(--hairline); border-radius: 9px; background: var(--bg-0); }
+.sp-dot { flex: none; width: 8px; height: 8px; border-radius: 999px; margin-top: 5px;
+  background: var(--fg-subtle); }
+.sp-ok .sp-dot { background: var(--color-state-success); }
+.sp-stale .sp-dot { background: var(--color-state-warning); }
+.sp-bad .sp-dot { background: var(--color-state-error); }
+.sp-seal-main { flex: 1; min-width: 0; }
+.sp-seal-t { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 12.5px; font-weight: 600; color: var(--fg); }
+.sp-kid { font-size: 11px; color: var(--fg-muted); }
+.sp-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px;
+  padding: 9px 11px; border: 1px solid var(--primary); border-radius: 9px;
+  background: color-mix(in oklch, var(--primary) 7%, transparent); }
+.sp-ring { margin-top: 12px; font-size: 12px; color: var(--fg-muted); }
+.sp-ring summary { cursor: pointer; }
+.sp-ring-row { display: flex; align-items: center; gap: 10px; padding: 5px 2px; }
+.sp-ring-row > span:nth-child(2) { flex: 1; color: var(--fg); }
+
 /* The row that says whether a model is running next to the browser. */
 .ep-row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
   padding: 8px 10px; margin-bottom: 10px; border: 1px solid var(--hairline);
