@@ -5,6 +5,62 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.6.0] — 2026-08-22
+
+Sealing a study, checking one against the key it was sent with, tables that stay as you
+arranged them, and a report that says what the model computes.
+
+### Added
+- **A study can be sealed.** A seal signs the head of the change log, so altering anything
+  recorded before it needs the private key — where the hash chain alone only proves the log
+  is consistent with itself, and anyone holding the file can recompute that. Seals are
+  entries in the chain, so a later one covers the earlier ones.
+- **A seal is checked against the key it claims.** Three states, named rather than implied:
+  *verified* (signature valid, history intact, and the key is one you have named),
+  *signature valid · key not named*, and *does not check out*. The middle one is a task, not
+  a warning: compare the fingerprint by some route other than the file, name the key, and
+  the same seal reads as verified.
+- **An imported file is checked before it is taken in.** The import dialog shows who sealed
+  it, up to which entry, how many changes followed, and whether the key is known — and
+  offers to check it against a public-key file you already hold. A key that does not match
+  says so, naming both fingerprints. What the seal was worth is then written into the
+  chain itself, because a seal cannot be re-verified once it has been re-chained into a
+  receiving log.
+- **Public and private keys are files.** The private one is saved encrypted with a password;
+  the public one carries its own fingerprint, and a file claiming one it does not have is
+  refused.
+- **An export can be addressed to a key instead of a password.** A password has to reach the
+  recipient somehow, and in practice travels the same way the file does. One content key
+  encrypts the study once and is wrapped per recipient; a second recipient costs a few
+  hundred bytes, not a second copy. The recipient list is readable in the file, so someone
+  can see whether it is for them.
+- **Tables stay as you arranged them.** Which groups are folded away and which field a table
+  is grouped by survive leaving the tab and coming back. Kept outside the study on purpose:
+  a fold belongs to whoever is reading, and a study that recorded it would carry it into
+  every export and into the change log.
+- **A launcher script**, next to the built file: serves the app from a local address, and
+  with `--llm` runs a local model server that answers on the same one.
+
+### Changed
+- **The report speaks the model's language.** It says what becomes of an attack attempt —
+  blocked, detected in time, or through to the objective — and where on the chain attempts
+  end, instead of an averaged coverage figure. A step counts as defended only where
+  something stops or catches an attacker there; each measure names the class it acts
+  through, and a step held only by damage control says so.
+- **The loss curve is read as frequencies.** "One year in fifty costs more than €X" rather
+  than a density whose vertical axis nobody quotes, and the years with no loss at all are
+  stated instead of hidden in the shape.
+- **Each factor says what your measures did to it** — one branch per effect class, with a
+  gate measured in steps rather than as a percentage, because a gate is not a multiplier.
+- **Tables in the report render as tables.** Document control and the change record arrived
+  as paragraphs of vertical bars.
+- **Chain defence sits with the operational scenarios** whose chains it is about.
+- **A catalogue import reads what the parser reads.** The gate in front of it judged the
+  text by splitting raw lines, so a control text running over several lines — or simply
+  carrying a comma — was refused as "not a catalogue" while the parser behind it read it
+  without complaint. NIST SP 800-53 and OWASP ASVS were both refused this way.
+- **Escape closes a drop-down.**
+
 ## [0.5.2] — 2026-08-19
 
 The table toolbar became one thing, and a field with two states is now a switch rather
