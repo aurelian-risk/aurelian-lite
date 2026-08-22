@@ -24,7 +24,16 @@ change is stated in the [CHANGELOG](CHANGELOG.md).
 ## What it is **not** (current limitations)
 
 - **Not multi-user and not access-controlled.** There is no authentication, no authorisation, and
-  no server. Any "author"/editor attribution is a self-declared name, **not** a verified identity.
+  no server. An "author"/editor name is self-declared. A study can be **sealed** — signed with a
+  key held on the machine — which raises that to "the holder of this key", and makes rewriting
+  the recorded history require that key. What a seal does not do is worth knowing before relying
+  on it: it does **not** prove *when* it was made (a signature carries no time, and there is no
+  timestamp authority without a network), and it does not bind a key to a person. Compare a key's
+  fingerprint by some route other than the file before you believe a name against it.
+- **A lost key is lost.** A lost signing key leaves existing seals verifiable — verification needs
+  only the public half — but you cannot seal as that identity again. A lost key that an export was
+  encrypted *to* makes that file unreadable by anyone, permanently. That is a harder failure than a
+  forgotten password, which can come back to you.
   Collaboration today is by exchanging exported files.
 - **Not evaluated for classified or protectively-marked information.** It has no accreditation,
   certification, or formal security evaluation. Do not use it to process information whose handling
