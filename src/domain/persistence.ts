@@ -5,7 +5,7 @@
 // taxonomy-only / data-only.
 import yaml from "js-yaml";
 import type { AppState, Bundle, Study, Taxonomy } from "./types";
-import { encryptText } from "./crypto";
+import { encryptText, encryptToRecipients, type Recipient } from "./crypto";
 
 const DB_NAME = "ebios_offline";
 const STORE_NAME = "state";
@@ -120,7 +120,8 @@ export type ExportWhat = "bundle" | "taxonomy" | "data";
 
 export async function exportToFile(
   state: AppState, what: ExportWhat, format: Format,
-  opts?: { studies?: Study[]; nameHint?: string; documents?: Bundle["documents"]; settings?: Bundle["settings"]; password?: string },
+  opts?: { studies?: Study[]; nameHint?: string; documents?: Bundle["documents"]; settings?: Bundle["settings"];
+    password?: string; recipients?: Recipient[] },
 ): Promise<void> {
   let payload: Bundle;
   if (what === "taxonomy") {
@@ -138,6 +139,11 @@ export async function exportToFile(
   }
   const base = opts?.nameHint ? slug(opts.nameHint) : what;
   const text = serialize(payload, format);
+  if (opts?.recipients?.length) {                       // addressed to keys: no shared secret
+    const envelope = await encryptToRecipients(text, opts.recipients);
+    download(`ebios-${base}.${format}.enc`, envelope, "json");
+    return;
+  }
   if (opts?.password) {                                 // strong AES-256-GCM encryption
     const envelope = await encryptText(text, opts.password);
     download(`ebios-${base}.${format}.enc`, envelope, "json");

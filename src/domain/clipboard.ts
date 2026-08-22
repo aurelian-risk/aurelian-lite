@@ -3,7 +3,7 @@
 // the schema (entity types + fields) followed by the data (entities with
 // relationships resolved to names). Paste into an LLM chat as grounded context.
 import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue, Study, Taxonomy } from "./types";
-import { getType, recordTitle, scaleLabel, scaleMax } from "./taxonomy";
+import { getType, recordTitle, scaleLabel, scaleMax, isSetBack } from "./taxonomy";
 import { PRODUCT } from "../profile";
 import { deriveInputs, meanOf } from "./quantModel";
 import { residualPos } from "./treatment";
@@ -372,7 +372,7 @@ function attackFlowSvg(tax: Taxonomy, study: Study): string | null {
 
 /** A human-readable, taxonomy-driven Markdown report of the whole study:
  *  overview, per-workshop entities (data, relationships resolved to names) and a
- *  deterministic kill-chain mitigation-coverage section. */
+ *  deterministic chain-defence section. */
 // ── Quantitative risk (Monte-Carlo) for the report ───────────────────────────
 const fmtMoney = (v: number): string => {
   const a = Math.abs(v);
@@ -412,6 +412,46 @@ function lossCurveSvg(rW: QuantResult, rWo: QuantResult): string {
   return p.join("");
 }
 
+/** What becomes of an attack attempt, as one bar: blocked, detected in time, or through
+ *  to the objective. The same three outcomes the app's chain-defence ring shows, and the
+ *  same traversal produced them - a reader who sees both must not have to reconcile two
+ *  accounts of the same run. */
+function outcomeBarSvg(r: QuantResult): string {
+  const W = 640, H = 108, PAD = 12, BX = 14, BY = 40, BW = W - 28, BH = 30;
+  const through = clamp01(r.vuln);
+  const caught = clamp01(r.detected);
+  const blocked = clamp01(1 - through - caught);
+  const parts: { label: string; v: number; c: string }[] = [
+    { label: "blocked", v: blocked, c: HEX.green },
+    { label: "detected in time", v: caught, c: "#3d7fd1" },
+    { label: "reaches the objective", v: through, c: HEX.red },
+  ];
+  const p: string[] = [`<svg xmlns="http://www.w3.org/2000/svg" width="${W + PAD * 2}" height="${H + PAD * 2}" viewBox="0 0 ${W + PAD * 2} ${H + PAD * 2}" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif">`];
+  p.push(`<rect x="0.5" y="0.5" width="${W + PAD * 2 - 1}" height="${H + PAD * 2 - 1}" rx="14" fill="${HEX.card}" stroke="${HEX.edge}"/>`);
+  p.push(`<g transform="translate(${PAD} ${PAD})">`);
+  p.push(`<text x="${BX}" y="26" font-size="11.5" font-weight="600" fill="${HEX.muted}">Outcome of an attack attempt</text>`);
+  let x = BX;
+  for (const s of parts) {
+    const w = Math.max(0, s.v * BW);
+    if (w > 0.5) {
+      p.push(`<rect x="${x.toFixed(1)}" y="${BY}" width="${w.toFixed(1)}" height="${BH}" fill="${s.c}"/>`);
+      if (w > 46) p.push(`<text x="${(x + w / 2).toFixed(1)}" y="${BY + 20}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#fff">${Math.round(s.v * 100)}%</text>`);
+    }
+    x += w;
+  }
+  p.push(`<rect x="${BX}" y="${BY}" width="${BW}" height="${BH}" rx="6" fill="none" stroke="${HEX.edge}"/>`);
+  let lx = BX;
+  for (const s of parts) {
+    p.push(`<rect x="${lx}" y="${BY + BH + 16}" width="9" height="9" rx="2" fill="${s.c}"/>`);
+    p.push(`<text x="${lx + 14}" y="${BY + BH + 24.5}" font-size="10.5" fill="${HEX.ink}">${esc(s.label)} ${Math.round(s.v * 100)}%</text>`);
+    lx += 22 + esc(s.label).length * 5.6;
+  }
+  p.push("</g></svg>");
+  return p.join("");
+}
+
+const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
+
 /** Derived Monte-Carlo quantification per operational scenario (with vs without
  *  controls), honouring any persisted per-factor overrides so the report matches
  *  the app. Deterministic (seeded), so re-running gives identical numbers. */
@@ -443,7 +483,32 @@ function quantSection(tax: Taxonomy, study: Study): string[] | null {
       + row("Vulnerability P(adversary > control)", fmtPct(rWo.vuln), fmtPct(rW.vuln))
       + row("Loss magnitude / event", esc(fmtMoney(lm)), esc(fmtMoney(lm)))
       + `</tbody></table>`);
-    L.push(`Controls cut the mean annual loss by **${fmtMoney(benefit)}** (-${benefitPct}%). Kill-chain coverage: **${dW.coverage.mitigated}/${dW.coverage.total}** steps mitigated${dW.coverage.total ? ` (avg implementation ${Math.round(dW.coverage.impl * 100)}%)` : ""}.`);
+    L.push(`Controls cut the mean annual loss by **${fmtMoney(benefit)}** (-${benefitPct}%).`);
+    L.push("");
+    // What became of the attempts, not how much of the chain is "covered". A measure
+    // stops an attacker at the step it acts on, or catches him on the way, or does
+    // neither and reduces the loss instead - an averaged coverage figure cannot say which,
+    // and the traversal that produced these numbers can.
+    L.push(`<div align="center">${outcomeBarSvg(rW)}</div>`);
+    L.push("");
+    const stopped = Math.round((1 - rW.vuln) * 100);
+    const atStart = Math.round(rW.blockedAtBaseline * 100);
+    L.push(`**${stopped}% of attempts are stopped**, ${atStart}% of them by what the attack itself demands, before any specific measure. `
+      + `${Math.round(rW.detected * 100)}% are caught in the act and answered before the objective is reached - a different capability from "they could not get in", and counted separately for that reason.`);
+    // Where on the chain the attempts died. This is the part an averaged figure hides:
+    // one step carrying every stop is a choke point, and an even spread is defence in depth.
+    const deaths = rW.breaks.filter((b) => b.p >= 0.005).sort((a, b) => b.p - a.p).slice(0, 6);
+    if (deaths.length) {
+      const nameOf = (id: string) => {
+        const st = study.entities.find((e) => e.id === id);
+        const t = st && getType(tax, st.type);
+        return st && t ? recordTitle(t, st) : id.slice(0, 8);
+      };
+      L.push("");
+      L.push("<table class=\"qt-tbl\"><thead><tr><th>Attempts stop at</th><th>Share of all attempts</th></tr></thead><tbody>"
+        + deaths.map((b) => `<tr><td>${esc(nameOf(b.id))}</td><td>${fmtPct(b.p)}</td></tr>`).join("")
+        + "</tbody></table>");
+    }
     L.push("");
     L.push(`<div align="center">${lossCurveSvg(rW, rWo)}</div>`);
     L.push("");
@@ -470,7 +535,13 @@ function treatmentSection(tax: Taxonomy, study: Study): string[] | null {
   const cell = (v: FieldValue | undefined) => esc(v == null || v === "" ? "—" : String(v));
 
   const L: string[] = ["---\n", "## Risk treatment\n",
-    "_Treatment decision per risk (strategic scenario). The residual risk is DERIVED from the decision and how well the risk's kill chain is already mitigated - Reduce lowers likelihood by that coverage, Share lowers gravity, Accept keeps the inherent level, Avoid removes it._\n"];
+    "_Treatment decision per risk (strategic scenario). The residual position is DERIVED, never typed in: "
+    + "it comes from the same chain traversal as the risk figures, split across both axes. "
+    + "**Reduce** moves the risk down and left by what the measures achieve on each side - "
+    + "less often, or less costly when it happens - so a treatment that only buys recovery "
+    + "moves it down rather than left. **Share** moves gravity, and by at least one level, "
+    + "because that is what buying the transfer is for. **Accept** keeps the inherent level. "
+    + "**Avoid** removes the exposure._\n"];
   let tbl = `<table class="qt-tbl"><thead><tr><th>Risk</th><th>Decision</th><th>Owner</th><th>Deadline</th><th>Status</th><th>Inherent → Residual (L·G)</th></tr></thead><tbody>`;
   for (const t of treatments) {
     const risk = byId.get(t.values[refF.key] as string);
@@ -646,7 +717,8 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
     }
   }
 
-  // Deterministic coverage: kill-chain steps vs. the measures that cover them.
+  // Deterministic chain defence: each step against what actually stops or catches an
+  // attacker there, as opposed to what merely names it.
   const stepType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
   const parentF = stepType?.fields.find((f) => f.type === "ref" && f.refType);
   const orderF = stepType?.fields.find((f) => f.type === "number");
@@ -654,7 +726,10 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
   const coversF = measureType?.fields.find((f) => f.type === "multiref" && f.refType === stepType?.key);
   const opType = parentF?.refType ? getType(tax, parentF.refType) : undefined;
   if (stepType && parentF && orderF && measureType && coversF && opType) {
-    const measures = study.entities.filter((e) => e.type === measureType.key);
+    // A measure that is present but not in use defends nothing - the coverage matrix,
+    // the radar and the quantification all read it that way, and a report that counted it
+    // would answer the same question differently.
+    const measures = study.entities.filter((e) => e.type === measureType.key && !isSetBack(tax, e));
     const byId = new Map(study.entities.map((e) => [e.id, e]));
     const get = (id: FieldValue | undefined) => (typeof id === "string" ? byId.get(id) : undefined);
     const tacticF = stepType.fields.find((f) => f.type === "enum");
@@ -714,17 +789,29 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
       && study.entities.some((s) => s.type === stepType.key && s.values[parentF.key] === e.id));
     if (ops.length) {
       L.push("---\n");
-      L.push("## Kill-chain mitigation coverage\n");
+      L.push("## Chain defence\n");
+      L.push("_A step is **defended** only where something stops or catches the attacker there. "
+        + "Corrective, deterrent and avoidance measures on a step are real work and move the risk "
+        + "figures - they reduce the loss, or the number of attempts - but they do not stop him "
+        + "reaching it, so they do not make the step look handled._\n");
       for (const op of ops) {
         const steps = study.entities.filter((e) => e.type === stepType.key && e.values[parentF.key] === op.id)
           .sort((a, b) => Number(a.values[orderF.key] || 0) - Number(b.values[orderF.key] || 0));
         const covering = (sid: string) => measures.filter((m) => Array.isArray(m.values[coversF.key]) && (m.values[coversF.key] as string[]).includes(sid));
-        const covered = steps.filter((s) => covering(s.id).length).length;
-        L.push(`### ${recordTitle(opType, op)} - ${covered}/${steps.length} steps mitigated`);
+        // Defended, not merely covered: the same rule the app's chain view applies.
+        const defends = (m: EntityRecord) => { const c = effectClassOf(m); return c === "Preventive" || c === "Detective"; };
+        const defended = steps.filter((s) => covering(s.id).some(defends)).length;
+        L.push(`### ${recordTitle(opType, op)} - ${defended}/${steps.length} steps defended`);
         L.push(`<div align="center">${killChainSvg(op, steps, covering)}</div>`);
         for (const s of steps) {
           const cov = covering(s.id);
-          L.push(`- ${recordTitle(stepType, s)} -> ${cov.length ? cov.map((m) => recordTitle(measureType, m)).join(", ") : "**GAP - no measure**"}`);
+          // Each measure with the class it acts through, so "covered" cannot be mistaken
+          // for "stopped here".
+          const shown = cov.map((m) => `${recordTitle(measureType, m)} _(${effectClassOf(m).toLowerCase()})_`).join(", ");
+          const verdict = !cov.length ? "**GAP - no measure**"
+            : cov.some(defends) ? shown
+            : `${shown} - **nothing prevents or detects here**`;
+          L.push(`- ${recordTitle(stepType, s)} -> ${verdict}`);
         }
         L.push("");
       }

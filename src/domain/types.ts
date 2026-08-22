@@ -118,7 +118,7 @@ export interface ChangeEntry {
   seq: number;
   ts: string;
   editor: string;
-  kind: "create" | "update" | "delete" | "import";
+  kind: "create" | "update" | "delete" | "import" | "seal";
   /** The record this entry is about. */
   entity: ID;
   /** Type key and title AS OF this entry, so a deleted record stays readable in the
@@ -131,6 +131,10 @@ export interface ChangeEntry {
    *  what binds the log to the data: editing a value outside the app leaves the log
    *  intact but no longer matching, and verification says so. */
   state?: string;
+  /** Present on a `seal` entry: a signature over the head of the chain as it stood, so
+   *  rewriting anything before it needs the private key. See keys.ts for what that does
+   *  and does not prove. */
+  seal?: { jws: string; kid: string; jwk: JsonWebKey };
   prevHash: string;
   hash: string;
 }

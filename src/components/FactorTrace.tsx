@@ -264,6 +264,33 @@ export function FactorTrace({ fkey, range, vals, derived, tax, unit, conf, accen
             })}
           </div>
 
+          {/* Which class of measure moved THIS factor, and by how much. The tree above shows
+              the factors and the arithmetic; without this a reader sees the bill fall and
+              cannot tell whether that was fewer attempts, a shorter event or a smaller one -
+              three different pieces of work, bought separately. */}
+          {(derived.channels[fkey]?.length ?? 0) > 0 && (
+            <>
+              <div className="ft-sec-t">What your measures did to it</div>
+              <div className="ft-chan">
+                {derived.channels[fkey]!.map((t) => (
+                  <div className="ft-chan-row" key={t.cls}>
+                    <span className={"ft-chan-cls cls-" + t.cls.toLowerCase()}>{t.cls}</span>
+                    <span className="ft-chan-what">{t.what}</span>
+                    <span className="ft-chan-eff mono" title={EFFECT_CHANNEL[t.cls]}>
+                      {t.factor != null
+                        ? (t.factor < 0.999 ? `−${Math.round((1 - t.factor) * 100)}%` : "no effect")
+                        : `${t.steps} step${t.steps === 1 ? "" : "s"}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="ft-est">
+                Strength comes from each measure's implementation level and status, so half-done
+                work counts as half. A class with no measures is not shown.
+              </p>
+            </>
+          )}
+
           <div className="ft-sec-t">Where it comes from</div>
           {source}
 

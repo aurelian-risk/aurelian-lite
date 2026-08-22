@@ -9,6 +9,7 @@
 import { useMemo, useState } from "react";
 import type { EntityRecord, Study, Taxonomy } from "../domain/types";
 import { getType, recordTitle } from "../domain/taxonomy";
+import { foldScope, getFolds, setFolds } from "../domain/viewstate";
 import { EntityModal } from "./EntityModal";
 
 const CHAIN_COLORS = ["var(--color-workshop-4)", "var(--chainB, #7d5bd0)", "var(--color-workshop-2)", "var(--color-workshop-1)", "var(--color-workshop-5)"];
@@ -20,7 +21,10 @@ interface Edge { from: string; to: string; kind: "intra" | "cross" | "asset"; }
 export function AttackPathsView({ tax, study, color }: { tax: Taxonomy; study: Study; color: string }) {
   const [shown, setShown] = useState<Set<string>>(new Set()); // scenarios start OFF; toggled on one by one
   const [openRec, setOpenRec] = useState<EntityRecord | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
+  // Folded away or not, remembered between visits like every other table part.
+  const foldKey = foldScope(study.id, "attack-paths");
+  const [collapsed, setCollapsed] = useState(() => getFolds(foldKey).has("panel"));
+  const toggleCollapsed = () => setCollapsed((c) => { setFolds(foldKey, c ? new Set() : new Set(["panel"])); return !c; });
 
   const model = useMemo(() => {
     const stepType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
@@ -154,7 +158,7 @@ export function AttackPathsView({ tax, study, color }: { tax: Taxonomy; study: S
 
   return (
     <div className="panel ws-accent ap-wrap" style={{ ["--ws-color" as string]: color, marginBottom: 20 }}>
-      <button className="panel-head ap-head" onClick={() => setCollapsed((c) => !c)} aria-expanded={!collapsed}>
+      <button className="panel-head ap-head" onClick={toggleCollapsed} aria-expanded={!collapsed}>
         <svg className={"ap-chevron" + (collapsed ? "" : " open")} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
         <h3>Attack paths</h3>
         <span className="panel-sub">read-only projection of all kill chains onto the target assets</span>

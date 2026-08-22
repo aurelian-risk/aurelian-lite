@@ -83,6 +83,9 @@ const payloadOf = (e: Omit<ChangeEntry, "hash" | "prevHash">, prev: string): str
     seq: e.seq, ts: e.ts, editor: e.editor, kind: e.kind, entity: e.entity,
     entityType: e.entityType, title: e.title,
     changes: e.changes ?? null, comment: e.comment ?? null, state: e.state ?? null, prev,
+    // Only present on a seal, so every entry written before seals existed hashes exactly
+    // as it did. Adding the key unconditionally - even as null - would renumber the past.
+    ...(e.seal ? { seal: `${e.seal.kid}.${e.seal.jws}` } : {}),
   });
 
 /** Everything an entry needs except its position and hashes. */

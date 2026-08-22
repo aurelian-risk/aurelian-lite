@@ -6,7 +6,8 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useActiveStudy, useStore } from "../domain/store";
 import { pickTextFile, parseBundle } from "../domain/persistence";
-import { isEncrypted, decryptText } from "../domain/crypto";
+import { isEncrypted, decryptText, decryptForKey, envelopeRecipients } from "../domain/crypto";
+import { fingerprint, ownKey, publicOf } from "../domain/keys";
 import { importDocs } from "../domain/documents";
 import { setModelId } from "../domain/embeddings";
 import { gen } from "../domain/gen";
@@ -49,6 +50,18 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
   };
 
   const resolveText = async (raw: string): Promise<string> => {
+    // Addressed to a key? Then no password is involved: either this installation holds one
+    // of the keys it names, or it does not - and "not addressed to you" is a different
+    // sentence from "wrong password", so it is said differently.
+    const to = envelopeRecipients(raw);
+    if (to.length) {
+      const mine = ownKey();
+      if (!mine) throw new Error(`addressed to ${to.map((t) => t.name || t.kid).join(", ")} - this installation holds no key`);
+      const kid = await fingerprint(publicOf(mine));
+      const opened = await decryptForKey(raw, mine, kid).catch(() => { throw new Error("addressed to this key, but it does not open the file"); });
+      if (opened === null) throw new Error(`not addressed to this key (${kid}) - it is for ${to.map((t) => t.name || t.kid).join(", ")}`);
+      return opened;
+    }
     if (!isEncrypted(raw)) return raw;
     const pw = prompt("This export is encrypted. Enter the password:");
     if (pw == null) throw new Error("cancelled");

@@ -1571,6 +1571,51 @@ select.chip.ex-cand-type { display: inline-block; width: auto; cursor: pointer; 
   text-overflow: ellipsis; white-space: nowrap; }
 .kcc-mit .multi select { width: 100%; min-width: 0; }
 
+/* What each class of measure did to one factor. A row per class, its effect on the right
+   where the eye already goes for a number. */
+.ft-chan { display: flex; flex-direction: column; gap: 5px; margin: 4px 0 2px; }
+.ft-chan-row { display: flex; align-items: baseline; gap: 9px;
+  padding: 7px 10px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--bg-0); }
+.ft-chan-cls { flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em;
+  text-transform: uppercase; padding: 2px 7px; border-radius: 999px;
+  background: color-mix(in oklch, var(--fg-subtle) 18%, transparent); color: var(--fg-muted); }
+.ft-chan-cls.cls-preventive { background: color-mix(in oklch, var(--color-state-success) 20%, transparent); color: var(--fg); }
+.ft-chan-cls.cls-detective { background: color-mix(in oklch, var(--primary) 20%, transparent); color: var(--fg); }
+.ft-chan-cls.cls-corrective { background: color-mix(in oklch, var(--color-state-warning) 22%, transparent); color: var(--fg); }
+.ft-chan-cls.cls-deterrent, .ft-chan-cls.cls-avoidance { background: color-mix(in oklch, var(--fg-subtle) 20%, transparent); color: var(--fg); }
+.ft-chan-what { flex: 1; min-width: 0; font-size: 12px; color: var(--fg-muted); }
+.ft-chan-eff { flex: none; font-size: 12px; font-weight: 700; color: var(--fg);
+  font-variant-numeric: tabular-nums; cursor: help; }
+
+/* Choosing who an export is addressed to. */
+.menu-to { display: flex; flex-direction: column; gap: 3px; padding: 4px 10px 8px; }
+.menu-to-row { display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer;
+  padding: 3px 0; margin: 0; }
+.menu-to-row > span:nth-of-type(1) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-to-kid { font-size: 10.5px; color: var(--fg-subtle); }
+
+/* Seals: the key you sign with, and what each seal still says about the study. */
+.sp-keys { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0 2px; }
+.sp-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.sp-seal { display: flex; align-items: flex-start; gap: 9px; padding: 8px 10px;
+  border: 1px solid var(--hairline); border-radius: 9px; background: var(--bg-0); }
+.sp-dot { flex: none; width: 8px; height: 8px; border-radius: 999px; margin-top: 5px;
+  background: var(--fg-subtle); }
+.sp-ok .sp-dot { background: var(--color-state-success); }
+.sp-stale .sp-dot { background: var(--color-state-warning); }
+.sp-bad .sp-dot { background: var(--color-state-error); }
+.sp-seal-main { flex: 1; min-width: 0; }
+.sp-seal-t { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 12.5px; font-weight: 600; color: var(--fg); }
+.sp-kid { font-size: 11px; color: var(--fg-muted); }
+.sp-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px;
+  padding: 9px 11px; border: 1px solid var(--primary); border-radius: 9px;
+  background: color-mix(in oklch, var(--primary) 7%, transparent); }
+.sp-ring { margin-top: 12px; font-size: 12px; color: var(--fg-muted); }
+.sp-ring summary { cursor: pointer; }
+.sp-ring-row { display: flex; align-items: center; gap: 10px; padding: 5px 2px; }
+.sp-ring-row > span:nth-child(2) { flex: 1; color: var(--fg); }
+
 /* The row that says whether a model is running next to the browser. */
 .ep-row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
   padding: 8px 10px; margin-bottom: 10px; border: 1px solid var(--hairline);
