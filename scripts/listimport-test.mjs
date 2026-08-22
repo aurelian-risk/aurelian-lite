@@ -18,6 +18,7 @@ import { pathToFileURL } from "node:url";
 
 const need = (n) => { const v = process.env[n]; if (!v) { console.error(`set ${n}`); process.exit(2); } return v; };
 const { readList, detectShape, noiseRatio } = await import(pathToFileURL(need("MOD_L")).href);
+const { parseTable } = await import(pathToFileURL(need("MOD_CI")).href);
 
 let pass = 0, fail = 0;
 const ok = (name, cond, extra = "") => { cond ? (pass++, console.log("✓", name)) : (fail++, console.log("✗", name, extra)); };
@@ -113,23 +114,63 @@ for (const s of schemes) {
 // table, yielding hundreds of rows that look like a result.
 {
   const prose = "This is an ordinary report about an incident. ".repeat(80);
-  const v = detectShape(prose, 3, 4);
+  const v = detectShape(prose, parseTable(prose));
   ok("refuses continuous prose", v.shape === "unknown", `${v.shape}: ${v.reason}`);
 }
 {
   const binary = Array.from({ length: 400 }, (_, i) => String.fromCharCode((i * 7) % 30)).join("") + "|a|b|c";
-  const v = detectShape(binary, 5, 4);
+  const v = detectShape(binary, parseTable(binary));
   ok("refuses a stream with no text layer", v.shape === "unknown", `${v.shape}: ${v.reason}`);
 }
 {
   const csv = "id,title,level\n" + Array.from({ length: 20 }, (_, k) => `A-${k},Title ${k},B`).join("\n");
-  const v = detectShape(csv, 20, 3);
+  const v = detectShape(csv, parseTable(csv));
   ok("still recognises a real table", v.shape === "table", `${v.shape}: ${v.reason}`);
 }
 {
   const list = Array.from({ length: 12 }, (_, k) => `OP-${k + 1} Title ${k + 1} (B)\nBody.\n`).join("\n");
-  const v = detectShape(list, 2, 2);
+  const v = detectShape(list, parseTable(list));
   ok("recognises an identifier-led list", v.shape === "list", `${v.shape}: ${v.reason}`);
+}
+// Every dash a publisher breaks a word with, not just the hyphen. The class /[-–—]/ is
+// three characters that look alike and sort alike, so a blanket "normalise the dashes"
+// pass over a tree can rewrite one INSIDE the class and leave every assertion green -
+// which is what happened in the sibling product. Naming all three here fails loudly on a
+// class that has lost one.
+for (const [name, dash] of [["hyphen", "-"], ["en dash", "\u2013"], ["em dash", "\u2014"]]) {
+  const text = Array.from({ length: 8 }, (_, k) =>
+    `A-${k + 1} authori${dash}\nsation of access\nBody text.\n`).join("\n");
+  const r = readList(text);
+  ok(`a word broken with ${name === "hyphen" ? "a" : "an"} ${name} is joined`,
+    r.items.length === 8 && /authorisation/.test(r.items[0]?.title ?? ""),
+    (r.items[0]?.title ?? "").slice(0, 30));
+}
+
+// The gate has to answer on the SAME reading as the parser behind it. A control text
+// that runs over several lines, or carries a comma, breaks a raw newline/delimiter split
+// while the parser reads it correctly - and a gate stricter than its parser can only
+// refuse work that parser could have done. Both shapes below did exactly that.
+{
+  const wrapped = 'id,title,text\n'
+    + Array.from({ length: 30 }, (_, k) =>
+        `A-${k},Title ${k},"First sentence.\nSecond, with a comma.\nThird."`).join("\n");
+  const p = parseTable(wrapped);
+  ok("a field may run over several lines", p.rows.length === 30 && p.headers.length === 3,
+    `${p.rows.length} x ${p.headers.length}`);
+  const v = detectShape(wrapped, p);
+  ok("...and the gate reads it as the table it is", v.shape === "table", `${v.shape}: ${v.reason}`);
+}
+{
+  const commas = 'id,title,text\n'
+    + Array.from({ length: 30 }, (_, k) => `A-${k},Title ${k},"One, two, three, four"`).join("\n");
+  const v = detectShape(commas, parseTable(commas));
+  ok("a comma inside a field does not make it prose", v.shape === "table", `${v.shape}: ${v.reason}`);
+}
+{
+  // The refusal still has to hold where the parser itself found no shape.
+  const ragged = "Heading\nsome text, more text\nand a line\n" + "prose, prose, prose\n".repeat(20);
+  const v = detectShape(ragged, parseTable(ragged));
+  ok("ragged text is still refused", v.shape !== "table", `${v.shape}: ${v.reason}`);
 }
 {
   ok("noise ratio separates text from a binary stream",

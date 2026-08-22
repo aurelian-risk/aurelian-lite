@@ -96,7 +96,7 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
       // the text layer of a PDF, say - is read as a delimited table and turns into
       // hundreds of rows of noise that look like a result.
       const probe = parseTable(raw);
-      const shape = detectShape(raw, probe.rows.length, probe.headers.length);
+      const shape = detectShape(raw, probe);
       if (shape.shape === "table") {
         setTable(probe); setMap(guessMapping(probe.headers)); setName(fallbackName || "Imported");
       } else if (shape.shape === "list") {

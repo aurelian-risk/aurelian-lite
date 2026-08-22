@@ -41,7 +41,9 @@
     "test:oscal": "esbuild src/domain/oscal.ts --bundle --format=esm --outfile=node_modules/.cache/oscal.mjs --log-level=error && MOD_O=node_modules/.cache/oscal.mjs node scripts/oscal-test.mjs",
     "test:corpus": "node scripts/corpus-test.mjs",
     "test:vocab": "esbuild src/domain/vocabulary.ts --bundle --format=esm --outfile=node_modules/.cache/vocabulary.mjs --log-level=error && MOD_V=node_modules/.cache/vocabulary.mjs node scripts/vocabulary-test.mjs",
-    "test:modelling": "esbuild src/domain/modelling.ts --bundle --format=esm --outfile=node_modules/.cache/modelling.mjs --log-level=error && MOD_M=node_modules/.cache/modelling.mjs node scripts/modelling-test.mjs"
+    "test:modelling": "esbuild src/domain/modelling.ts --bundle --format=esm --outfile=node_modules/.cache/modelling.mjs --log-level=error && MOD_M=node_modules/.cache/modelling.mjs node scripts/modelling-test.mjs",
+    "test:viewstate": "esbuild src/domain/viewstate.ts --bundle --format=esm --outfile=node_modules/.cache/viewstate.mjs --log-level=error && MOD_V=node_modules/.cache/viewstate.mjs node scripts/viewstate-test.mjs",
+    "test:report": "rm -rf node_modules/.cache/report && esbuild src/domain/clipboard.ts src/profile/index.ts src/profile/ebios/sample.ts --bundle --format=esm --outdir=node_modules/.cache/report --out-extension:.js=.mjs --log-level=error && MOD_R=node_modules/.cache/report/domain/clipboard.mjs MOD_P=node_modules/.cache/report/profile/index.mjs MOD_S=node_modules/.cache/report/profile/ebios/sample.mjs node scripts/report-test.mjs"
   },
   "dependencies": {
     "d3-force": "^3.0.0",

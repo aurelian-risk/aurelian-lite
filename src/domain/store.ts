@@ -3,6 +3,8 @@
 // the taxonomy, plus data-layer swap (bundle/taxonomy/data import) and
 // migration from the legacy v1 fixed-schema format. Auto-persists (debounced).
 import { create } from "zustand";
+import { ownKey, sealStudy } from "./keys";
+import { forgetStudy } from "./viewstate";
 import type {
   AppState, Bundle, ChangeEntry, EntityRecord, FieldValue, ID, QuantTuning, Study, Taxonomy,
 } from "./types";
@@ -272,6 +274,9 @@ export interface StoreState {
   createStudy: (name: string, organization?: string, scope?: string) => ID;
   updateStudy: (id: ID, patch: Partial<Pick<Study, "name" | "organization" | "scope" | "sector">>) => void;
   deleteStudy: (id: ID) => void;
+  /** Sign the head of the active study's log. Resolves to the fingerprint used, or null
+   *  when there is no key or nothing to seal. */
+  sealActive: (by: string) => Promise<string | null>;
   setActiveStudy: (id: ID | null) => void;
 
   addEntity: (type: string, values: Record<string, FieldValue>, source?: string, comment?: string) => ID;
@@ -373,7 +378,26 @@ export const useStore = create<StoreState>((set, get) => ({
       studies: get().studies.filter((s) => s.id !== id),
       activeStudyId: get().activeStudyId === id ? null : get().activeStudyId,
     });
+    forgetStudy(id);   // its folds have nothing left to describe
     schedulePersist(get);
+  },
+  sealActive: async (by) => {
+    const study = get().studies.find((s) => s.id === get().activeStudyId);
+    const key = ownKey();
+    if (!study || !key) return null;
+    const log = study.log ?? [];
+    const head = log.length ? log[log.length - 1].hash : "";
+    const ts = new Date().toISOString();
+    const seal = await sealStudy(study, head, log.length, by, key, ts);
+    // The seal is an entry like any other, so the next change chains onto it and a later
+    // seal covers the earlier ones. Its own hash covers the signature (see payloadOf).
+    set({ studies: get().studies.map((s) => s.id !== study.id ? s : {
+      ...s, updatedAt: ts,
+      log: appendLog(s.log, { ts, editor: by, kind: "seal", entity: STUDY_SCOPE,
+        entityType: "", title: "Sealed", comment: `Sealed by ${seal.kid}`, seal }),
+    }) });
+    schedulePersist(get);
+    return seal.kid;
   },
   setActiveStudy: (id) => { set({ activeStudyId: id }); schedulePersist(get); },
 

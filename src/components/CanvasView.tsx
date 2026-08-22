@@ -20,7 +20,6 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
   const lanesRef = useRef<HTMLDivElement>(null);
   const ribbonSvgRef = useRef<SVGSVGElement>(null);
   const warmedRef = useRef(false);
-  const wasSelectingRef = useRef(false);
   const centerRafRef = useRef(0);
   const roRef = useRef<ResizeObserver | null>(null);
   const scrollLeftRef = useRef(0);   // user's horizontal scroll, captured on click to survive the refine re-render
@@ -140,15 +139,35 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
     const headers = Array.from(el.querySelectorAll<HTMLElement>(".lane-header[data-lane]"));
     const reset = (c: HTMLElement) => { c.style.transform = ""; c.style.animationDelay = ""; c.classList.remove("ef-floating"); };
     const resetHeader = (h: HTMLElement) => { h.style.transform = ""; h.classList.remove("ef-lane-flown"); };
-    if (!availableSet || selected.size === 0) { cards.forEach(reset); headers.forEach(resetHeader); wasSelectingRef.current = false; return; }
+    if (!availableSet || selected.size === 0) { cards.forEach(reset); headers.forEach(resetHeader); return; }
     headers.forEach(resetHeader);
-    // Horizontal scroll: reveal the centred tree from its start only when FIRST
-    // entering highlight mode. On a refining click the React commit resets the
-    // scroller to the left, which yanks the view while the user is scrolling
-    // around - so restore the position captured at click time instead.
+    // Horizontal scroll: keep where the reader was, on every selecting click including
+    // the first. The React commit resets the scroller to the left, which throws the view
+    // while someone is reading across it - so restore the position captured at click time.
+    //
+    // The first click used to be exempt, to reveal the re-laid tree from its start. That
+    // only holds if the tree then fits, and it does not: measured on the sample at 1280
+    // and 1680 px, the lanes still overflow by 1052 and 652 px after the click. Snapping
+    // to 0 therefore did not show the whole tree, it only moved the reader away from the
+    // node they had just clicked. (harness/flow-scroll.mjs)
     const scroller = el.parentElement;
-    if (scroller) scroller.scrollLeft = wasSelectingRef.current ? scrollLeftRef.current : 0;
-    wasSelectingRef.current = true;
+    // Restoring once is not enough. Entering highlight mode narrows the lanes for a few
+    // frames - measured at 1680 px: 2414 px wide at the click, 1606 in between, 2012 when
+    // it settles - and a browser clamps scrollLeft to what fits AT THAT MOMENT, then
+    // leaves it there when the content grows back. A single restore lands inside that
+    // window and is clamped with it (500 came back as 246). So re-apply until it sticks,
+    // for a bounded number of frames.
+    const keepScroll = () => {
+      if (!scroller) return true;
+      scroller.scrollLeft = scrollLeftRef.current;
+      return scroller.scrollLeft === scrollLeftRef.current;
+    };
+    let tries = 0;
+    const settle = () => {
+      if (keepScroll() || ++tries > 30) return;
+      centerRafRef.current = requestAnimationFrame(settle);
+    };
+    settle();
     const byLane = new Map<number, HTMLElement[]>();
     cards.forEach((c) => {
       const nk = c.dataset.nk || "";
@@ -227,6 +246,7 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
       ro.observe(scroller);
       roRef.current = ro;
     }
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [availableSet, selected, study.entities]);
 
@@ -256,10 +276,7 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
 
   // Click: always show details below; toggle selection only on valid picks.
   const clickNode = (id: string) => {
-    // Remember the current horizontal scroll so a refining click can restore it
-    // (the re-render otherwise snaps the scroller back to the left).
-    const sc = lanesRef.current?.parentElement;
-    if (sc) scrollLeftRef.current = sc.scrollLeft;
+    // The scroll position was captured on pointer-down, before the browser moved it.
     setFocused(id);
     setSelected((prev) => {
       const next = new Set(prev);
@@ -280,7 +297,10 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
         <span style={{ flex: 1 }} />
         {selected.size > 0 && <button className="btn sm" onClick={() => { setSelected(new Set()); setFocused(null); }}>Clear ({selected.size})</button>}
       </div>
-      <div className="flow-scroll">
+      {/* Where the reader is, captured before the click and not during it: pressing a
+          node focuses it, and the browser scrolls a focused element into view - so a
+          position read inside the click handler is already the browser's, not theirs. */}
+      <div className="flow-scroll" onPointerDownCapture={(e) => { scrollLeftRef.current = e.currentTarget.scrollLeft; }}>
         <div className="flow-topmask" aria-hidden />
         <div className="flow-lanes" ref={lanesRef}>
           {activeRibbons.length > 0 && (

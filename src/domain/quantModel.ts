@@ -42,6 +42,24 @@ export function measureEfficacyOf(tax: Taxonomy, m: EntityRecord, cal: Calibrati
 export const stepCoverage = (effs: number[]) => 1 - effs.reduce((p, e) => p * (1 - e), 1);
 export interface Coverage { mitigated: number; total: number; impl: number; value: number; steps: StepCov[] }
 export interface Refs { op: EntityRecord; strategic?: EntityRecord; riskSource?: EntityRecord; fearedEvent?: EntityRecord }
+/** One effect class's contribution to ONE factor. The tree shows the factors and where
+ *  they come from; this says which class of measure moved which of them, and by how much.
+ *  Without it a reader sees that the bill fell and cannot tell whether that was fewer
+ *  attempts, a shorter event or a smaller one - three different pieces of work. */
+export interface ChannelTerm {
+  cls: EffectClass;
+  /** Combined strength of this class's measures, 0..1. */
+  strength: number;
+  /** What it does to the factor: a multiplier on the range (0.8 = a fifth off) where the
+   *  class scales one... */
+  factor?: number;
+  /** ...or the number of chain steps it acts on, where it works through the traversal
+   *  instead. A gate is not a multiplier and must not be shown as one. */
+  steps?: number;
+  /** Said in the model's own words, not the class name. */
+  what: string;
+}
+
 export interface Derived {
   inputs: QuantInputs;
   /** The traversable kill chain, when the scenario models one and controls are counted
@@ -58,6 +76,9 @@ export interface Derived {
   /** How the bar was arrived at. Absent where the scenario models no chain and the
    *  `difficulty` rating carried on instead. */
   demand?: DemandBreakdown;
+  /** Which effect class moved which factor. Empty for the inherent derivation, where by
+   *  definition nothing did. */
+  channels: Partial<Record<keyof QuantInputs, ChannelTerm[]>>;
 }
 
 const R = (min: number, mode: number, max: number): Range => ({ min, mode, max });
@@ -408,6 +429,30 @@ export function deriveInputs(study: Study, tax: Taxonomy, op: EntityRecord, with
       : { icon: "✎", source: "follow-on", label: "estimate", estimated: true },
     cascadingImpact: { icon: "✎", source: "follow-on", label: "estimate", estimated: true },
   };
+  // Which class moved which factor. Built from the SAME terms the inputs above were built
+  // from - not recomputed here, or the tree and the numbers could drift apart, which is
+  // precisely the failure the tree exists to prevent.
+  const channels: Partial<Record<keyof QuantInputs, ChannelTerm[]>> = {};
+  if (withControls) {
+    const put = (k: keyof QuantInputs, t: ChannelTerm) => {
+      if (t.strength <= 0 && !t.steps) return;
+      (channels[k] ??= []).push(t);
+    };
+    put("attemptRate", { cls: "Avoidance", strength: avoid, factor: 1 - cal.effect.avoidance * avoid,
+      what: "the exposure is removed, so contact is rarer" });
+    put("attemptRate", { cls: "Deterrent", strength: deter, factor: 1 - cal.effect.deterrence * deter,
+      what: "the actor who still has it in reach is discouraged" });
+    put("controlStrength", { cls: "Preventive", strength: classEff("Preventive"), steps: gated,
+      what: gated ? `${gated} step${gated === 1 ? "" : "s"} an attacker has to get past` : "measures recorded, but none of them blocks a step" });
+    put("controlStrength", { cls: "Detective", strength: classEff("Detective"), steps: watched,
+      what: watched ? `${watched} step${watched === 1 ? "" : "s"} where he can be caught and the chain broken` : "measures recorded, but no step is watched" });
+    put("directImpact", { cls: "Corrective", strength: corr, factor: 1 - cal.effect.recoverableShare * corr,
+      what: "part of the loss is recovered rather than borne" });
+    put("directImpact", { cls: "Detective", strength: termDet, factor: 1 - cal.effect.lateDetection * termDet,
+      what: "caught at the objective: too late to stop, early enough to shorten" });
+    put("cascadingLikelihood", { cls: "Corrective", strength: corr, factor: 1 - cal.effect.containment * corr,
+      what: "containment keeps the follow-on damage from spreading" });
+  }
   return { inputs, chain, prov, coverage: cov, refs: { op, strategic: strat, riskSource: rs, fearedEvent: fe },
-    scenario: String(op.values.name ?? "scenario"), riskSource: rsName, frequency: freq, demand };
+    scenario: String(op.values.name ?? "scenario"), riskSource: rsName, frequency: freq, demand, channels };
 }

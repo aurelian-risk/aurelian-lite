@@ -6,6 +6,7 @@ import { useActiveStudy, useStore } from "../domain/store";
 import { getType, recordTitle } from "../domain/taxonomy";
 import { STUDY_SCOPE, verifyLog } from "../domain/audit";
 import { ChangeHistoryModal, IntegrityBadge, changeActionText } from "./ChangeHistoryModal";
+import { SealPanel } from "./SealPanel";
 import type { ChangeEntry, EntityRecord } from "../domain/types";
 
 interface Row { entity?: EntityRecord; entry: ChangeEntry; color: string; typeLabel: string; entLabel: string; gone: boolean; scope: boolean }
@@ -61,6 +62,8 @@ export function TimelineView() {
           <p className="hint" style={{ margin: "4px 0 0" }}>Every change across “{study.name}”, newest first — hash-chained for tamper-evidence.</p>
         </div>
       </div>
+
+      <SealPanel />
 
       {rows.length === 0 ? (
         <div className="empty" style={{ padding: "48px 24px" }}>No changes recorded yet. Edit any entity (with an editor name and optional note) and it appears here.</div>

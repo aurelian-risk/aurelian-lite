@@ -122,7 +122,7 @@ import { readList, detectShape } from ${JSON.stringify(resolve(root, "src/domain
   const file = new File([new Uint8Array(bytes)], name, { type: "application/pdf" });
   const t = await extractFileText(file);
   const r = readList(t);
-  return { shape: detectShape(t, 0, 0).shape, items: r.items.length, pattern: r.pattern,
+  return { shape: detectShape(t).shape, items: r.items.length, pattern: r.pattern,
     markers: r.markers, titles: r.items.slice(0, 3).map((i) => i.title) };
 };`);
 execFileSync("npx", ["esbuild", entry, "--bundle", "--format=iife",
