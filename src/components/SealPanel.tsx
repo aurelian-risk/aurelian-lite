@@ -196,21 +196,40 @@ export function SealPanel() {
         <Modal title="Keys" onClose={close} wide>
           <div className="sp-sec">
             <div className="sp-sec-t">This installation</div>
+            {/* The two halves are separate rows, and they have to be: a password field
+                between "save public" and "save private" reads as belonging to whichever
+                button the eye reaches first, and the public half needs no password at
+                all. One row per key, the password inside the row it protects. */}
             {mine ? (
               <>
                 <div className="sp-fp mono">{kid}</div>
-                <div className="sp-acts">
-                  <button className="btn sm" onClick={savePublic}><Icon.download /> Save public key…</button>
-                  <input type="password" placeholder="password for the private key file" value={pw} onChange={(e) => setPw(e.target.value)} style={{ maxWidth: 230 }} />
-                  <button className="btn sm" disabled={busy} onClick={saveKey}><Icon.download /> Save private key…</button>
+                <div className="sp-half">
+                  <div className="sp-half-t">Public key <span>not a secret — hand it to whoever checks your seals</span></div>
+                  <div className="sp-acts">
+                    <button className="btn sm" onClick={savePublic}><Icon.download /> Save public key…</button>
+                  </div>
+                </div>
+                <div className="sp-half">
+                  <div className="sp-half-t">Private key <span>keep it; the file is encrypted with the password you give here</span></div>
+                  <div className="sp-acts">
+                    <input type="password" placeholder="password for this file" value={pw} onChange={(e) => setPw(e.target.value)} style={{ maxWidth: 210 }} />
+                    <button className="btn sm" disabled={busy} onClick={saveKey}><Icon.download /> Save private key…</button>
+                  </div>
                 </div>
               </>
             ) : (
-              <div className="sp-acts">
-                <button className="btn sm primary" disabled={busy} onClick={makeKey}><Icon.plus /> Create a key</button>
-                <input type="password" placeholder="password of an existing key file" value={pw} onChange={(e) => setPw(e.target.value)} style={{ maxWidth: 230 }} />
-                <button className="btn sm" disabled={busy} onClick={() => keyFile.el?.click()}><Icon.upload /> Load private key…</button>
-              </div>
+              <>
+                <div className="sp-acts">
+                  <button className="btn sm primary" disabled={busy} onClick={makeKey}><Icon.plus /> Create a key</button>
+                </div>
+                <div className="sp-half">
+                  <div className="sp-half-t">Or load one you already have <span>the password its file was saved with</span></div>
+                  <div className="sp-acts">
+                    <input type="password" placeholder="password of that file" value={pw} onChange={(e) => setPw(e.target.value)} style={{ maxWidth: 210 }} />
+                    <button className="btn sm" disabled={busy} onClick={() => keyFile.el?.click()}><Icon.upload /> Load private key…</button>
+                  </div>
+                </div>
+              </>
             )}
           </div>
 

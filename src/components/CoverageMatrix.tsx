@@ -19,9 +19,21 @@ export function CoverageMatrix({ tax, study, reqType, color }: { tax: Taxonomy; 
 
   const measureType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "multiref" && f.refType === reqType.key));
   const fulfillsF = measureType?.fields.find((f) => f.type === "multiref" && f.refType === reqType.key);
+
+  // EVERY hook runs before the guard below, and that ordering is the point of these two
+  // lines sitting here rather than further down.
+  //
+  // The guard used to come first. A render where the taxonomy has no measure type - which
+  // happens for a beat while the store rehydrates after a navigation - then returned with
+  // three hooks behind it, and the next render, with the type present, ran ten. React
+  // counts hooks and throws when the count changes between renders, and the page goes
+  // WHITE: no message, no view, nothing to go back to.
+  const reqs = study.entities.filter((e) => e.type === reqType.key);
+  const f = useTableFilter(reqType, reqs);
+  const [gapsOnly, setGapsOnly] = useState(false);
+
   if (!measureType || !fulfillsF) return null;
 
-  const reqs = study.entities.filter((e) => e.type === reqType.key);
   const measures = study.entities.filter((e) => e.type === measureType.key && !isSetBack(tax, e));
   const measureOpts = measures.map((m) => ({ id: m.id, label: recordTitle(measureType, m) }));
 
@@ -36,11 +48,9 @@ export function CoverageMatrix({ tax, study, reqType, color }: { tax: Taxonomy; 
     }
   };
 
-  // The same filter every long table has. A package of a thousand requirements is not
-  // readable as a matrix without one, and "show me only what nothing fulfils" is the
-  // question this view exists to answer.
-  const f = useTableFilter(reqType, reqs);
-  const [gapsOnly, setGapsOnly] = useState(false);
+  // The filter every long table has (declared above the guard): a package of a thousand
+  // requirements is not readable as a matrix without one, and "show me only what nothing
+  // fulfils" is the question this view exists to answer.
   const visible = gapsOnly ? f.shown.filter((r) => !measures.some((m) => fulfils(m, r.id))) : f.shown;
 
   const byFw = new Map<string, EntityRecord[]>();

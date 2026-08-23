@@ -5,6 +5,14 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.6.1] — 2026-08-23
+
+### Changed
+- **The compliance matrix survives a navigation.** Arriving at it in the beat before the
+  study has finished loading now leaves the view intact rather than blank.
+- **The keys dialog keeps each key on its own row**, so the password field sits with the
+  private key it protects rather than beside the public one, which needs none.
+
 ## [0.6.0] — 2026-08-22
 
 Sealing a study, checking one against the key it was sent with, tables that stay as you
