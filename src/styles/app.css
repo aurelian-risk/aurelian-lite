@@ -1634,6 +1634,11 @@ select.chip.ex-cand-type { display: inline-block; width: auto; cursor: pointer; 
 .sp-sec-t { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
   color: var(--fg-subtle); margin-bottom: 6px; }
 .sp-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+/* One key per row, so a password field cannot read as belonging to the key above it. */
+.sp-half { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--hairline); }
+.sp-half:first-of-type { border-top: 0; padding-top: 0; }
+.sp-half-t { font-size: 12.5px; font-weight: 650; color: var(--fg); }
+.sp-half-t span { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 400; color: var(--fg-subtle); }
 .modal-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 /* The seal dialogs are small: a question and its answer, not a workbench. */
 .sp-modal { width: min(440px, 94vw); height: auto; max-height: 88vh; }
