@@ -1219,6 +1219,28 @@ try {
     ok("model section is embedding-only (no language model)",
       !modelBody.includes("Language model") && !modelBody.includes("SmolLM2") && !modelBody.includes("Qwen2.5"));
   }
+
+  // What the SECTION shows is what a reader sees; what the FILE carries is what ships. The
+  // gate in domain/gen.ts claims the released build drops the generative branch, and that
+  // claim went unchecked for three releases while the file still carried the sentence
+  // describing a model it cannot run. So it is read off the artefact, both ways round: the
+  // released build must not carry these, and the LLM build must - otherwise this passes by
+  // testing the wrong file.
+  {
+    const art = readFileSync(distPath, "utf8");
+    const marks = {
+      "model list": /SmolLM2|Qwen2\.5/,
+      "runtime it talks to": /chat\/completions/,
+      "extraction entry point": /extractByLLM/,
+      "sampling parameter": /"?temperature"?\s*[:=]/,
+      "language-model prose": /language model/i,
+    };
+    for (const [what, re] of Object.entries(marks)) {
+      const hit = re.test(art);
+      ok(llmBuild ? `the LLM build carries the ${what}` : `the released file carries no ${what}`,
+        llmBuild ? hit : !hit, re.source);
+    }
+  }
   await page.screenshot({ path: `${shots}/Model.png` });
 } catch (e) {
   errors.push("exception: " + (e?.message ?? String(e)));

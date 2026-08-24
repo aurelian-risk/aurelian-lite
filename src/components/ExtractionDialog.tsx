@@ -57,7 +57,7 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
     setBusy(true); setGroups(null); setSel(new Set()); setLive(""); setPct(0); setPhase("");
     try {
       let g: TypeCandidates[];
-      if (engine === "smart") {
+      if (LLM && engine === "smart") {
         setPhase("load"); setStatus("Preparing model …");
         const t0 = performance.now();
         g = await G!.extractByLLM(tax, text, G!.genModelById(genLoaded!), (p) => {
@@ -178,8 +178,11 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
 
           <div className="guide" style={{ marginTop: 4 }}>
             {engineReady
-              ? (engine === "fast"
+              ? (engine === "fast" || !LLM
                 ? <span><strong>Fast engine.</strong> Embeddings classify sentences into the taxonomy — best for structured / list-like documents.</span>
+                // Behind the flag rather than behind `engine`: a runtime condition keeps its
+                // branch in the bundle, so the released file carried the sentence describing
+                // a model it cannot run. See domain/gen.ts.
                 : <span><strong>Smart engine ({G!.genModelById(genLoaded!).label}).</strong> A local language model reads narrative prose and emits structured entities.</span>)
               : <span><strong>No extraction model is loaded.</strong> Models are managed in the <strong>Model</strong> section (sidebar): open it, download &amp; load the fast embedding model{LLM ? " and/or a smart language model" : ""}, then come back here to extract.</span>}
 
