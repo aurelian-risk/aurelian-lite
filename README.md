@@ -35,6 +35,14 @@ Where Aurelian Risk Manager automates the analysis, Aurelian Lite gives you the 
 as a lightweight modelling tool you can run anywhere, entirely on your own machine. Learn more
 at **[aurelian-risk.com](https://aurelian-risk.com)**.
 
+## Contact
+
+Questions, defects and suggestions belong in
+[Issues](https://github.com/aurelian-risk/aurelian-lite/issues), where the answer stays
+visible to whoever asks the same thing next. For what does not belong in public - a security
+finding you would rather report privately, licensing, or use of the name - write to
+**aurelian-risk@posteo.com**.
+
 ## License
 
 [Mozilla Public License 2.0](LICENSE) © Aurelian-Risk
