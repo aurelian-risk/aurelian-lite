@@ -1,6 +1,6 @@
 {
   "name": "aurelian-lite",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Aurelian Lite - structured, offline cyber risk analysis (EBIOS RM) in a single portable HTML file",
   "type": "module",
   "license": "MPL-2.0",
@@ -36,7 +36,7 @@
     "test:audit": "rm -rf node_modules/.cache/audit && esbuild src/domain/audit.ts src/profile/index.ts --bundle --format=esm --outdir=node_modules/.cache/audit --out-extension:.js=.mjs --log-level=error && MOD_A=node_modules/.cache/audit/domain/audit.mjs MOD_S=node_modules/.cache/audit/profile/index.mjs node scripts/audit-test.mjs",
     "test:taxonomy": "esbuild src/domain/taxonomy.ts --bundle --format=esm --outfile=node_modules/.cache/taxonomy.mjs --log-level=error && MOD=node_modules/.cache/taxonomy.mjs node scripts/taxonomy-test.mjs",
     "test:quant": "rm -rf node_modules/.cache/quant && esbuild src/domain/quantModel.ts src/domain/montecarlo.ts src/domain/taxonomy.ts src/domain/treatment.ts src/domain/calibration.ts src/domain/demand.ts src/domain/frequency.ts --bundle --format=esm --outdir=node_modules/.cache/quant --out-extension:.js=.mjs --log-level=error && MOD_Q=node_modules/.cache/quant/quantModel.mjs MOD_MC=node_modules/.cache/quant/montecarlo.mjs MOD_TAX=node_modules/.cache/quant/taxonomy.mjs MOD_T=node_modules/.cache/quant/treatment.mjs MOD_CAL=node_modules/.cache/quant/calibration.mjs MOD_D=node_modules/.cache/quant/demand.mjs MOD_F=node_modules/.cache/quant/frequency.mjs node scripts/quant-test.mjs",
-    "test:list": "esbuild src/domain/listimport.ts --bundle --format=esm --outfile=node_modules/.cache/listimport.mjs --log-level=error && MOD_L=node_modules/.cache/listimport.mjs node scripts/listimport-test.mjs",
+    "test:list": "rm -rf node_modules/.cache/list && esbuild src/domain/listimport.ts src/domain/catalogimport.ts --bundle --format=esm --outdir=node_modules/.cache/list --out-extension:.js=.mjs --log-level=error && MOD_L=node_modules/.cache/list/listimport.mjs MOD_CI=node_modules/.cache/list/catalogimport.mjs node scripts/listimport-test.mjs",
     "test:tablefilter": "esbuild src/domain/tablefilter.ts --bundle --format=esm --outfile=node_modules/.cache/tablefilter.mjs --log-level=error && MOD_TF=node_modules/.cache/tablefilter.mjs node scripts/tablefilter-test.mjs",
     "test:oscal": "esbuild src/domain/oscal.ts --bundle --format=esm --outfile=node_modules/.cache/oscal.mjs --log-level=error && MOD_O=node_modules/.cache/oscal.mjs node scripts/oscal-test.mjs",
     "test:corpus": "node scripts/corpus-test.mjs",

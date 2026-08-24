@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
-import { Fragment, useEffect, useState, type ReactNode } from "react";
-import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue, Study, Taxonomy } from "../domain/types";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import type { EntityRecord, EntityTypeDef, FieldDef, FieldType, FieldValue, Study, Taxonomy } from "../domain/types";
 import { columnFields, getType, optionLabel, recordTitle, refFields, scaleLabel, scaleMax, setBackBlocked, titleField } from "../domain/taxonomy";
-import { foldScope, getFolds, setFolds } from "../domain/viewstate";
+import { foldScope, getFolds, getHiddenColumns, setFolds, setHiddenColumns } from "../domain/viewstate";
 import { TOOLBAR_MIN_ROWS } from "../domain/tablefilter";
 import { TableTools, useTableFilter } from "./TableTools";
 import { useStore } from "../domain/store";
@@ -16,12 +16,36 @@ const clip = (s: string, n = 90) => (s.length > n ? s.slice(0, n) + "…" : s);
 /** Records shown per incoming relation before the rest fold behind a "+n more". */
 const BACKREF_PREVIEW = 12;
 
-// The name/description column is sized as a fixed FRACTION of the table (≈ window)
-// width so it grows with the viewport, rather than a fixed pixel width. NAME_MIN is
-// only a px floor feeding the table's horizontal-scroll min-width on narrow screens.
-const NAME_PCT = 44;
+// ── How wide a table gets ────────────────────────────────────────────────────
+//
+// The name column takes whatever is left over, so it grows with the window; every other
+// column is sized by WHAT IT HOLDS. One flat width for all of them was measured
+// (harness/table-width.mjs) to fail in both directions at once: a badge column paid rent
+// on 150px it does not use while a column of chips wrapped its rows to ten lines. The
+// numbers below are that measurement rounded - what each field type wants to show one
+// value on one line, chips truncated.
+const COL_WIDTH: Record<FieldType, number> = {
+  number: 80,
+  boolean: 96,
+  enum: 124,
+  scale: 148,      // bars plus the longest scale label
+  text: 156,
+  textarea: 156,   // never a column today (columnFields drops it), sized for completeness
+  ref: 156,        // one chip
+  multiref: 164,   // two chips and a "+n", each chip clipped to a readable stub
+};
+/** Floor for the name column, and the only thing the table's min-width adds to the sum of
+ *  its value columns. There is no allowance for the trailing spacer: it is empty, and in a
+ *  fixed layout it collapses to zero as soon as the table overflows - so reserving width
+ *  for it only pushed tables past the edge of the window that would otherwise have fit. */
 const NAME_MIN = 320;
-const VALUE_COL = 150;
+const tableMinWidth = (cols: FieldDef[]) =>
+  NAME_MIN + cols.reduce((w, c) => w + COL_WIDTH[c.type], 0);
+/** A table whose columns alone ask for more than this offers the choice of which to show,
+ *  however few rows it has - at 1280px, the commonest window, a panel is 958px wide, and
+ *  no arrangement of eight columns fits in it. Rows are a different problem, solved by the
+ *  search and the facets; this one is about width. */
+const WIDE_TABLE = 960;
 
 function FieldValueView({ field, value, tax, study, onOpen, onToggle, toggleBlocked }:
   { field: FieldDef; value: FieldValue; tax: Taxonomy; study: Study; onOpen?: (id: string) => void;
@@ -33,9 +57,11 @@ function FieldValueView({ field, value, tax, study, onOpen, onToggle, toggleBloc
     const t = r && getType(tax, r.type);
     return r && t ? recordTitle(t, r) : "—";
   };
+  // The chip is clipped to the column's width, so the full title has to be reachable
+  // without opening the record: it is the tooltip.
   const chip = (id: string) => onOpen
-    ? <button className="chip link" key={id} title="Open" onClick={(e) => { e.stopPropagation(); onOpen(id); }}>{nameOf(id)}</button>
-    : <span className="chip" key={id}>{nameOf(id)}</span>;
+    ? <button className="chip link" key={id} title={nameOf(id)} onClick={(e) => { e.stopPropagation(); onOpen(id); }}>{nameOf(id)}</button>
+    : <span className="chip" key={id} title={nameOf(id)}>{nameOf(id)}</span>;
   switch (field.type) {
     case "enum": {
       // A two-state field that is flipped often is a switch, not a label to open a form for.
@@ -87,7 +113,7 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
   const [modal, setModal] = useState<{ typeKey: string; record: EntityRecord | null } | null>(null);
 
   const items = study.entities.filter((e) => e.type === type.key);
-  const cols = columnFields(type);
+  const allCols = columnFields(type);
   const title = titleField(type);
 
   // One filter, shared with every other long table - see TableTools.
@@ -101,14 +127,27 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
   const scope = foldScope(study.id, type.key, groupField?.key ?? "");
   const [collapsed, setCollapsed] = useState<Set<string>>(() => getFolds(scope));
   useEffect(() => { setCollapsed(getFolds(scope)); }, [scope]);
-  // Only worth showing once a table is long enough to be hard to read.
-  const showTools = items.length >= TOOLBAR_MIN_ROWS;
+  // Which columns this reader put away. Independent of the grouping axis - the same
+  // choice of columns holds however the rows are arranged - so it hangs on the table's
+  // own name, and like the folds it stays out of the study.
+  const [hiddenCols, setHiddenCols] = useState<Set<string>>(() => getHiddenColumns(tableScope));
+  useEffect(() => { setHiddenCols(getHiddenColumns(tableScope)); }, [tableScope]);
+  const cols = allCols.filter((c) => !hiddenCols.has(c.key));
+  const setColumns = (next: Set<string>) => { setHiddenCols(next); setHiddenColumns(tableScope, next); };
+  // Worth showing once a table is long enough to be hard to read - or wide enough that it
+  // cannot be read in one piece whatever its length.
+  const showTools = items.length >= TOOLBAR_MIN_ROWS || tableMinWidth(allCols) > WIDE_TABLE;
   const clearAll = f.clearAll;
   const toggleGroup = (k: string) => setCollapsed((c) => {
     const n = new Set(c); n.has(k) ? n.delete(k) : n.add(k);
     setFolds(scope, n);        // coalesced; a burst of clicks writes once
     return n;
   });
+
+  // Whether the pinned title column has anything sliding under it yet. Painting it
+  // unconditionally would put a seam on every table, including the ones that fit.
+  const body = useRef<HTMLDivElement>(null);
+  const [pinned, setPinned] = useState(false);
 
   const refTargets = (typeKey: string) => study.entities.filter((e) => e.type === typeKey);
   const missingReq = type.fields.find((f) => f.type === "ref" && f.required && refTargets(f.refType ?? "").length === 0);
@@ -135,9 +174,14 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
 
       {addBlocked && <div style={{ padding: "12px 16px 0" }}><div className="guide warn">{addBlocked}</div></div>}
 
-      {showTools && <TableTools type={type} f={f} />}
+      {showTools && <TableTools type={type} f={f} columns={{
+        fields: allCols, hidden: hiddenCols,
+        toggle: (key) => { const n = new Set(hiddenCols); n.has(key) ? n.delete(key) : n.add(key); setColumns(n); },
+        showAll: () => setColumns(new Set()),
+      }} />}
 
-      <div className="panel-body">
+      <div className={"panel-body" + (pinned ? " pinned" : "")} ref={body}
+        onScroll={() => setPinned((body.current?.scrollLeft ?? 0) > 0)}>
         {items.length === 0 ? (
           <div className="empty" style={{ padding: "28px 16px" }}>No {type.labelPlural.toLowerCase()} yet.</div>
         ) : shown.length === 0 ? (
@@ -145,24 +189,24 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
             Nothing matches. <button className="btn ghost sm" onClick={clearAll}>Clear filters</button>
           </div>
         ) : (
-          <table className="tbl" style={{ minWidth: NAME_MIN + cols.length * VALUE_COL + 56 }}>
+          <table className="tbl" style={{ minWidth: tableMinWidth(cols) }}>
             <colgroup>
-              <col style={{ width: `${NAME_PCT}%` }} />
-              {cols.map((c) => <col key={c.key} style={{ width: VALUE_COL }} />)}
+              {/* No width: in a fixed layout the unsized column takes what the sized ones
+                  leave, so the name grows with the window and there is no dead gutter. */}
               <col />
+              {cols.map((c) => <col key={c.key} style={{ width: COL_WIDTH[c.type] }} />)}
             </colgroup>
             <thead>
               <tr>
                 <th>{type.fields.find((f) => f.key === title)?.label ?? "Name"}</th>
-                {cols.map((c) => <th key={c.key}>{c.label}</th>)}
-                <th />
+                {cols.map((c) => <th key={c.key} title={c.label}>{c.label}</th>)}
               </tr>
             </thead>
             {groups.map((g) => (
             <tbody key={g.key || "_"} className={groupField ? "grouped" : undefined}>
               {groupField && (
                 <tr className="group-row" onClick={() => toggleGroup(g.key)}>
-                  <th colSpan={cols.length + 2}>
+                  <th colSpan={cols.length + 1}>
                     <span className={"caret" + (collapsed.has(g.key) ? "" : " open")}><Icon.chevron /></span>
                     {g.key || <span className="hint">no {groupField.label.toLowerCase()}</span>}
                     <span className="badge">{g.items.length}</span>
@@ -190,11 +234,10 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
                         onOpen={openEntity} toggleBlocked={setBackBlocked(tax, study, r)}
                         onToggle={(f, next) => updateEntity(r.id, { ...r.values, [f.key]: next },
                           `${f.label}: ${optionLabel(f, next)}`)} /></td>)}
-                      <td />
                     </tr>
                     {isOpen && (
                       <tr className="detail-row">
-                        <td colSpan={cols.length + 2}>
+                        <td colSpan={cols.length + 1}>
                           <EntityDetail type={type} record={r} tax={tax} study={study} color={color}
                             onEdit={() => setModal({ typeKey: type.key, record: r })}
                             onDelete={() => deleteEntity(r.id)} onOpenEntity={openEntity}

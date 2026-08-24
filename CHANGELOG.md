@@ -5,6 +5,35 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.6.2] — 2026-08-24
+
+### Added
+- **A table shows the columns you want.** Any table whose columns ask for more width than a
+  normal window has now offers the choice of which to show. The choice is kept per table and
+  per study, outside the study itself, alongside what is folded away and how the rows are
+  grouped.
+
+### Fixed
+- **`npm run test:list` runs again.** The script had been left behind when the test it runs
+  grew a second module, and stopped before running anything.
+
+### Changed
+- **A column is as wide as what it holds.** Every value column used to be 150px, whatever
+  was in it: a column of two-word badges paid for room it did not use while a column of
+  linked records wrapped its rows to ten lines. Columns are now sized by field type, chips
+  in a cell are clipped to a readable stub with the full title as their tooltip, and headers
+  wrap at spaces instead of being cut off. At a 1280px window, four of twelve tables still
+  scroll sideways where eight did; at 1440px, one where four did.
+- **A wide table keeps its title column in view.** Scrolled sideways, the first column stays
+  at the edge, so a row still says which record it belongs to.
+- **The report is set as the document it is.** Tables written as prose - document control,
+  the change record, the treatment register - were being set as the table of figures the
+  quantification uses, which right-aligned owners, dates and reasons against the edge of the
+  page. Figures line up on the right; words do not. Registers of more than a dozen records
+  print as a table rather than a headed block each, dozens of rows are set to fit a page,
+  and in print a table repeats its header on every page while rows and cards no longer break
+  across one.
+
 ## [0.6.1] — 2026-08-23
 
 ### Changed

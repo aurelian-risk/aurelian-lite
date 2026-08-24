@@ -849,6 +849,97 @@ try {
     ok("ungrouping restores the plain table", (await tools.locator(".tbl .group-row").count()) === 0 && (await rows()) === all);
   }
 
+  // How WIDE a table is, rather than how long. The window here is 1280px - the commonest
+  // one - which leaves a panel 958px wide. A table is sized by what its columns hold; the
+  // ones that still do not fit pin their title column and let the reader put columns away.
+  {
+    await page.locator(".ws-tab", { hasText: "Treatment" }).click();
+    await page.waitForTimeout(350);
+    const measures = page.locator(".panel", { has: page.locator(".tbl-tools") })
+      .filter({ hasText: "Security Measures" }).first();
+    const width = async (sel) => measures.locator(sel).first().evaluate((el) => Math.round(el.getBoundingClientRect().width));
+
+    // Eight columns cannot be made to fit 958px, so that one still scrolls - but every
+    // table of four value columns or fewer now fits, which is what this guards. Sizing
+    // them by field type rather than by one flat width is what bought it; measured in
+    // harness/table-width.mjs.
+    const seen = [];
+    for (const tab of ["Assets & Scope", "Risk Sources", "Strategic Scenarios",
+                       "Operational Scenarios", "Treatment", "Compliance"]) {
+      await page.locator(".ws-tab", { hasText: tab }).click();
+      await page.waitForTimeout(300);
+      seen.push(...await page.evaluate((t) => [...document.querySelectorAll(".panel-body")]
+        .filter((b) => b.querySelector("table.tbl"))
+        .map((b) => ({ tab: t, cols: b.querySelectorAll("thead th").length,
+                       over: b.scrollWidth - b.clientWidth })), tab));
+    }
+    const tooWide = seen.filter((t) => t.cols <= 5 && t.over > 2);
+    ok("a table of four value columns or fewer fits a 1280px window",
+      tooWide.length === 0, JSON.stringify(tooWide));
+    ok("...and the page itself never scrolls sideways",
+      await page.evaluate(() => document.scrollingElement.scrollWidth <= document.scrollingElement.clientWidth));
+    await page.locator(".ws-tab", { hasText: "Treatment" }).click();
+    await page.waitForTimeout(350);
+
+    const menu = measures.locator(".facet-menu", { hasText: "Columns" }).first();
+    ok("a wide table offers the choice of which columns to show", (await menu.count()) === 1);
+    const cols = () => measures.locator(".tbl thead th").count();
+    const before = await cols();
+    const wideBefore = await width(".tbl");
+    await menu.locator(".facet-btn").click();
+    await page.waitForTimeout(200);
+    await menu.locator(".facet-opt", { hasText: "Protects assets" }).first().click();
+    await page.waitForTimeout(250);
+    ok("putting a column away removes it from the table", (await cols()) === before - 1);
+    ok("...and the table gets narrower by that column", (await width(".tbl")) < wideBefore,
+      `${wideBefore} → ${await width(".tbl")}`);
+    ok("...and the button says how many are left",
+      (await menu.locator(".facet-btn .facet-n").innerText()).trim() === `${before - 2}/${before - 1}`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    ok("the columns menu closes on Escape", (await menu.locator(".facet-pop").count()) === 0);
+
+    // Same rule as the folds: an arrangement belongs to the reader, so it survives the
+    // tab but never enters the study.
+    await page.locator(".ws-tab", { hasText: "Compliance" }).click();
+    await page.waitForTimeout(300);
+    await page.locator(".ws-tab", { hasText: "Treatment" }).click();
+    await page.waitForTimeout(400);
+    const back = page.locator(".panel", { has: page.locator(".tbl-tools") })
+      .filter({ hasText: "Security Measures" }).first();
+    ok("the column that was put away is still away on the way back",
+      (await back.locator(".tbl thead th").count()) === before - 1);
+    ok("...remembered outside the study",
+      await page.evaluate(() => (window.localStorage.getItem("aurelian_view_cols") ?? "").includes("protects")));
+
+    // The title column stays put while the rest scrolls, and only paints itself once it
+    // has something to hold back.
+    const body = back.locator(".panel-body").first();
+    ok("an unscrolled table is not pinned",
+      !(await body.evaluate((el) => el.className.includes("pinned"))));
+    await body.evaluate((el) => { el.scrollLeft = 380; el.dispatchEvent(new Event("scroll", { bubbles: true })); });
+    await page.waitForTimeout(250);
+    const pin = await body.evaluate((el) => ({
+      pinned: el.className.includes("pinned"),
+      offset: Math.round(el.querySelector("thead th").getBoundingClientRect().left - el.getBoundingClientRect().left),
+    }));
+    ok("a scrolled table keeps its title column at the edge", pin.pinned && pin.offset === 0, JSON.stringify(pin));
+    await back.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(200);
+    await back.screenshot({ path: `${shots}/TableWide.png` });
+
+    // Put it back the way it was found: the sections after this one count columns.
+    await back.locator(".facet-menu", { hasText: "Columns" }).locator(".facet-btn").click();
+    await page.waitForTimeout(200);
+    await back.locator(".facet-opt", { hasText: "show all" }).click();
+    await page.waitForTimeout(250);
+    ok("show all brings every column back", (await back.locator(".tbl thead th").count()) === before);
+    await page.keyboard.press("Escape");
+    await body.evaluate((el) => { el.scrollLeft = 0; el.dispatchEvent(new Event("scroll", { bubbles: true })); });
+    await page.locator(".ws-tab", { hasText: "Compliance" }).click();
+    await page.waitForTimeout(300);
+  }
+
   // The completeness checks judge the study, not the catalogue: a requirement that is out
   // of scope is not a gap, and a seeded framework of several hundred entries would bury
   // the findings about the few that are in scope.
