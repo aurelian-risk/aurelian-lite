@@ -10,12 +10,12 @@
 //
 // The state and the filtering live in useTableFilter, so a view that is not a plain
 // entity table (the coverage matrix, say) gets the same behaviour by calling one hook.
-import { useMemo, useRef, useState, useEffect } from "react";
+import { useMemo, useRef, useState, useEffect, type RefObject } from "react";
 import { getGroupKey, setGroupKey as storeGroupKey } from "../domain/viewstate";
 import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue } from "../domain/types";
 import { scaleLabel } from "../domain/taxonomy";
 import { facetsOf, countFacets, filterItems, groupItems, activeCount, type Selection } from "../domain/tablefilter";
-import { Icon } from "./ui";
+import { Icon, useDismissOnEscape } from "./ui";
 
 /** How a value READS in a table - a scale as its label, not its number. Filtering and
  *  searching go by this, so a chip always says what the row says. */
@@ -77,17 +77,71 @@ export function useTableFilter(type: EntityTypeDef, items: EntityRecord[], onGro
 /** Values shown inside an open facet menu before the rest fold behind a "show all". */
 const FACET_PREVIEW = 12;
 
+/** Which columns a table shows. The taxonomy decides which columns a type HAS; how many
+ *  of them fit the window someone reads in is not the taxonomy's business - see
+ *  EntitySection for the widths, and viewstate.ts for where the choice is kept. */
+export interface ColumnChoice {
+  fields: FieldDef[];
+  hidden: Set<string>;
+  toggle: (key: string) => void;
+  showAll: () => void;
+}
+
+/** Close when the click lands outside, or on Escape. Both menus in this toolbar dismiss
+ *  the same way, and Escape is the one place the other menus already use. */
+function useMenuDismiss(open: boolean, box: RefObject<HTMLDivElement | null>, close: () => void) {
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) close(); };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [open, box, close]);
+  useDismissOnEscape(open, close);
+}
+
+function ColumnsMenu({ columns }: { columns: ColumnChoice }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useMenuDismiss(open, box, () => setOpen(false));
+  const shown = columns.fields.length - columns.hidden.size;
+  return (
+    <div className="facet-menu" ref={box}>
+      <button type="button" className={"facet-btn" + (columns.hidden.size ? " on" : "")}
+        aria-expanded={open} onClick={() => setOpen((o) => !o)}
+        title="Which columns this table shows">
+        Columns
+        {columns.hidden.size > 0 && <span className="facet-n">{shown}/{columns.fields.length}</span>}
+        <span className="facet-caret"><Icon.chevron /></span>
+      </button>
+      {open && (
+        <div className="facet-pop to-left">
+          {columns.fields.map((c) => {
+            const on = !columns.hidden.has(c.key);
+            return (
+              <button key={c.key} type="button" className={"facet-opt" + (on ? " on" : "")}
+                aria-pressed={on} onClick={() => columns.toggle(c.key)}>
+                <span className="facet-tick">{on ? <Icon.check /> : null}</span>
+                <span className="facet-v">{c.label}</span>
+              </button>
+            );
+          })}
+          {columns.hidden.size > 0 && (
+            <button type="button" className="facet-opt more" onClick={columns.showAll}>
+              show all {columns.fields.length}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FacetMenu({ facet, chosen, onToggle }:
   { facet: TableFilter["facets"][number]; chosen: string[]; onToggle: (v: string) => void }) {
   const [open, setOpen] = useState(false);
   const [all, setAll] = useState(false);
   const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("mousedown", away);
-    return () => document.removeEventListener("mousedown", away);
-  }, [open]);
+  useMenuDismiss(open, box, () => setOpen(false));
 
   const values = all ? facet.values : facet.values.slice(0, FACET_PREVIEW);
   const hidden = facet.values.length - values.length;
@@ -123,9 +177,11 @@ function FacetMenu({ facet, chosen, onToggle }:
   );
 }
 
-export function TableTools({ type, f, groupable = true }:
-  { type: EntityTypeDef; f: TableFilter; groupable?: boolean }) {
-  if (!f.facets.length && f.total < 8) return null;
+export function TableTools({ type, f, groupable = true, columns }:
+  { type: EntityTypeDef; f: TableFilter; groupable?: boolean; columns?: ColumnChoice }) {
+  // A wide table offers its column choice however short it is - that is the whole reason
+  // the toolbar is there at all in that case.
+  if (!f.facets.length && f.total < 8 && !columns) return null;
   return (
     <div className="tbl-tools">
       <label className="tbl-search">
@@ -144,6 +200,7 @@ export function TableTools({ type, f, groupable = true }:
           {f.facets.map((facet) => <option key={facet.field.key} value={facet.field.key}>by {facet.field.label.toLowerCase()}</option>)}
         </select>
       )}
+      {columns && columns.fields.length > 1 && <ColumnsMenu columns={columns} />}
       <span className="tbl-count">
         {f.filtered ? `${f.shown.length} of ${f.total}` : `${f.total}`}
       </span>

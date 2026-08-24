@@ -3,7 +3,7 @@
 // the schema (entity types + fields) followed by the data (entities with
 // relationships resolved to names). Paste into an LLM chat as grounded context.
 import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue, Study, Taxonomy } from "./types";
-import { getType, recordTitle, scaleLabel, scaleMax, isSetBack } from "./taxonomy";
+import { columnFields, getType, recordTitle, scaleLabel, scaleMax, isSetBack } from "./taxonomy";
 import { PRODUCT } from "../profile";
 import { deriveInputs, meanOf } from "./quantModel";
 import { residualPos } from "./treatment";
@@ -80,6 +80,20 @@ export function workshopMarkdown(tax: Taxonomy, study: Study, groupKey: string):
 }
 
 const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** Records above which a register is printed as a table rather than one card each. A dozen
+ *  cards is a section someone reads; a hundred is a copy of the catalogue with the document
+ *  somewhere inside it. */
+const CARD_LIMIT = 12;
+/** Columns a printed register can carry before it stops fitting a page. */
+const TABLE_COLS = 6;
+/** Rows above which a table is set dense rather than at reading size. */
+const DENSE_ROWS = 20;
+
+/** One table cell: a pipe would end the column early and a line break would end the row,
+ *  so both are neutralised rather than escaped - the cell is a summary, and the record's
+ *  own text is elsewhere in the document. */
+const cellText = (v: string): string => v.replace(/\|/g, "/").replace(/\s*\n+\s*/g, " ").trim();
 
 /** Sanitize + truncate a label for embedded SVG text (strip separators/newlines). */
 const mm = (s: string, n = 46): string => {
@@ -517,7 +531,7 @@ function quantSection(tax: Taxonomy, study: Study): string[] | null {
 
   const L: string[] = ["---\n", "## Quantitative risk\n",
     "_Monte-Carlo simulation (loss event frequency × loss magnitude), derived from the qualitative model. Annual loss shown with vs. without the current controls._\n"];
-  const row = (k: string, a: string, b: string) => `<tr><td>${esc(k)}</td><td>${a}</td><td>${b}</td></tr>`;
+  const row = (k: string, a: string, b: string) => `<tr><td>${esc(k)}</td><td class="num">${a}</td><td class="num">${b}</td></tr>`;
   for (const op of ops) {
     const ov = study.quant?.[op.id]?.overrides as Partial<QuantInputs> | undefined;
     const dW = deriveInputs(study, tax, op, true), dWo = deriveInputs(study, tax, op, false);
@@ -527,7 +541,7 @@ function quantSection(tax: Taxonomy, study: Study): string[] | null {
     const benefit = rWo.ale.mean - rW.ale.mean;
     const benefitPct = rWo.ale.mean > 0 ? Math.round((benefit / rWo.ale.mean) * 100) : 0;
     L.push(`### ${recordTitle(opType, op)}`);
-    L.push(`<table class="qt-tbl"><thead><tr><th>Metric</th><th>Inherent<br>(no controls)</th><th>Residual<br>(with controls)</th></tr></thead><tbody>`
+    L.push(`<table class="qt-tbl"><thead><tr><th>Metric</th><th class="num">Inherent<br>(no controls)</th><th class="num">Residual<br>(with controls)</th></tr></thead><tbody>`
       + row("Expected annual loss (ALE)", fmtMoney(rWo.ale.mean), `<strong>${esc(fmtMoney(rW.ale.mean))}</strong>`)
       + row("P90 / P99 (bad years)", `${esc(fmtMoney(rWo.ale.p90))} / ${esc(fmtMoney(rWo.ale.p99))}`, `${esc(fmtMoney(rW.ale.p90))} / ${esc(fmtMoney(rW.ale.p99))}`)
       + row("Loss event frequency", esc(fmtRate(rWo.lef)), esc(fmtRate(rW.lef)))
@@ -556,8 +570,8 @@ function quantSection(tax: Taxonomy, study: Study): string[] | null {
         return st && t ? recordTitle(t, st) : id.slice(0, 8);
       };
       L.push("");
-      L.push("<table class=\"qt-tbl\"><thead><tr><th>Attempts stop at</th><th>Share of all attempts</th></tr></thead><tbody>"
-        + deaths.map((b) => `<tr><td>${esc(nameOf(b.id))}</td><td>${fmtPct(b.p)}</td></tr>`).join("")
+      L.push("<table class=\"qt-tbl\"><thead><tr><th>Attempts stop at</th><th class=\"num\">Share of all attempts</th></tr></thead><tbody>"
+        + deaths.map((b) => `<tr><td>${esc(nameOf(b.id))}</td><td class="num">${fmtPct(b.p)}</td></tr>`).join("")
         + "</tbody></table>");
     }
     L.push("");
@@ -604,7 +618,9 @@ function treatmentSection(tax: Taxonomy, study: Study): string[] | null {
     + "moves it down rather than left. **Share** moves gravity, and by at least one level, "
     + "because that is what buying the transfer is for. **Accept** keeps the inherent level. "
     + "**Avoid** removes the exposure._\n"];
-  let tbl = `<table class="qt-tbl"><thead><tr><th>Risk</th><th>Decision</th><th>Owner</th><th>Deadline</th><th>Status</th><th>Inherent → Residual (L·G)</th></tr></thead><tbody>`;
+  // Words, not figures - so this one is set like any other table rather than as a column
+  // of numbers: an owner and a target date belong at the left margin of their column.
+  let tbl = `<table><thead><tr><th>Risk</th><th>Decision</th><th>Owner</th><th>Deadline</th><th>Status</th><th>Inherent → Residual (L·G)</th></tr></thead><tbody>`;
   for (const t of treatments) {
     const risk = byId.get(t.values[refF.key] as string);
     let shift = "—";
@@ -760,6 +776,22 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
       const titleKey = t.titleField ?? "name";
       const descF = t.fields.find((f) => f.type === "textarea");
       L.push(`### ${t.labelPlural} (${items.length})\n`);
+      // Past a dozen, a register is read across its rows rather than one card at a time.
+      // A catalogue-backed type reaches the hundreds, and a headed block each turns a
+      // document about this organisation into a reprint of the framework it works to.
+      // The operational scenarios keep their cards whatever their number: each carries its
+      // kill chain underneath, and a chain does not go in a cell.
+      if (items.length > CARD_LIMIT && t.key !== kcOpKey) {
+        const cols = columnFields(t).filter((f) => f.key !== titleKey).slice(0, TABLE_COLS);
+        L.push(`| ${t.label} | ${cols.map((f) => f.label).join(" | ")} |`);
+        L.push(`|${" --- |".repeat(cols.length + 1)}`);
+        for (const e of items) {
+          const cells = cols.map((f) => cellText(valueMd(f, e.values[f.key] ?? null, tax, study)));
+          L.push(`| ${cellText(recordTitle(t, e))} | ${cells.join(" | ")} |`);
+        }
+        L.push("");
+        continue;
+      }
       for (const e of items) {
         L.push(`#### ${recordTitle(t, e)}`);
         if (e.source) L.push(`_Source: ${esc(e.source)}_`);
@@ -990,11 +1022,23 @@ function mdToHtml(md: string): string {
       i += 2;
       const body: string[][] = [];
       while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { body.push(cells(lines[i])); i++; }
-      const th = head.map((c) => `<th>${inline(c)}</th>`).join("");
-      const tr = body.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`).join("");
+      // A short cell with no space in it is an identifier, a date or a level - one thing,
+      // not a phrase. Left to wrap it breaks at its own hyphens ("2026-" over "08-20"),
+      // and because that break counts towards the column's minimum width, the column is
+      // then sized for the fragment rather than for the value.
+      const one = (c: string) => (/^\S{1,14}$/.test(c) ? ' class="nw"' : "");
+      const th = head.map((c) => `<th${one(c)}>${inline(c)}</th>`).join("");
+      const tr = body.map((r) => `<tr>${r.map((c) => `<td${one(c)}>${inline(c)}</td>`).join("")}</tr>`).join("");
       // A leading row of empty headers is a two-column key/value table written without a
       // header - render it without an empty strip on top.
-      out.push(`<table class="qt-tbl">${head.some((c) => c !== "") ? `<thead><tr>${th}</tr></thead>` : ""}<tbody>${tr}</tbody></table>`);
+      //
+      // No class here beyond how long the table is. Every markdown table used to be given
+      // the quantification table's class, which right-aligns everything but the first
+      // column: correct for figures, and the reason a column of prose - the reason a record
+      // was changed - was set flush right against the far edge of the page. The tables the
+      // code writes itself keep that class; a table written as markdown is prose.
+      const cls = body.length > DENSE_ROWS ? ' class="dense"' : "";
+      out.push(`<table${cls}>${head.some((c) => c !== "") ? `<thead><tr>${th}</tr></thead>` : ""}<tbody>${tr}</tbody></table>`);
       continue;
     }
     const li = line.match(/^(\s*)-\s+(.*)$/);
@@ -1025,6 +1069,36 @@ body { margin: 0; background: #eef0f4; color: #1c2430;
   font-family: "Segoe UI Variable","Segoe UI",system-ui,-apple-system,Roboto,sans-serif; line-height: 1.55; }
 .report { max-width: 900px; margin: 24px auto; background: #fff; padding: 40px 48px;
   box-shadow: 0 8px 30px -12px rgba(20,30,50,0.25); border-radius: 8px; }
+/* A table written as markdown is prose in a grid: read left to right, with the header row
+   carrying the weight. The columns are sized by their content rather than given an equal
+   share - a column of dates is not as wide as a column of sentences - and never past the
+   sheet, since an automatic layout distributes within the width it is given. */
+.report table { border-collapse: collapse; width: 100%; max-width: 100%; margin: 12px 0 18px;
+  font-size: 13px; table-layout: auto; }
+/* break-word, not anywhere: the value "anywhere" is taken into a column's minimum width,
+   so an automatic layout believes a date column can be one character wide and sets "2026-"
+   over "08-20". This one breaks a word only where it genuinely does not fit. */
+.report th, .report td { overflow-wrap: break-word; word-break: normal; }
+.report th { text-align: left; padding: 7px 10px; border: 1px solid #c3ccd8; background: #f4f6f9;
+  font-weight: 700; font-size: 12px; }
+.report td { padding: 7px 10px; border: 1px solid #d8dee7; vertical-align: top; }
+.report th.nw, .report td.nw { white-space: nowrap; }
+.report tbody tr:nth-child(even) td { background: #fafbfd; }
+/* A register of dozens of rows is not read the way a six-row summary is. Set dense it
+   fits a page: the columns take the width their content needs instead of an equal share,
+   so a reference stops occupying a seventh of the table and a title stops wrapping to
+   four lines. The caps are what keep one long cell from taking the page. */
+.report table.dense { font-size: 10.5px; table-layout: auto; margin: 8px 0 14px; }
+.report table.dense th { padding: 3px 7px; font-size: 10px; letter-spacing: 0.02em;
+  text-transform: uppercase; color: #55606f; }
+.report table.dense td { padding: 2.5px 7px; line-height: 1.35; }
+.report table.dense td:first-child { max-width: 26em; }
+.report table.dense td:not(:first-child) { max-width: 14em; }
+/* 900px is a measure for prose, and it leaves a six-column register wrapping every cell.
+   So the SHEET grows to its widest table while the prose keeps its measure on it, rather
+   than the table hanging over the edges of the page it is meant to be printed on. */
+.report:has(table.dense) { max-width: 1400px; }
+.report:has(table.dense) > *:not(table.dense) { max-width: 820px; }
 .report h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
 .report h2 { font-size: 19px; margin: 30px 0 10px; padding-bottom: 6px; border-bottom: 2px solid #eceef2; }
 .report h3 { font-size: 15.5px; margin: 22px 0 10px; color: #364152; }
@@ -1079,15 +1153,32 @@ body { margin: 0; background: #eef0f4; color: #1c2430;
 .report pre { background: #f6f7f9; border: 1px solid #e3e6ec; border-radius: 8px; padding: 12px 14px; overflow-x: auto; font-size: 12.5px; }
 .report pre.mermaid { background: transparent; border: none; text-align: center; padding: 0; }
 .report strong { font-weight: 650; }
-.report table.qt-tbl { border-collapse: collapse; width: 100%; margin: 10px 0 6px; font-size: 12.5px; }
-.report table.qt-tbl th, .report table.qt-tbl td { border: 1px solid #e3e6ec; padding: 6px 11px; text-align: left; }
-.report table.qt-tbl thead th { background: #f6f7f9; color: #55606f; font-weight: 600; font-size: 11.5px; }
-.report table.qt-tbl td:not(:first-child), .report table.qt-tbl th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+/* A table of figures: tighter than a table of sentences, and inheriting everything else
+   from the general rules above rather than restating it - the restatement is what used to
+   pin every cell to the left and defeat the alignment below. */
+.report table.qt-tbl { margin: 10px 0 6px; font-size: 12.5px; }
+.report table.qt-tbl th, .report table.qt-tbl td { padding: 6px 11px; }
+.report table.qt-tbl thead th { color: #55606f; font-weight: 600; font-size: 11.5px; }
+/* Figures are read down a column, so they line up on the right and share a digit width.
+   Which columns those are is said by the table that has them: the rule used to be "every
+   column but the first", which set a column of owners and one of dates flush right against
+   the edge of the page because they happened to sit beside a number. */
+.report .num { text-align: right; font-variant-numeric: tabular-nums; }
 .report table.qt-tbl tbody tr:first-child td { font-size: 13.5px; }
 @media print {
   table.qt-tbl { break-inside: avoid; }
   body { background: #fff; }
   .report { box-shadow: none; margin: 0; max-width: none; padding: 0 8mm; border-radius: 0; }
+  /* A register runs over pages, and a column without its header is a column of
+     unlabelled values. thead repeats it on every one. */
+  thead { display: table-header-group; }
+  tr, .ent { break-inside: avoid; }
+  p { orphans: 2; widows: 2; }
+  /* On paper the sheet is the width there is, so the widened sheet goes back and the
+     table has to fit: an automatic layout grows past 100%, a fixed one cannot. */
+  .report:has(table.dense), .report:has(table.dense) > * { max-width: none; }
+  .report table.dense { width: 100%; table-layout: fixed; font-size: 9px; }
+  .report table.dense td, .report table.dense th { max-width: none; }
   h1, h2, h3 { break-after: avoid; }
   svg, pre.mermaid, li, div[align="center"] { break-inside: avoid; }
   a { color: inherit; text-decoration: none; }

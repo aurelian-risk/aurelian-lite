@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
-// Fold memory: does it stay small, and does it stay out of the study?
+// View-state memory - what is folded, how a table is grouped, which columns it shows:
+// does it stay small, and does it stay out of the study?
 //
 // The feature is trivial; the ways it goes wrong are not. A view preference that writes on
 // every click stalls the main thread, one that never evicts grows for as long as the
@@ -128,7 +129,35 @@ const KEY = "aurelian_view_folds";
     !Object.keys(V).some((k) => /facet|query|search|filter/i.test(k)), Object.keys(V).join(","));
 }
 
-// ── 8. it survives storage refusing to co-operate ───────────────────────────
+// ── 8. which columns a table shows ──────────────────────────────────────────
+{
+  const scope = V.foldScope("s", "security_measure");
+  ok("a table starts with every column it has", V.getHiddenColumns(scope).size === 0);
+  V.setHiddenColumns(scope, new Set(["protects", "fulfills"]));
+  await settle();
+  ok("what was put away comes back", [...V.getHiddenColumns(scope)].sort().join() === "fulfills,protects");
+  // The HIDDEN ones are stored, never the shown ones: a field added to the taxonomy later
+  // has to appear by default rather than stay invisible for want of being on an old list.
+  ok("...stored as the deviation, not as the list of columns",
+    JSON.parse(mem.get("aurelian_view_cols")).s_key === undefined
+    && JSON.parse(mem.get("aurelian_view_cols"))[scope].h.length === 2);
+  V.setHiddenColumns(scope, new Set());
+  await settle();
+  ok("showing them all again leaves nothing behind", !JSON.parse(mem.get("aurelian_view_cols") ?? "{}")[scope]);
+  // The choice of columns is not the choice of grouping: one table, one answer, however
+  // its rows happen to be arranged.
+  V.setHiddenColumns(V.foldScope("s2", "t"), new Set(["a"]));
+  await settle();
+  ok("it does not leak into the folds or the grouping",
+    !JSON.parse(mem.get(KEY) ?? "{}")[V.foldScope("s2", "t")]
+    && !JSON.parse(mem.get("aurelian_view_group") ?? "{}")[V.foldScope("s2", "t")]);
+  V.forgetStudy("s2");
+  await settle();
+  ok("...and a deleted study forgets it too",
+    !Object.keys(JSON.parse(mem.get("aurelian_view_cols") ?? "{}")).some((k) => k.startsWith("s2|")));
+}
+
+// ── 9. it survives storage refusing to co-operate ───────────────────────────
 {
   const real = globalThis.localStorage.setItem;
   globalThis.localStorage.setItem = () => { throw new Error("QuotaExceededError"); };

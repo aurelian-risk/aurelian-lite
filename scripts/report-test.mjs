@@ -14,7 +14,7 @@
 import { pathToFileURL } from "node:url";
 
 const need = (k) => { const v = process.env[k]; if (!v) { console.error(`set ${k}`); process.exit(2); } return v; };
-const { reportMarkdown } = await import(pathToFileURL(need("MOD_R")).href);
+const { reportMarkdown, reportHtml } = await import(pathToFileURL(need("MOD_R")).href);
 const { DEFAULT_TAXONOMY } = await import(pathToFileURL(need("MOD_P")).href);
 const { makeSampleStudy } = await import(pathToFileURL(need("MOD_S")).href);
 
@@ -110,6 +110,47 @@ const fetched = [...md.matchAll(/(?:src|href)\s*=\s*"(https?:[^"]+)"/gi)].map((m
 ok("the report fetches nothing at read time", fetched.length === 0, fetched.join(", "));
 ok("its diagrams are inline SVG", /<svg[^>]*xmlns=/.test(md));
 ok("...and mermaid is nowhere in it", !/mermaid/i.test(md));
+
+// ── 6. how it is set ────────────────────────────────────────────────────────
+// Typesetting, not wording - but the same kind of drift: the report grew tables and kept
+// printing all of them as the one table it had a style for.
+{
+  const html = reportHtml(tax, study);
+  const reqs = study.entities.filter((e) => e.type === "requirement");
+  ok("the sample has a register long enough to be one", reqs.length > 12, `${reqs.length} requirements`);
+  // Past a dozen, a register is read across its rows. A card each turns a document about
+  // this organisation into a reprint of the framework it works to.
+  const regRow = /\|\s*Requirement\s*\|/.test(md);
+  ok("a long register is printed as a table", regRow);
+  ok("...with no card left behind", !reqs.some((r) => md.includes(`#### ${r.values.name}`)));
+  // A short one still gets the room a card gives it.
+  const assets = study.entities.filter((e) => e.type === "business_asset");
+  ok("a short register is still a card each", assets.length <= 12
+    && assets.every((a) => md.includes(`#### ${a.values.name}`)), `${assets.length} business assets`);
+
+  // Figures line up on the right; words do not. The rule used to be positional - every
+  // column but the first - which set owners and target dates flush right.
+  ok("a figure is marked as one", (html.match(/class="num"/g) ?? []).length > 4);
+  const dc = html.slice(html.indexOf("Document control"), html.indexOf("Overview"));
+  ok("a table written as markdown is not set as a table of figures",
+    !/qt-tbl/.test(dc) && !/class="num"/.test(dc));
+  ok("...and a short single-token cell is not broken across lines", /<td class="nw">/.test(html));
+
+  // A cell that could end its row or its column early: the value is neutralised, so the
+  // table keeps its shape whatever a record is called.
+  const wrecked = JSON.parse(JSON.stringify(study));
+  const victim = wrecked.entities.find((e) => e.type === "requirement");
+  victim.values.name = "Pipes | and\nnewlines";
+  const rows = reportMarkdown(tax, wrecked).split("\n").filter((l) => /^\|/.test(l));
+  const widths = new Set(rows.filter((l) => !/^\|[\s:|-]+\|$/.test(l)).map((l) => l.split("|").length));
+  ok("a value cannot end its row or its column early", widths.size <= 3, [...widths].join(","));
+
+  // Dozens of rows are not read the way six are, and are set to fit a page.
+  const many = JSON.parse(JSON.stringify(study));
+  const seed = many.entities.find((e) => e.type === "requirement");
+  for (let i = 0; i < 25; i++) many.entities.push({ ...seed, id: `req-extra-${i}`, values: { ...seed.values, name: `Extra requirement ${i}` } });
+  ok("a register of dozens is set dense", /<table class="dense">/.test(reportHtml(tax, many)));
+}
 
 console.log(`\n${pass}/${pass + fail} report assertions passed · ${fail} failed`);
 process.exit(fail ? 1 : 0);

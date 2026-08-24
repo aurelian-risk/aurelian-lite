@@ -166,13 +166,44 @@ select { cursor: pointer; }
 /* ── Tabellen ─────────────────────────────────────────────────────── */
 .tbl { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
 .panel-body { overflow-x: auto; } /* wide tables (e.g. risk quantification) scroll instead of squashing */
+/* Headers wrap rather than ellipsise. A column is as wide as its VALUES need to be, and
+   several labels ("Fulfills requirements", "Deadline / target date") are longer than any
+   value they head - clipping them cost the reader the label to save a line of height. */
 .tbl th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.07em;
-  color: var(--fg-subtle); font-weight: 600; padding: 10px 18px; white-space: nowrap;
+  color: var(--fg-subtle); font-weight: 600; padding: 10px 18px; vertical-align: bottom;
+  /* Breaks at spaces and slashes only: a label cut mid-word ("IMPLEMENTATIO / N") is
+     harder to read than one that wraps. A single word longer than its column is clipped
+     at the edge, and the full label is the header's tooltip. */
+  white-space: normal; overflow-wrap: normal; word-break: normal;
   overflow: hidden; text-overflow: ellipsis; }
 .tbl td { padding: 13px 18px; border-top: 1px solid var(--hairline); vertical-align: middle;
   overflow-wrap: anywhere; }
 .tbl tbody tr { transition: background 0.12s var(--ease); }
 .tbl tbody tr:hover td { background: var(--bg-hover); }
+
+/* The title column stays put while the rest scrolls sideways. A wide table has to be
+   read in two passes on any normal window; without this the second pass is of rows that
+   no longer say which record they belong to.
+   Both the pinning and its background hang off .pinned, which the panel body sets once
+   it has actually been scrolled sideways. Two reasons for the switch rather than a
+   standing rule: a table that fits needs no pinned column at all, and the opaque base
+   (--bg-0 under the panel tint - the construction the sticky lane headers use, because
+   --bg-panel alone is translucent and would let the scrolled columns show through)
+   cannot match the glass panel exactly, so an unscrolled table would carry a visible
+   seam for nothing. Only the tables that scroll their own body opt in this way; the
+   narrow tables elsewhere are untouched. */
+.panel-body.pinned .tbl th:first-child,
+.panel-body.pinned .tbl tbody tr:not(.detail-row) > td:first-child {
+  position: sticky; left: 0; z-index: 2;
+  background: linear-gradient(var(--bg-panel), var(--bg-panel)), var(--bg-0);
+  box-shadow: 7px 0 11px -9px oklch(0 0 0 / 0.55); }
+.panel-body.pinned .tbl tbody tr:hover > td:first-child,
+.panel-body.pinned .tbl tbody tr.row-clickable.expanded > td:first-child {
+  background: linear-gradient(var(--bg-hover), var(--bg-hover)),
+              linear-gradient(var(--bg-panel), var(--bg-panel)), var(--bg-0); }
+/* A group heading and an opened detail span the whole table: pinning them would drag
+   their content along the scroll instead of holding a column in place. */
+.tbl .group-row > th, .tbl .detail-row > td { position: static; }
 /* A two-state field as a switch: one press, and the state is the colour. */
 .cell-toggle { font: inherit; font-size: 11px; cursor: pointer; padding: 3px 9px;
   border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--bg-hover);
@@ -406,12 +437,23 @@ select { cursor: pointer; }
   display: inline-block; font-style: normal; transition: background 0.15s; }
 .scale i.on { background: var(--sev, var(--primary)); box-shadow: 0 0 8px -1px var(--sev, var(--primary)); }
 .multi { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+/* Denser badges inside table cells, for the same reason as the chips below: a column is
+   sized by what it holds, and the roomy form-and-detail padding costs every table it is
+   in about 20px per column without telling the reader anything more. */
+.tbl .badge { padding: 2px 7px; font-size: 11px; gap: 5px; }
+.tbl .scale { gap: 2px; }
+.tbl .scale i { width: 6px; height: 11px; }
 /* Lighter, outline chips inside table cells (ref + multiref) so relationship-heavy
    rows don't read as a wall of grey tiles. */
 .tbl .multi { gap: 5px; }
 /* Value columns are left-aligned like their headers; chip text reads left-to-right. */
 .tbl .chip, .tbl .chip.link { justify-content: flex-start; text-align: left; }
-.tbl .chip { background: transparent; border-color: var(--border); color: var(--fg-muted); padding: 2px 8px; font-size: 11.5px; }
+/* A chip in a table cell is a pointer to a record, not the record's name in full: an
+   untruncated title wraps the row to several lines and makes the column ask for four
+   times its width (measured in harness/table-width.mjs). The full title is the chip's
+   tooltip, and the row detail lists them whole. */
+.tbl .chip { background: transparent; border-color: var(--border); color: var(--fg-muted); padding: 2px 8px; font-size: 11.5px;
+  max-width: 15ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
 .tbl .chip.link:hover { background: color-mix(in oklch, var(--primary) 14%, transparent); color: var(--fg); border-color: color-mix(in oklch, var(--primary) 38%, var(--border)); }
 .chip.more { background: transparent; color: var(--fg-subtle); border: 1px dashed var(--border); padding: 2px 8px; font-size: 11.5px; border-radius: 8px; font-variant-numeric: tabular-nums; }
 
@@ -1472,6 +1514,9 @@ select.btn { display: inline-block; width: auto; flex: none; line-height: 1.4; }
 .facet-n { font-variant-numeric: tabular-nums; font-size: 10.5px; color: var(--fg-subtle);
   background: var(--hairline); border-radius: 999px; padding: 0 5px; min-width: 16px; text-align: center; }
 .facet-btn.on .facet-n { color: var(--primary-fg); background: var(--primary); }
+/* Anchored to the right for the menu that sits at the end of the toolbar: .panel clips
+   its overflow, so a popup opening rightwards there loses half of itself. */
+.facet-pop.to-left { left: auto; right: 0; }
 .facet-pop { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; min-width: 190px;
   max-height: 320px; overflow-y: auto; padding: 4px; border: 1px solid var(--border);
   border-radius: 9px; box-shadow: var(--shadow-md);
