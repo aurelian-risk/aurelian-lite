@@ -37,11 +37,13 @@ at **[aurelian-risk.com](https://aurelian-risk.com)**.
 
 ## Contact
 
-Questions, defects and suggestions belong in
-[Issues](https://github.com/aurelian-risk/aurelian-lite/issues), where the answer stays
-visible to whoever asks the same thing next. For what does not belong in public - a security
-finding you would rather report privately, licensing, or use of the name - write to
-**aurelian-risk@posteo.com**.
+We would like to hear from you. [Issues](https://github.com/aurelian-risk/aurelian-lite/issues)
+are the best place for questions, defects and suggestions - the answer stays visible to
+whoever asks the same thing next.
+
+For everything else, write to **aurelian-risk@posteo.com**: ideas for where the tool should
+go next, cooperation, sharing what you have learned using it - and anything you would rather
+not post in public, such as a security finding.
 
 ## License
 
