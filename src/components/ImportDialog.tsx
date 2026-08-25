@@ -16,7 +16,7 @@ import { gen } from "../domain/gen";
 import { diffBundle, diffTotals, demoRevision, type StudyDiff, type FieldDelta } from "../domain/importdiff";
 import { verifyLog, verdictText, type LogVerdict } from "../domain/audit";
 import type { Bundle, FieldValue } from "../domain/types";
-import { Icon } from "./ui";
+import { Icon, Overlay } from "./ui";
 
 type Mode = "merge" | "replace";
 
@@ -155,7 +155,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
   const totals = pending ? diffTotals(pending.diff) : null;
 
   return createPortal(
-    <div className="overlay" onMouseDown={onClose}>
+    <Overlay onClose={onClose}>
       <div className="modal-lg" style={{ maxWidth: 620 }} onMouseDown={(e) => e.stopPropagation()}>
         <header className="modal-lg-head">
           <div style={{ flex: 1 }}>
@@ -304,7 +304,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
           )}
         </footer>
       </div>
-    </div>,
+    </Overlay>,
     document.body,
   );
 }

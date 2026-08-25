@@ -123,8 +123,8 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
           ? <div className="empty" style={{ padding: "28px 16px" }}>No operational scenarios yet.</div>
           : (
             <table className="tbl">
-              <colgroup><col style={{ width: 260 }} /><col /><col style={{ width: 40 }} /></colgroup>
-              <thead><tr><th>Operational scenario</th><th>Mitigation</th><th /></tr></thead>
+              <colgroup><col style={{ width: 260 }} /><col /></colgroup>
+              <thead><tr><th>Operational scenario</th><th>Mitigation</th></tr></thead>
               <tbody>
                 {ops.map((op) => {
                   const steps = stepsOf(op.id);
@@ -144,11 +144,10 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
                             {steps.length === 0 ? "no steps" : `${covered}/${steps.length} defended`}
                           </span>
                         </td>
-                        <td />
                       </tr>
                       {isOpen && (
                         <tr className="detail-row">
-                          <td colSpan={3}>
+                          <td colSpan={2}>
                             {steps.length === 0
                               ? <div className="empty" style={{ padding: "12px 0" }}>No kill-chain steps in this scenario yet — add them in Operational Scenarios.</div>
                               : (

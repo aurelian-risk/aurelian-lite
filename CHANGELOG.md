@@ -5,6 +5,39 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.6.3] — 2026-08-25
+
+### Added
+- **A node you move in the relationship graph stays where you put it.** It used to spring
+  back to its computed place on release, which made a correction by hand impossible. Where
+  something has been moved, a button offers the way back. Like the folded groups and the
+  chosen columns, this is remembered outside the study.
+
+### Changed
+- **The graph keeps its nodes apart.** After every focus change the layout relieves what
+  the arcs cannot fit, deterministically and without moving the focus nodes that carry the
+  structure. The room a node needs is measured against its label - wide and flat, not
+  round - and a label near the edge turns inward instead of being cut off.
+- **A relation is labelled once, not once per line.** Nine edges that all say "protects"
+  said it nine times, in the middle of the graph where they piled up; each fan now carries
+  its relation once, and every edge still names it under the pointer.
+- **The quantification says where a share comes from.** The panel behind "attacker not
+  capable enough" now shows the four terms as one bar, both ranges on a single scale, and
+  the draw the simulation actually makes - a single demand figure against three attacker
+  figures could not be reconciled with the result.
+- **The study's sector says what it did to the attack rate**, including when it did
+  nothing: the sector is matched by name, so a value this calibration does not know changes
+  no figure. That is now stated where the rate is broken down, and a sector kept from
+  elsewhere stays visible in the picker instead of being silently replaced.
+- **Changing the sector, name, organisation or scope of a study is recorded** in the change
+  log like any other change. The sector selects the base-rate exception behind every
+  attempt rate, so altering it moved every risk figure and left no trace.
+
+### Fixed
+- **Escape closes a dialog.** Ten dialogs took a click on the backdrop and ignored the key.
+- **Two tables carried a column with nothing in it** - no header, no content, and a share
+  of the width. Removed, and every table is now checked for it.
+
 ## [0.6.2] — 2026-08-24
 
 ### Added

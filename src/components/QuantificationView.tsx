@@ -13,11 +13,12 @@ import { DEFAULT_CALIBRATION, type Calibration } from "../domain/calibration";
 import { simulate, type QuantInputs, type QuantResult, type Range } from "../domain/montecarlo";
 import { deriveInputs, meanOf, measureEfficacyOf, type Derived, type Prov } from "../domain/quantModel";
 import { effectClassOf, EFFECT_CHANNEL } from "../domain/controls";
+import type { DemandBreakdown } from "../domain/demand";
 import { likelihoodCheck } from "../domain/frequency";
 import { DistInput, fmtVal, type Unit } from "./DistInput";
 import { FactorTrace } from "./FactorTrace";
 import { EntityModal } from "./EntityModal";
-import { Icon } from "./ui";
+import { Icon, Overlay } from "./ui";
 import { copyText, quantLlmMarkdown } from "../domain/clipboard";
 
 const UNIT: Record<keyof QuantInputs, Unit> = {
@@ -292,6 +293,78 @@ function MoneyRow({ title, value, onChange, unit, lo, hi, log, accent, prov, onT
   );
 }
 
+/** The four terms of the demand as one bar, so the addition is seen rather than read.
+ *  Widths are the terms' shares of the total; a segment too narrow to hold its own
+ *  caption drops it rather than overprinting the neighbour. */
+function DemandStack({ dm }: { dm: DemandBreakdown }) {
+  const parts = [
+    { k: "getting in", v: dm.entry, c: "var(--color-workshop-2)" },
+    { k: "tooling", v: dm.adds.tooling, c: "var(--color-workshop-3)" },
+    { k: "breadth", v: dm.adds.depth, c: "var(--color-workshop-4)" },
+    { k: "staying in", v: dm.adds.dwell, c: "var(--color-workshop-5)" },
+  ].filter((p) => p.v > 0);
+  const W = 500, BAR = 430, sum = dm.total || 1;
+  let x = 0;
+  return (
+    <svg viewBox={`0 0 ${W} 40`} width="100%" height="40" role="img"
+      aria-label={`demand ${(dm.total * 100).toFixed(1)} percent, made of ${parts.map((p) => p.k).join(", ")}`}>
+      {parts.map((p) => {
+        const w = (p.v / sum) * BAR, at = x; x += w;
+        return (
+          <g key={p.k}>
+            <rect x={at} y={0} width={Math.max(1, w - 1)} height={16} rx={3} fill={p.c} opacity={0.75} />
+            {w > 56 && <text x={at + 3} y={30} fontSize={10} fill="var(--fg-subtle)">{p.k}</text>}
+            {w > 30 && <text x={at + w / 2} y={12} fontSize={10} textAnchor="middle" fill="var(--bg-0)" fontWeight={700}>
+              {(p.v * 100).toFixed(1)}</text>}
+          </g>
+        );
+      })}
+      <text x={BAR + 8} y={13} fontSize={12} fill="var(--fg)" fontWeight={700}>= {(dm.total * 100).toFixed(1)}%</text>
+    </svg>
+  );
+}
+
+/** The comparison the simulation actually makes: one draw from each range per attempt.
+ *  Drawn on one axis because that is the only way to see that the attack's demand is a
+ *  RANGE too - reading a single number against three attacker numbers is what made the
+ *  outcome impossible to reconstruct. */
+function SkillAxis({ ctl, adv, asks = "attack asks" }: { ctl: Range; adv: Range; asks?: string }) {
+  const W = 500, L = 92, R = 492, span = R - L;
+  const at = (v: number) => L + Math.max(0, Math.min(1, v)) * span;
+  const row = (y: number, r: Range, colour: string, label: string) => (
+    <g>
+      <text x={L - 8} y={y + 4} fontSize={10.5} textAnchor="end" fill="var(--fg-muted)">{label}</text>
+      <rect x={at(r.min)} y={y - 5} width={Math.max(2, at(r.max) - at(r.min))} height={10} rx={5}
+        fill={colour} opacity={0.28} />
+      <path d={`M${at(r.mode)} ${y - 7} l6 7 -6 7 -6 -7 z`} fill={colour} />
+    </g>
+  );
+  // Outside the overlap the outcome is already settled - below it every attacker fails,
+  // above it every one gets through. Only inside does the pair of draws decide.
+  const lo = Math.max(ctl.min, adv.min), hi = Math.min(ctl.max, adv.max);
+  return (
+    <svg viewBox={`0 0 ${W} 84`} width="100%" height="84" role="img"
+      aria-label="what the attack asks against what this attacker can do, on one scale">
+      {hi > lo && (
+        <>
+          <rect x={at(lo)} y={16} width={at(hi) - at(lo)} height={46} fill="var(--fg)" opacity={0.05} />
+          <text x={(at(lo) + at(hi)) / 2} y={11} fontSize={9.5} textAnchor="middle"
+            fill="var(--fg-subtle)">the draws decide here</text>
+        </>
+      )}
+      {row(32, ctl, "var(--color-state-success)", asks)}
+      {row(52, adv, "var(--color-state-error)", "attacker")}
+      <line x1={L} y1={68} x2={R} y2={68} stroke="var(--border)" />
+      {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+        <g key={t}>
+          <line x1={at(t)} y1={68} x2={at(t)} y2={72} stroke="var(--border)" />
+          <text x={at(t)} y={82} fontSize={9.5} textAnchor="middle" fill="var(--fg-subtle)">{t * 100}%</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 /** Where one row of the break-down came from: the records behind it, their state, how
  *  they were combined and what that made the bar. `what` is a step id, "" for the
  *  before-any-measure row, or "@through" for the share that reaches the objective. */
@@ -307,7 +380,7 @@ function BreakExplain({ what, result, derived, tax, cal, onClose }: {
     : what === "" ? result.blockedAtBaseline
       : result.breaks.find((b) => b.id === what)?.p ?? 0;
   const title = sc ? recordTitle(getType(tax, sc.step.type)!, sc.step)
-    : what === "@through" ? "Attempts that reach the objective" : "Attempts that were never skilled enough";
+    : what === "@through" ? "Attempts that reach the objective" : "Attacker not capable enough for this attack";
 
   // Labels of the implementation scale, so a measure's level reads as a word.
   const lvlLabels = tax.entityTypes.flatMap((t) => t.fields)
@@ -333,7 +406,7 @@ function BreakExplain({ what, result, derived, tax, cal, onClose }: {
   );
 
   return createPortal(
-    <div className="overlay" onMouseDown={onClose}>
+    <Overlay onClose={onClose}>
       <div className="ft-card" onMouseDown={(e) => e.stopPropagation()}>
         <header className="ft-head">
           <div>
@@ -373,6 +446,18 @@ function BreakExplain({ what, result, derived, tax, cal, onClose }: {
                 <>{p1(sc.prevention)} × {p0(cal.effect.prevention)}, the most a fully protected step adds</>)}
               {line(<b>an attacker has to be better than this share of all attackers</b>,
                 cs.gate ? p1(cs.gate.mode) : "nothing to clear", undefined, "bx-sum")}
+              {cs.gate && (
+                <>
+                  <p className="bx-h">One attempt = one draw from each</p>
+                  <SkillAxis ctl={cs.gate} adv={derived.inputs.adversaryStrength} asks="this step asks" />
+                  {line("this step asks",
+                    `${p1(cs.gate.min)} · ${p1(cs.gate.mode)} · ${p1(cs.gate.max)}`,
+                    <>{p1(cs.gate.mode)} ± {Math.round(cal.demand.spread * 100)} points — one operation is not another</>)}
+                  {line(derived.riskSource,
+                    `${p0(derived.inputs.adversaryStrength.min)} · ${p0(derived.inputs.adversaryStrength.mode)} · ${p0(derived.inputs.adversaryStrength.max)}`,
+                    <>the same draw walks the whole chain: an attacker good enough here was good enough earlier</>)}
+                </>
+              )}
               {cs.interrupt > 0 && (
                 <>
                   <p className="bx-h">Being spotted here</p>
@@ -380,39 +465,51 @@ function BreakExplain({ what, result, derived, tax, cal, onClose }: {
                     <>watched {p1(sc.detection)} × {p0(cal.effect.detection)} of what is seen gets stopped × how able you are to react</>)}
                 </>
               )}
-              <p className="bx-note">
-                These {p1(share)} are the attempts whose attacker was skilled enough for the
-                attack itself but not for this step.
-              </p>
+              {line(<b>skilled enough for the attack, not for this step → stopped</b>, p1(share),
+                undefined, "bx-sum")}
             </>
           ) : what === "" ? (
             <>
-              <p className="bx-h">How much skill this attack needs on its own</p>
+              <p className="bx-h">What the attack asks, before any measure of yours</p>
               {dm ? (
                 <>
-                  {line("getting in", p1(dm.entry), <>from the first step&apos;s technique{dm.unknown.entry ? " - none recognised, so a default" : ""}</>)}
-                  {line("tooling", `+${p1(dm.adds.tooling)}`, <>the hardest single technique on the chain</>)}
-                  {line("breadth", `+${p1(dm.adds.depth)}`, <>the chain spans {dm.tactics} distinct tactics</>)}
-                  {line("staying in undetected", `+${p1(dm.adds.dwell)}`, <>the chain needs persistence, evasion or lateral movement</>)}
-                  {line(<b>skill the attack needs, before any measure of yours</b>, p1(dm.total), undefined, "bx-sum")}
+                  <DemandStack dm={dm} />
+                  {line("getting in", p1(dm.entry), <>first step&apos;s technique{dm.unknown.entry ? " - none recognised, so a default" : ""}</>)}
+                  {line("tooling", `+${p1(dm.adds.tooling)}`, <>hardest single technique on the chain</>)}
+                  {line("breadth", `+${p1(dm.adds.depth)}`, <>{dm.tactics} distinct tactics</>)}
+                  {line("staying in undetected", `+${p1(dm.adds.dwell)}`, <>persistence, evasion or lateral movement</>)}
                 </>
               ) : line("read from the difficulty rating", p1(meanOf(derived.inputs.controlStrength)),
                 <>this scenario models no chain, so there is nothing to derive it from</>)}
-              <p className="bx-h">How skilled this attacker is</p>
+
+              <p className="bx-h">One attempt = one draw from each</p>
+              <SkillAxis ctl={derived.inputs.controlStrength} adv={derived.inputs.adversaryStrength} />
+              {line("attack asks",
+                `${p1(derived.inputs.controlStrength.min)} · ${p1(derived.inputs.controlStrength.mode)} · ${p1(derived.inputs.controlStrength.max)}`,
+                <>{dm ? <>{p1(dm.total)} ± {Math.round(cal.demand.spread * 100)} points</> : "difficulty rating"} — one operation is not another</>)}
               {line(derived.riskSource,
                 `${p0(derived.inputs.adversaryStrength.min)} · ${p0(derived.inputs.adversaryStrength.mode)} · ${p0(derived.inputs.adversaryStrength.max)}`,
-                <>from the capability rating: at worst, most likely, at best - better than this share of all attackers. Wide because a rating describes a class of attacker, not one person.</>)}
-              <p className="bx-note">
-                These {p1(share)} are the attempts whose attacker was less skilled than the
-                attack requires. They stopped before reaching any step, so no measure of yours
-                was involved.
-              </p>
+                <>capability rating: worst · likely · best, against all attackers. Wide: a class, not a person</>)}
+              {line(<b>attacker ≤ what the attack asks → stopped</b>, p1(share),
+                <>before any step, so no measure of yours was involved</>, "bx-sum")}
             </>
           ) : (
             <>
               <p className="bx-h">What this share becomes</p>
               {line("attempts per year on this scenario", derived.frequency.total.toPrecision(2),
                 <>base rate {derived.frequency.base.toPrecision(2)} × tempo {derived.frequency.tempo.toPrecision(2)} × resources {derived.frequency.throughput.toPrecision(2)} × why-us {derived.frequency.pull.toPrecision(2)} × reachability {derived.frequency.reachability.toPrecision(2)}</>)}
+              {(() => {
+                // The base rate is the only place the study's sector acts, and it acts by
+                // NAME: a value the calibration does not know changes nothing, which is
+                // worth a line rather than a silence.
+                const sc = derived.frequency.sector;
+                return line("of which the sector",
+                  sc.factor === 1 ? "×1 — no exception" : `×${sc.factor.toPrecision(2)}`,
+                  !sc.name ? <>no sector set, so the published rates are used as they are</>
+                    : !sc.known ? <><b>&ldquo;{sc.name}&rdquo; is not a sector this calibration knows</b> — it is matched by name, so nothing is applied</>
+                      : <>{sc.name} — exceptions apply per actor class, and only where one is documented</>,
+                  sc.known ? "" : "bx-warn");
+              })()}
               {line("× the share that gets through", p1(result.vuln), <>measured over the simulation, not set anywhere</>)}
               {line(<b>loss events per year</b>, result.lef.toPrecision(2),
                 result.lef > 0 ? <>about one every {Math.round(1 / result.lef)} years</> : undefined, "bx-sum")}
@@ -428,7 +525,7 @@ function BreakExplain({ what, result, derived, tax, cal, onClose }: {
           </p>
         </div>
       </div>
-    </div>,
+    </Overlay>,
     document.body,
   );
 }

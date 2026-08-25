@@ -12,7 +12,7 @@
 // The shape below is deliberate: ALL the empirical burden sits in the base rate.
 // Everything else is a ratio, and every ratio answers a question an analyst can defend.
 import type { FrequencyCalibration } from "./calibration";
-import { baseRateOf, sampleBand, techniqueId } from "./calibration";
+import { baseRateOf, knownSector, sampleBand, techniqueId } from "./calibration";
 
 /** Why this organisation - as far as the model can tell from the objectives. */
 export type Pull =
@@ -49,10 +49,16 @@ export interface FrequencyBreakdown {
    *  plausibly sees. Worth surfacing rather than hiding: it means the inputs disagree
    *  with the model's own sense of scale. */
   capped: boolean;
+  /** What the study's sector did to the base rate. `unknown` is the one that matters: the
+   *  sector is matched by string, so a value the calibration has never heard of changes
+   *  nothing at all - and used to do so without a word. */
+  sector: { name: string; known: boolean; factor: number };
 }
 
 export function attemptsPerYear(f: FrequencyFacts, cal: FrequencyCalibration): FrequencyBreakdown {
   const base = baseRateOf(cal, f.actor, f.sector);
+  const plain = cal.baseRate[f.actor] ?? cal.baseRateDefault;
+  const sector = { name: f.sector, known: knownSector(cal, f.sector), factor: plain > 0 ? base / plain : 1 };
   const tempo = sampleBand(cal.tempo, f.activity);
   const throughput = sampleBand(cal.throughput, f.resources);
   const pull = f.pull === "declared" ? cal.targetPull.declared
@@ -63,7 +69,7 @@ export function attemptsPerYear(f: FrequencyFacts, cal: FrequencyCalibration): F
 
   const raw = base * tempo * throughput * pull * reachability;
   const total = Math.min(cal.cap, raw);
-  return { base, tempo, throughput, pull, reachability, total, capped: raw > cal.cap };
+  return { base, tempo, throughput, pull, reachability, total, capped: raw > cal.cap, sector };
 }
 
 /** The band the simulation draws from. A base rate is an order-of-magnitude setting,

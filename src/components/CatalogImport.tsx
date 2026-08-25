@@ -19,7 +19,7 @@ import { isExtractable, extractFileText } from "../domain/docextract";
 import { embed, cosine, isLoaded } from "../domain/embeddings";
 import { useStore } from "../domain/store";
 import { downloadText } from "../domain/clipboard";
-import { Icon } from "./ui";
+import { Icon, Overlay } from "./ui";
 
 const FIELD_LABEL: Record<FieldKey, string> = { ref_id: "Reference ID", title: "Title", category: "Category", description: "Description" };
 const FIELD_TEXT: Record<FieldKey, string> = {
@@ -201,7 +201,7 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
   };
 
   return createPortal(
-    <div className="overlay" onMouseDown={onClose}>
+    <Overlay onClose={onClose}>
       <div className="modal-lg" style={{ maxWidth: 720 }} onMouseDown={(e) => e.stopPropagation()}>
         <header className="modal-lg-head">
           <div style={{ flex: 1 }}>
@@ -436,7 +436,7 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
         </footer>
         <input ref={fileRef} type="file" accept=".csv,.tsv,.json,.txt,.md,.pdf,.docx,.xml" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
       </div>
-    </div>,
+    </Overlay>,
     document.body,
   );
 }

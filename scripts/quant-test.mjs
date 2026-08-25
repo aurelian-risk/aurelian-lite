@@ -496,6 +496,19 @@ const plain = vulnOf(undefined);
     rate({ actor: "Cybercriminals", sector: "Healthcare" }) > rate({ actor: "Cybercriminals", sector: "Retail & consumer" }));
   ok("...and leaves classes it says nothing about alone",
     rate({ actor: "Opportunist", sector: "Healthcare" }) === rate({ actor: "Opportunist", sector: "Retail & consumer" }));
+  // The sector is matched by NAME. A value from somewhere else - another product's export,
+  // a hand-edited file, a renamed list - finds no row and changes nothing, and used to do
+  // so in silence. The breakdown now carries the answer so a view can say it.
+  {
+    const bad = attemptsPerYear(facts({ actor: "Cybercriminals", sector: "Hospitals" }), F);
+    const good = attemptsPerYear(facts({ actor: "Cybercriminals", sector: "Healthcare" }), F);
+    const none = attemptsPerYear(facts({ actor: "Cybercriminals", sector: "" }), F);
+    ok("a sector the calibration does not know is reported as unknown", bad.sector.known === false, bad.sector.name);
+    ok("...and changes nothing, exactly as no sector at all", bad.total === none.total && bad.sector.factor === 1);
+    ok("a sector it does know is not flagged", good.sector.known === true && good.sector.factor > 1,
+      String(good.sector.factor));
+    ok("no sector set is a choice, not an unknown value", none.sector.known === true && none.sector.factor === 1);
+  }
   ok("a declared objective on the target raises the rate above no interest at all",
     rate({ actor: "Cybercriminals", pull: "declared" }) > rate({ actor: "Cybercriminals", pull: "noMatch" }));
   ok("a busier actor attacks more often",

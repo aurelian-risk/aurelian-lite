@@ -17,7 +17,7 @@ import { simulate } from "../domain/montecarlo";
 import { effectClassOf, EFFECT_CHANNEL, type EffectClass } from "../domain/controls";
 import { arcPath, heatColor } from "../domain/viz";
 import { EntityModal } from "./EntityModal";
-import { Icon } from "./ui";
+import { Icon, Overlay } from "./ui";
 import { DEFAULT_CALIBRATION } from "../domain/calibration";
 
 /** Iterations behind the ring. Enough for a stable percentage, far below what the
@@ -275,7 +275,7 @@ function TacticExplain({ heat, stepType, measureType, onOpen, onClose }: {
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   const mean = heat.steps.length ? heat.steps.reduce((a, s) => a + s.coverage, 0) / heat.steps.length : 0;
   return createPortal(
-    <div className="overlay" onMouseDown={onClose}>
+    <Overlay onClose={onClose}>
       <div className="ft-card" onMouseDown={(e) => e.stopPropagation()}>
         <header className="ft-head">
           <div>
@@ -337,5 +337,5 @@ function TacticExplain({ heat, stepType, measureType, onOpen, onClose }: {
           </p>
         </div>
       </div>
-    </div>, document.body);
+    </Overlay>, document.body);
 }

@@ -162,7 +162,7 @@ export function ModelView() {
   useEffect(() => { GF?.isGenFilesCached().then(setGenCached); }, [genStatus, GF]);
   // Only the Transformers.js backend routes its files through our cache → only it
   // can be saved to / loaded from a file. WebLLM manages its own cache.
-  const genFileCapable = !!G && G.genModelById(genSel).backend === "transformers";
+  const genFileCapable = LLM && !!G && G.genModelById(genSel).backend === "transformers";
 
   const pickGen = (id: string) => { G?.setGenModelId(id); setGenSel(id); setGenReady(!!G?.isGenLoaded(id)); };
   // WebLLM reports progress as descriptive text (shard download), Transformers.js

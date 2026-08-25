@@ -7,8 +7,9 @@
 // exploring "what is connected to X", not the linear progression.
 import { useEffect, useMemo, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import type { EntityRecord, Study, Taxonomy } from "../domain/types";
-import { buildGraph, type GNode } from "../domain/graph";
+import { buildGraph, spreadOut, type GNode } from "../domain/graph";
 import { getType } from "../domain/taxonomy";
+import { foldScope, getNudges, setNudges } from "../domain/viewstate";
 import { EntityInfoPanel } from "./EntityInfoPanel";
 import { EntityModal } from "./EntityModal";
 
@@ -81,12 +82,31 @@ export function GraphView({ tax, study }: { tax: Taxonomy; study: Study }) {
   const [inspect, setInspect] = useState<string | null>(null);
   const inspectNode = (id: string) => setInspect(id); // clicking a graph node is the ONLY thing that shows the box
 
-  // DRAG: a node can be pulled around; on release it springs back to its computed spot.
+  // DRAG: a node can be pulled around, and it STAYS there - the layout puts nodes where
+  // the structure says, which is right until two of them want the same spot. The push is
+  // an arrangement, so it is remembered outside the study (viewstate.ts), like a fold.
+  const nudgeScope = foldScope(study.id, "@graph");
   const offsets = useRef(new Map<string, { x: number; y: number; vx: number; vy: number }>());
+  const [nudged, setNudged] = useState(false);
+  const saveNudges = () => {
+    const m = new Map<string, { x: number; y: number }>();
+    for (const [id, o] of offsets.current) if (Math.abs(o.x) > 0.5 || Math.abs(o.y) > 0.5) m.set(id, { x: o.x, y: o.y });
+    setNudges(nudgeScope, m);
+    setNudged(m.size > 0);
+  };
   const dragRef = useRef<{ id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean } | null>(null);
   const rafRef = useRef<number | undefined>(undefined);
   const [, bump] = useReducer((c: number) => c + 1, 0);
   useEffect(() => () => { if (rafRef.current != null) cancelAnimationFrame(rafRef.current); }, []);
+  useEffect(() => {
+    offsets.current = new Map([...getNudges(nudgeScope)].map(([id, p]) => [id, { ...p, vx: 0, vy: 0 }]));
+    setNudged(offsets.current.size > 0);
+    bump();
+  }, [nudgeScope]);
+
+  /** Put every pushed node back where the layout wants it, with the spring that used to
+   *  fire on every release. */
+  const resetNudges = () => { setNudges(nudgeScope, new Map()); setNudged(false); runSpring(); };
 
   const runSpring = () => {
     if (rafRef.current != null) return;
@@ -128,7 +148,7 @@ export function GraphView({ tax, study }: { tax: Taxonomy; study: Study }) {
     onPointerUp: (e: ReactPointerEvent) => {
       const d = dragRef.current; if (!d || d.id !== id) return;
       dragRef.current = null;
-      if (d.moved) runSpring(); else onTap(e.shiftKey);
+      if (d.moved) saveNudges(); else onTap(e.shiftKey);
     },
   });
 
@@ -158,6 +178,15 @@ export function GraphView({ tax, study }: { tax: Taxonomy; study: Study }) {
     const neigh = [...nm.values()].sort((a, b) => a.node.group.localeCompare(b.node.group) || a.node.label.localeCompare(b.node.label));
     return { neigh, fociEdges };
   }, [fociSet, links, byId]);
+
+  // Half the space a node needs to itself. Not one number: a node is a dot with a label
+  // beside it, so it is wide and flat, and two of them side by side collide long before
+  // two above each other do. Measured against the label, not the dot.
+  const CLEAR_X = 92, CLEAR_Y = 30;
+  /** Room a label takes beside its node: 24 characters at 10.5px, plus the gap and the
+   *  halo stroke. Deliberately generous - a label cut off at the edge is worse than one
+   *  that turns inward a little early. */
+  const LABEL_W = 172;
 
   if (nodes.length === 0) {
     return <div className="empty"><h3>Nothing to show yet</h3>Add entities in the workshops — the graph grows with them.</div>;
@@ -219,6 +248,38 @@ export function GraphView({ tax, study }: { tax: Taxonomy; study: Study }) {
     });
   }
 
+  // Nothing above knows how many neighbours an arc has to hold, so past a certain count
+  // they land on top of each other. Relieve the crowding afterwards rather than complicate
+  // the placement: the arrangement the layout intended survives, and only the overlap goes.
+  // The foci carry the structure and are pinned. Deterministic - see graph.ts.
+  {
+    const marginX = 96, marginY = 46;
+    const laid = spreadOut(
+      [...[...fpos].map(([id, p]) => ({ id, x: p.x, y: p.y, fixed: true })),
+        ...[...pos].map(([id, p]) => ({ id, x: p.x, y: p.y }))],
+      CLEAR_X,
+      { x0: marginX, y0: marginY, x1: Math.max(marginX + 1, size.w - marginX), y1: Math.max(marginY + 1, size.h - marginY) },
+      80, CLEAR_Y,
+    );
+    for (const p of laid) if (pos.has(p.id)) pos.set(p.id, { x: p.x, y: p.y });
+  }
+
+  // One label per (focus, relation): the neighbour in the middle of that fan carries it.
+  // Middle rather than first, so the label sits inside the fan it describes instead of at
+  // its edge, and the choice is taken from the already-sorted neighbour list, so the same
+  // scene labels the same edge twice.
+  const labelEdge = new Map<string, string>();
+  {
+    const fans = new Map<string, string[]>();
+    for (const e of scene.neigh) {
+      for (const [fid, c] of e.conn) {
+        const key = `${fid}\u0000${[...c.rels].join(" / ")}`;
+        (fans.get(key) ?? fans.set(key, []).get(key)!).push(e.node.id);
+      }
+    }
+    for (const [key, ids] of fans) labelEdge.set(key, ids[Math.floor((ids.length - 1) / 2)]);
+  }
+
   // Left index: EVERY entity, grouped by workshop and searchable — so the whole model
   // is visible at a glance and the current focus is explicit (not an arbitrary node).
   const matches = (n: GNode) => !q.trim() || n.label.toLowerCase().includes(q.trim().toLowerCase());
@@ -253,17 +314,26 @@ export function GraphView({ tax, study }: { tax: Taxonomy; study: Study }) {
             ? <span className="item"><b style={{ color: "var(--fg)" }}>{nF} focuses</b>&nbsp;<span style={{ color: "var(--fg-subtle)" }}>· click a node to inspect · double-click to re-centre · Shift-click to add / remove</span></span>
             : primary && <span className="item"><b style={{ color: "var(--fg)" }}>{primary.label}</b>&nbsp;<span style={{ color: "var(--fg-subtle)" }}>· {k} relationship{k === 1 ? "" : "s"} · click to inspect · double-click to re-centre · Shift-click to compare</span></span>}
           {nF > 1 && <button className="btn ghost sm" onClick={() => setFocusIds(primary ? [primary.id] : [])}>Clear extra</button>}
+          {nudged && <button className="btn ghost sm" onClick={resetNudges}
+            title="Put every node back where the layout puts it">Reset positions</button>}
         </div>
         <div className="graph-wrap" ref={wrapRef}>
           <svg>
             <defs>
               <marker id="ego-arrow" markerWidth="8" markerHeight="8" refX="6.5" refY="3.5" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0 0.7 L7 3.5 L0 6.3 z" fill="context-stroke" /></marker>
             </defs>
-            {/* neighbour edges — one per (focus, neighbour) link */}
+            {/* neighbour edges — one per (focus, neighbour) link.
+                A label belongs to a relation, not to each rope carrying it: nine edges
+                that all say "protects" tell a reader the same thing nine times, and in a
+                dense ego net they pile up INSIDE the ring, where pushing the nodes apart
+                changes nothing. So each (focus, relation) fan is labelled once, on its
+                middle edge - the fan reads as one relation, and the count of edges is
+                already visible from the edges themselves. */}
             {scene.neigh.map((e) => {
               const np0 = pos.get(e.node.id); if (!np0) return null;
               const np = off(e.node.id, np0);
               return [...e.conn.entries()].map(([fid, c]) => {
+                const labelled = labelEdge.get(`${fid}\u0000${[...c.rels].join(" / ")}`) === e.node.id;
                 const fp = off(fid, fpos.get(fid)!);
                 const dx = np.x - fp.x, dy = np.y - fp.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
                 const x1 = fp.x + ux * FR, y1 = fp.y + uy * FR, x2 = np.x - ux * NR, y2 = np.y - uy * NR;
@@ -271,10 +341,13 @@ export function GraphView({ tax, study }: { tax: Taxonomy; study: Study }) {
                   <g key={"e-" + fid + "-" + e.node.id}>
                     <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--border-strong)" strokeWidth={1.2} strokeOpacity={0.5}
                       markerEnd={c.out ? "url(#ego-arrow)" : undefined} markerStart={c.in ? "url(#ego-arrow)" : undefined} />
-                    <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 2} textAnchor="middle" fontSize={9.5} fill="var(--fg-subtle)"
-                      style={{ pointerEvents: "none", userSelect: "none", paintOrder: "stroke" }} stroke="var(--bg-0)" strokeWidth={3}>
-                      {[...c.rels].join(" / ")}
-                    </text>
+                    {labelled && (
+                      <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 2} textAnchor="middle" fontSize={9.5} fill="var(--fg-subtle)"
+                        style={{ pointerEvents: "none", userSelect: "none", paintOrder: "stroke" }} stroke="var(--bg-0)" strokeWidth={3}>
+                        {[...c.rels].join(" / ")}
+                      </text>
+                    )}
+                    <title>{[...c.rels].join(" / ")}</title>
                   </g>
                 );
               });
@@ -292,7 +365,10 @@ export function GraphView({ tax, study }: { tax: Taxonomy; study: Study }) {
               const np0 = pos.get(e.node.id); if (!np0) return null;
               const np = off(e.node.id, np0);
               const t = getType(tax, e.node.type);
-              const anchorEnd = np.x < cx;
+              // Outward from the centre, so a label leans away from the graph rather than
+              // across it - unless the edge is nearer than the label is long, where outward
+              // means clipped. Then it turns inward, where there is room.
+              const anchorEnd = np.x + LABEL_W > size.w ? true : np.x - LABEL_W < 0 ? false : np.x < cx;
               const isShared = e.conn.size > 1;
               const isInspect = inspect === e.node.id;
               return (

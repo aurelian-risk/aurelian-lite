@@ -167,6 +167,14 @@ export function useDismissOnEscape(open: boolean, close: () => void): void {
   }, [open, close]);
 }
 
+/** The backdrop every dialog here shares. It used to take the click and ignore the key:
+ *  ten dialogs swallowed Escape, while the three menus beside them closed on it. The
+ *  dismissal belongs to the backdrop, not to each dialog's own copy of it. */
+export function Overlay({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  useDismissOnEscape(true, onClose);
+  return <div className="overlay" onMouseDown={onClose}>{children}</div>;
+}
+
 export function MultiSelect({
   options, selected, onChange, placeholder = "add …", emptyHint, onClickChip, renderChipExtra, action,
 }: {
