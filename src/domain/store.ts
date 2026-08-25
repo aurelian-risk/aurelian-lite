@@ -385,7 +385,26 @@ export const useStore = create<StoreState>((set, get) => ({
     return study.id;
   },
   updateStudy: (id, patch) => {
-    set({ studies: get().studies.map((s) => (s.id === id ? { ...s, ...patch, updatedAt: nowISO() } : s)) });
+    const ts = nowISO(), editor = getEditor() || "unknown";
+    set({ studies: get().studies.map((s) => {
+      if (s.id !== id) return s;
+      // What the study says about itself is part of the study. The sector is the one that
+      // moves numbers - it selects the base-rate exception behind every attempt rate - so
+      // a change to it that left no trace was a change to every risk figure that left no
+      // trace. Name, organisation and scope are printed in the report and belong for the
+      // same reason. Nothing is written when nothing actually changed.
+      const before = { name: s.name, organization: s.organization, scope: s.scope, sector: s.sector ?? "" };
+      const after = { ...before, ...Object.fromEntries(
+        Object.entries(patch).map(([k, v]) => [k, v ?? ""])) } as typeof before;
+      const changes = diffValues(before as unknown as Record<string, FieldValue>,
+        after as unknown as Record<string, FieldValue>);
+      const next = { ...s, ...patch, updatedAt: ts };
+      if (!changes.length) return next;
+      return { ...next, log: appendLog(s.log, {
+        ts, editor, kind: "update", entity: STUDY_SCOPE, entityType: "", title: after.name,
+        changes, state: hashValues(after as unknown as Record<string, FieldValue>),
+      }) };
+    }) });
     schedulePersist(get);
   },
   deleteStudy: (id) => {

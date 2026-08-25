@@ -1474,6 +1474,9 @@ select.btn { display: inline-block; width: auto; flex: none; line-height: 1.4; }
 .bx-v { flex: none; }
 .bx-line.bx-sum { border-bottom: none; color: var(--fg); font-weight: 600; }
 .bx-none { margin: 0; font-size: 12.5px; color: var(--color-state-warning); }
+/* A line whose value is that it does nothing: said in the colour of a warning, because a
+   sector the calibration cannot match looks like an input and behaves like none. */
+.bx-line.bx-warn .bx-k b, .sect-note.warn { color: var(--color-state-warning); }
 .bx-note { margin: 10px 0 0; font-size: 12px; color: var(--fg-subtle); line-height: 1.6; }
 .cal-lead { margin: 0 0 14px; padding: 10px 12px; border-left: 2px solid var(--border-strong);
   background: var(--bg-hover); border-radius: 0 8px 8px 0; font-size: 12.5px;

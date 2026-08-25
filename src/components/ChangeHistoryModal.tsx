@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import type { ChangeEntry, EntityRecord, FieldValue, Study, Taxonomy } from "../domain/types";
 import { getType, recordTitle, scaleLabel } from "../domain/taxonomy";
 import { entryOf, verifyLog } from "../domain/audit";
-import { Icon } from "./ui";
+import { Icon, Overlay } from "./ui";
 
 function fmtVal(tax: Taxonomy, study: Study, e: EntityRecord, key: string, v: FieldValue): string {
   const f = getType(tax, e.type)?.fields.find((x) => x.key === key);
@@ -63,7 +63,7 @@ export function ChangeHistoryModal({ tax, study, record, onClose }:
   const type = getType(tax, record.type);
   const history = entryOf(study.log, record.id);
   return createPortal(
-    <div className="overlay" onMouseDown={onClose}>
+    <Overlay onClose={onClose}>
       <div className="modal-lg" style={{ maxWidth: 560 }} onMouseDown={(e) => e.stopPropagation()}>
         <header className="modal-lg-head">
           <div style={{ flex: 1 }}>
@@ -93,7 +93,7 @@ export function ChangeHistoryModal({ tax, study, record, onClose }:
           )}
         </div>
       </div>
-    </div>,
+    </Overlay>,
     document.body,
   );
 }

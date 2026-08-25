@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
-// How a reader arranged a table, remembered between visits.
+// How a reader arranged a table - or pushed a graph node - remembered between visits.
 //
 // Deliberately NOT part of the study. An arrangement is a property of the person reading,
 // not of the analysis: put it in the study and it travels in the export, turns up in an
@@ -9,9 +9,9 @@
 //
 // Three things keep it from becoming a burden on the browser:
 //
-//  · Only the deviation is stored. Groups are open and columns are shown by default, so
-//    the payload is the size of what someone changed, not of what they have. A table of
-//    1200 requirements left as it comes costs nothing at all.
+//  · Only the deviation is stored. Groups are open, columns are shown and nodes sit where
+//    the layout put them by default, so the payload is the size of what someone changed,
+//    not of what they have. A table of 1200 requirements left as it comes costs nothing.
 //  · Writes are coalesced. Clicking through ten groups writes once, not ten times -
 //    localStorage is synchronous, and a write per click is a stall per click.
 //  · It is bounded and self-evicting. Scopes are capped and the least recently seen ones
@@ -34,9 +34,10 @@ let touch = 0;
 type Slot = { t: number } & Record<string, unknown>;
 type Store = Record<string, Slot>;
 
-/** One remembered property per table, in its own storage key. Three of these exist -
- *  what is folded, what it is grouped by, which columns are hidden - and they differ only
- *  in what a slot holds, so the machinery that keeps them small is written once here.
+/** One remembered property per view, in its own storage key. Four of these exist - what is
+ *  folded, what it is grouped by, which columns are hidden, where a graph node was pushed -
+ *  and they differ only in what a slot holds, so the machinery that keeps them small is
+ *  written once here.
  *  `field` is the name the value carries in storage: short, because it is written on
  *  every scope, and stable, because changing it would forget what readers already have. */
 function makeStore<T>(lsKey: string, field: string, isEmpty: (v: T) => boolean, clamp?: (v: T) => T) {
@@ -117,6 +118,13 @@ const groups = makeStore<string>("aurelian_view_group", "g", (v) => !v);
 const columns = makeStore<string[]>("aurelian_view_cols", "h",
   (v) => v.length === 0, (v) => v.slice(0, MAX_KEYS));
 
+// Where a reader pushed a graph node, as offsets from the spot the layout computed. Stored
+// as triples so the same cap as the folds applies, and outside the study for the same
+// reason: moving a node is reading, not analysis - in the study it would travel in every
+// export and stand in the change log as an edit to the assessment.
+const nudges = makeStore<[string, number, number][]>("aurelian_view_nudge", "n",
+  (v) => v.length === 0, (v) => v.slice(0, MAX_KEYS));
+
 /** A stable name for one foldable thing: which study, which table, which axis it is
  *  grouped by. Grouping by a different field is a different layout and gets its own. */
 export const foldScope = (studyId: string, typeKey: string, groupBy = ""): string =>
@@ -138,15 +146,28 @@ export const getHiddenColumns = (scope: string): Set<string> => new Set(columns.
 
 export const setHiddenColumns = (scope: string, hidden: Set<string>): void => columns.set(scope, [...hidden]);
 
+/** Where this reader pushed the graph's nodes, by node id. Empty for an untouched graph. */
+export function getNudges(scope: string): Map<string, { x: number; y: number }> {
+  const out = new Map<string, { x: number; y: number }>();
+  for (const [id, x, y] of nudges.get(scope) ?? []) out.set(id, { x, y });
+  return out;
+}
+
+/** Remember where they were pushed. An empty map forgets the scope, so putting the graph
+ *  back the way it came leaves nothing behind. */
+export function setNudges(scope: string, moved: Map<string, { x: number; y: number }>): void {
+  nudges.set(scope, [...moved].map(([id, p]) => [id, Math.round(p.x), Math.round(p.y)]));
+}
+
 /** Drop everything remembered about a study - called when the study itself goes, so its
  *  arrangements do not outlive it. */
 export function forgetStudy(studyId: string): void {
   const pre = `${studyId}|`;
-  for (const s of [folds, groups, columns]) s.forget(pre);
+  for (const s of [folds, groups, columns, nudges]) s.forget(pre);
 }
 
 /** Test seam: forget everything and start from storage again. */
 export function resetFoldCache(): void {
-  for (const s of [folds, groups, columns]) s.reset();
+  for (const s of [folds, groups, columns, nudges]) s.reset();
   touch = 0;
 }

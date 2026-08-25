@@ -15,7 +15,7 @@ import {
 } from "../domain/keys";
 import { downloadText } from "../domain/clipboard";
 import { encryptText, decryptText } from "../domain/crypto";
-import { Icon } from "./ui";
+import { Icon, Overlay } from "./ui";
 
 type Row = { seq: number; ts: string; editor: string; seal: Seal; verdict: SealVerdict };
 
@@ -279,7 +279,7 @@ export function SealPanel() {
  *  unstyled: the class existed in the markup and nowhere in the stylesheet. */
 function Modal({ title, onClose, wide, children }: { title: string; onClose: () => void; wide?: boolean; children: React.ReactNode }) {
   return createPortal(
-    <div className="overlay" onMouseDown={onClose}>
+    <Overlay onClose={onClose}>
       <div className={"modal-lg sp-modal" + (wide ? " sp-modal-w" : "")} onMouseDown={(e) => e.stopPropagation()}>
         <header className="modal-lg-head">
           <h2 style={{ margin: 0, fontSize: 18 }}>{title}</h2>
@@ -288,5 +288,5 @@ function Modal({ title, onClose, wide, children }: { title: string; onClose: () 
         </header>
         <div className="modal-lg-body">{children}</div>
       </div>
-    </div>, document.body);
+    </Overlay>, document.body);
 }

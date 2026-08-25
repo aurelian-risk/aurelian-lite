@@ -12,7 +12,7 @@ import { effectClassOf, EFFECT_CHANNEL } from "../domain/controls";
 import type { QuantInputs, Range } from "../domain/montecarlo";
 import type { FConf } from "./QuantificationView";
 import { DistInput, fmtVal, type Unit } from "./DistInput";
-import { ScaleBars, Icon } from "./ui";
+import { Icon, Overlay, ScaleBars } from "./ui";
 
 type FKey = keyof QuantInputs;
 // Every value needed to spell out the calculation with real numbers.
@@ -223,7 +223,7 @@ export function FactorTrace({ fkey, range, vals, derived, tax, unit, conf, accen
   }
 
   return createPortal(
-    <div className="overlay" onMouseDown={onClose}>
+    <Overlay onClose={onClose}>
       <div className="ft-card" onMouseDown={(e) => e.stopPropagation()}>
         <header className="ft-head">
           <div>
@@ -298,5 +298,5 @@ export function FactorTrace({ fkey, range, vals, derived, tax, unit, conf, accen
           <div className="ft-adjust"><DistInput label={m.title} value={range} onChange={onChange} unit={unit} lo={conf.lo} hi={conf.hi} log={conf.log} accent={accent} shape /></div>
         </div>
       </div>
-    </div>, document.body);
+    </Overlay>, document.body);
 }

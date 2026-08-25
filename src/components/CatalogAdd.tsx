@@ -9,7 +9,7 @@ import type { FieldValue, Study, Taxonomy } from "../domain/types";
 import type { CatalogTarget } from "../domain/catalog";
 import { useStore } from "../domain/store";
 import { EntityModal } from "./EntityModal";
-import { Icon } from "./ui";
+import { Icon, Overlay } from "./ui";
 
 /** `preset` is merged into every record created here, and `onAdded` receives the new ids.
  *  Together they are what lets the picker be opened from somewhere that already knows
@@ -55,7 +55,7 @@ export function CatalogAdd({ tax, study, target, preset, onAdded, open, onClose 
       )}
 
       {pick && createPortal(
-        <div className="overlay" onMouseDown={() => setPick(false)}>
+        <Overlay onClose={() => setPick(false)}>
           <div className="modal-lg" style={{ maxWidth: 640 }} onMouseDown={(e) => e.stopPropagation()}>
             <header className="modal-lg-head">
               <div style={{ flex: 1 }}>
@@ -97,7 +97,7 @@ export function CatalogAdd({ tax, study, target, preset, onAdded, open, onClose 
               <button className="btn primary" disabled={sel.size === 0} onClick={addSelected}>Add {sel.size ? sel.size + " " : ""}selected</button>
             </footer>
           </div>
-        </div>,
+        </Overlay>,
         document.body,
       )}
 

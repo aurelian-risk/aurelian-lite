@@ -71,8 +71,8 @@ export function CoverageMatrix({ tax, study, reqType, color }: { tax: Taxonomy; 
           ? <div className="empty" style={{ padding: "24px 16px" }}>No requirements yet — add them in the Requirements table above (e.g. “+ From framework…”).</div>
           : (
             <table className="tbl">
-              <colgroup><col style={{ width: 260 }} /><col /><col style={{ width: 40 }} /></colgroup>
-              <thead><tr><th>Framework</th><th>Coverage</th><th /></tr></thead>
+              <colgroup><col style={{ width: 260 }} /><col /></colgroup>
+              <thead><tr><th>Framework</th><th>Coverage</th></tr></thead>
               <tbody>
                 {[...byFw.entries()].map(([fw, list]) => {
                   const covered = list.filter((r) => measures.some((m) => fulfils(m, r.id))).length;
@@ -87,11 +87,10 @@ export function CoverageMatrix({ tax, study, reqType, color }: { tax: Taxonomy; 
                           <span className="badge" style={{ background: `color-mix(in oklch, ${sc} 20%, transparent)`, color: "var(--fg)" }}>{covered}/{list.length} covered</span>
                           {gaps > 0 && <span className="hint" style={{ marginLeft: 8 }}>{gaps} gap{gaps > 1 ? "s" : ""}</span>}
                         </td>
-                        <td />
                       </tr>
                       {isOpen && (
                         <tr className="detail-row">
-                          <td colSpan={3}>
+                          <td colSpan={2}>
                             {list.slice(0, 400).map((r) => {
                               const gap = !measures.some((m) => fulfils(m, r.id));
                               return (

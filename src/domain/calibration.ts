@@ -549,3 +549,13 @@ export function baseRateOf(c: FrequencyCalibration, actor: string, sector: strin
   const row = c.sector.find((s) => s.actor === actor && s.sector === sector);
   return base * (row ? row.factor : 1);
 }
+
+/** Is this a sector the model has a vocabulary for? The lookup above matches by STRING,
+ *  so a value from somewhere else - a hand-edited file, another product's export, a
+ *  renamed list - simply finds no row and silently behaves like no sector at all. Asking
+ *  the question here is what lets the views say so instead. The union of the bundled list
+ *  and whatever a hand-edited calibration names, because either is a deliberate value. */
+export function knownSector(c: FrequencyCalibration, sector: string): boolean {
+  if (!sector) return true;                       // "not set" is a choice, not a mistake
+  return (SECTORS as readonly string[]).includes(sector) || c.sector.some((r) => r.sector === sector);
+}

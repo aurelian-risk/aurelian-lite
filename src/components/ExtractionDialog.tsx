@@ -11,7 +11,7 @@ import { getDocText, viewTextTransient } from "../domain/documents";
 import { extractByEmbeddings, type TypeCandidates, type Candidate } from "../domain/extraction";
 import { LLM, gen, genNow } from "../domain/gen";
 import { isLoaded } from "../domain/embeddings";
-import { Icon } from "./ui";
+import { Icon, Overlay } from "./ui";
 
 export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () => void; initialName?: string; docId?: string }) {
   const tax = useStore((s) => s.taxonomy);
@@ -141,7 +141,7 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
   };
 
   return createPortal(
-    <div className="overlay" onMouseDown={onClose}>
+    <Overlay onClose={onClose}>
       <div className="modal-lg" onMouseDown={(e) => e.stopPropagation()}>
         <header className="modal-lg-head">
           <div style={{ flex: 1 }}>
@@ -292,7 +292,7 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
           <button className="btn primary" disabled={!active || sel.size === 0} onClick={addSelected}>Add {sel.size} to study</button>
         </footer>
       </div>
-    </div>,
+    </Overlay>,
     document.body,
   );
 }

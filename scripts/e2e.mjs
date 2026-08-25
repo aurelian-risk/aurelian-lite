@@ -21,6 +21,25 @@ const errors = [];
 const checks = [];
 const ok = (name, cond) => { checks.push({ name, cond }); console.log(`${cond ? "✓" : "✗"} ${name}`); };
 
+
+/** The three questions worth asking about any table in this product, answered by counting.
+ *  Used in the workshops and again where a table lives outside them - a check that visits
+ *  only the tabs it was written for is how a defect survives in the view next door. */
+const tableShape = () => page.evaluate(() => [...document.querySelectorAll("table.tbl")].map((t) => {
+  const ths = [...t.querySelectorAll("thead tr > th")];
+  const rows = [...t.querySelectorAll("tbody tr")]
+    .filter((r) => !r.classList.contains("detail-row") && !r.classList.contains("group-row"));
+  const w = ths.map((x) => x.getBoundingClientRect().width);
+  return { head: ths.map((x) => x.textContent.trim() || "—").join("|").slice(0, 50),
+    cols: ths.length, cells: rows.length ? rows[0].children.length : ths.length,
+    leftover: Math.round(t.getBoundingClientRect().width - w.reduce((a, c) => a + c, 0)),
+    // An empty header is fine where the column holds the row's actions; it is not fine
+    // when the column holds nothing at all.
+    headless: ths.map((x, i) => ({ i, empty: !x.textContent.trim(),
+      filled: rows.some((r) => r.children[i] && r.children[i].textContent.trim().length + r.children[i].children.length > 0) }))
+      .filter((x) => x.empty && !x.filled).length };
+}));
+
 /** A single-page PDF with an uncompressed text layer, built here so the check needs no
  *  network and no file in the repository. It exists to prove one thing: that a chosen
  *  PDF is extracted rather than read as bytes. The real catalogues are measured
@@ -235,6 +254,72 @@ try {
   ok('focus graph shows centre + neighbour labels', (await page.locator('.graph-wrap svg text').count()) > 5);
   ok('focus graph draws directional edges', (await page.locator('.graph-wrap svg line[marker-end], .graph-wrap svg line[marker-start]').count()) > 3);
   await page.screenshot({ path: `${shots}/Graph.png` });
+
+  // Crowd it, then check the two things a crowded graph has to offer: nodes that do not
+  // sit on each other, and a push that stays put. The relief pass runs after every reveal
+  // (see domain/graph.ts); the push is remembered outside the study, like a fold.
+  {
+    const nodeSel = ".graph-wrap svg g[transform^='translate']:has(> circle)";
+    const at = async (n) => {
+      const t = await page.locator(nodeSel).nth(n).getAttribute("transform");
+      const m = /translate\(([-\d.]+),([-\d.]+)\)/.exec(t ?? "");
+      return m ? { x: +m[1], y: +m[2] } : null;
+    };
+    for (const label of ["HIS database server", "Clinical network"]) {
+      const el = page.locator(".gi-e", { hasText: label }).first();
+      if (await el.count()) await el.click({ modifiers: label === "HIS database server" ? [] : ["Shift"] });
+      await page.waitForTimeout(400);
+    }
+    const pts = [];
+    const n = await page.locator(nodeSel).count();
+    for (let i = 0; i < n; i++) pts.push(await at(i));
+    let closest = Infinity;
+    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+      closest = Math.min(closest, Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y));
+    }
+    ok("a crowded graph keeps its nodes apart", n > 8 && closest > 50, `${n} nodes, closest ${Math.round(closest)}px`);
+
+    // A relation is labelled once per fan, not once per rope. Nine edges that all say
+    // "protects" say the same thing nine times, and they pile up INSIDE the ring, where
+    // pushing the nodes apart changes nothing.
+    const lab = await page.evaluate(() => {
+      const svg = document.querySelector(".graph-wrap svg");
+      const texts = [...svg.querySelectorAll("text")].filter((t) => !t.closest("g[transform^='translate']"));
+      return { edges: svg.querySelectorAll("line").length, labels: texts.length };
+    });
+    ok("an edge label is not repeated once per rope",
+      lab.edges >= 20 && lab.labels * 2 <= lab.edges, `${lab.labels} labels on ${lab.edges} edges`);
+
+    const node = page.locator(nodeSel).nth(3);
+    const before = await at(3);
+    const box = await node.locator("circle").first().boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2 - 50, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(700);
+    const after = await at(3);
+    // The distance is not asserted to the pixel: the pane can scroll under the pointer,
+    // which shifts client coordinates without changing what the reader did. What matters
+    // is that the node went where it was pushed, and by a serious amount.
+    ok("a node can be pushed out of the way",
+      after.x - before.x > 40 && before.y - after.y > 25);
+    await page.waitForTimeout(700);
+    const settled = await at(3);
+    ok("...and stays where it was put", settled.x === after.x && settled.y === after.y);
+    ok("...remembered outside the study",
+      await page.evaluate(() => (localStorage.getItem("aurelian_view_nudge") ?? "").includes("@graph")));
+    const reset = page.locator(".graph-legend button", { hasText: "Reset positions" });
+    ok("...with a way back offered once something was moved", (await reset.count()) === 1);
+    await reset.click();
+    await page.waitForTimeout(900);
+    const home = await at(3);
+    ok("reset puts it back where the layout wants it",
+      Math.abs(home.x - before.x) < 2 && Math.abs(home.y - before.y) < 2, JSON.stringify(home));
+    await page.locator(".gi-e", { hasText: "Patient records" }).first().click();
+    await page.waitForTimeout(400);
+  }
+
   // no node clicked yet → no detail box on the default view
   ok('no detail box until a node is clicked', (await page.locator('.detail-dock').count()) === 0);
   // search filters the index; focusing FROM the index must NOT open the detail box
@@ -873,6 +958,18 @@ try {
         .map((b) => ({ tab: t, cols: b.querySelectorAll("thead th").length,
                        over: b.scrollWidth - b.clientWidth })), tab));
     }
+    // Two things a table gets wrong quietly, both found by counting rather than looking:
+    // a filler column left over from an earlier layout (head and rows then disagree, or a
+    // column carries no header at all), and width the columns never take up because a stale
+    // <col> still reserves it. Neither shows as a broken page.
+    const shape = await tableShape();
+    ok("no table carries a column with neither a header nor anything in it",
+      shape.every((t) => t.headless === 0), JSON.stringify(shape.filter((t) => t.headless)));
+    ok("...and every table's columns take up its full width",
+      shape.every((t) => Math.abs(t.leftover) <= 1), JSON.stringify(shape.filter((t) => Math.abs(t.leftover) > 1)));
+    ok("...with head and rows in step",
+      shape.every((t) => t.cols === t.cells), JSON.stringify(shape.filter((t) => t.cols !== t.cells)));
+
     const tooWide = seen.filter((t) => t.cols <= 5 && t.over > 2);
     ok("a table of four value columns or fewer fits a 1280px window",
       tooWide.length === 0, JSON.stringify(tooWide));
@@ -936,6 +1033,37 @@ try {
     ok("show all brings every column back", (await back.locator(".tbl thead th").count()) === before);
     await page.keyboard.press("Escape");
     await body.evaluate((el) => { el.scrollLeft = 0; el.dispatchEvent(new Event("scroll", { bubbles: true })); });
+    await page.locator(".ws-tab", { hasText: "Compliance" }).click();
+    await page.waitForTimeout(300);
+  }
+
+  // Where the attempts are stopped: the panel has to show HOW the share was arrived at.
+  // A single demand figure against three attacker figures cannot produce it - the demand
+  // is drawn too, and leaving its spread out is what made the number unreconstructable.
+  {
+    await page.locator(".ws-tab", { hasText: "Risk Quantification" }).click();
+    await page.waitForTimeout(1200);
+    const row = page.locator(".qb-row").filter({ hasText: /not capable enough/i }).first();
+    ok("the break-down offers the baseline row", (await row.count()) === 1);
+    await row.click();
+    await page.waitForTimeout(500);
+    const card = page.locator(".ft-card").first();
+    const txt = await card.innerText();
+    ok("the demand is shown as a sum of its terms",
+      /getting in/.test(txt) && /tooling/.test(txt) && /breadth/.test(txt) && /staying in/.test(txt));
+    ok("...drawn as one bar, not only listed", (await card.locator("svg").count()) >= 2);
+    // The three-point range, and the spread that turns one figure into it.
+    const asks = await card.locator(".bx-line", { hasText: /^attack asks/ }).first().innerText();
+    ok("the attack's demand is shown as a range", /\d+(\.\d+)?%\s*·\s*\d+(\.\d+)?%\s*·\s*\d+(\.\d+)?%/.test(asks), asks.replace(/\n/g, " "));
+    ok("...saying what widened it", /±\s*\d+ points/.test(asks), asks.replace(/\n/g, " "));
+    ok("the comparison the simulation makes is named", /one draw from each/i.test(txt));
+    ok("...and its outcome is the share on the row", /attacker ≤ what the attack asks/i.test(txt));
+    // A backdrop that takes a click and ignores the key is a dialog you cannot put down
+    // without reaching for the mouse. Ten dialogs did that while the menus beside them
+    // closed on Escape - now they share one backdrop, so this is checked once.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(250);
+    ok("Escape closes a dialog, not only a click outside", (await page.locator(".ft-card").count()) === 0);
     await page.locator(".ws-tab", { hasText: "Compliance" }).click();
     await page.waitForTimeout(300);
   }
@@ -1149,9 +1277,49 @@ try {
   ok("...and names the rate exceptions it actually triggers",
     /applied to the attack rate/i.test(sectTxt) && /Cybercriminals/.test(sectTxt));
 
+  // The sector selects the base-rate exception behind every attempt rate, so changing it
+  // changes every risk figure in the study. That has to be a recorded change like any
+  // other - it used to be written straight into the study with nothing in the log.
+  {
+    const before = await page.locator(".panel-head select").inputValue();
+    const other = before === "Manufacturing" ? "Finance & insurance" : "Manufacturing";
+    await page.locator(".panel-head select").selectOption(other);
+    await page.waitForTimeout(400);
+    await page.locator(".sidebar .nav-item", { hasText: "Timeline" }).click();
+    await page.waitForTimeout(400);
+    const tl = await page.locator(".tl-body").first().innerText();
+    ok("changing the sector is recorded as a change", /sector/i.test(tl), tl.split("\n").slice(0, 4).join(" | "));
+    ok("...and the log still verifies afterwards",
+      /integrity verified/i.test(await page.locator(".tl-stats").innerText())
+      && (await page.locator(".tl-warn").count()) === 0);
+    // Put it back; the sections after this read the sample's own sector.
+    await page.locator(".sidebar .nav-item", { hasText: "Studies" }).click();
+    await page.waitForTimeout(250);
+    await page.locator(".study-card, .card").first().click().catch(() => {});
+    await page.waitForTimeout(400);
+    await page.locator(".ws-tab", { hasText: "Assets" }).click();
+    await page.waitForTimeout(350);
+    await page.locator(".panel-head select").selectOption(before);
+    await page.waitForTimeout(350);
+  }
+
   // Documents section
   await page.locator(".sidebar .nav-item", { hasText: "Documents" }).click();
   await page.waitForTimeout(200);
+  {
+    // The same three questions as in the workshops, asked where a table lives OUTSIDE them -
+    // a check that only walks the tabs never sees this view. The corpus is empty in this
+    // run (a reference is only kept through the file picker, which is `npm run test:corpus`),
+    // so the assertion names both admissible states: a table that holds up, or the empty
+    // state that explains why there is none. What it will not accept is neither.
+    const shape = await tableShape();
+    const empty = await page.locator(".empty", { hasText: /document|reference|corpus/i }).count();
+    ok("the documents view is checked for the same three faults",
+      shape.length
+        ? shape.every((t) => t.headless === 0 && t.cols === t.cells && Math.abs(t.leftover) <= 1)
+        : empty > 0,
+      shape.length ? JSON.stringify(shape) : `no table, empty state: ${empty}`);
+  }
   const docBody = await page.locator(".content").innerText();
   ok("documents section renders", docBody.includes("Documents") && docBody.toLowerCase().includes("reference"));
   await page.screenshot({ path: `${shots}/Documents.png` });

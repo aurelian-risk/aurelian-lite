@@ -10,7 +10,7 @@ import { stepFields, predecessorCandidates } from "../domain/killchain";
 import { useStore } from "../domain/store";
 import { getEditor, setEditor } from "../domain/audit";
 import { FieldInput, type RefOption } from "./FieldInput";
-import { Icon } from "./ui";
+import { Icon, Overlay } from "./ui";
 
 export function EntityModal({ type, tax, study, record, onClose, onBack, backLabel, initialValues }: {
   type: EntityTypeDef; tax: Taxonomy; study: Study; record: EntityRecord | null; onClose: () => void;
@@ -109,7 +109,7 @@ export function EntityModal({ type, tax, study, record, onClose, onBack, backLab
 
   return (<>
     {createPortal(
-    <div className="overlay" onMouseDown={onClose}>
+    <Overlay onClose={onClose}>
       <div className="modal-lg" onMouseDown={(e) => e.stopPropagation()}>
         <header className="modal-lg-head">
           {onBack && <button className="btn ghost sm em-back" onClick={onBack} title="Back">‹ {backLabel ?? "Back"}</button>}
@@ -167,7 +167,7 @@ export function EntityModal({ type, tax, study, record, onClose, onBack, backLab
           <button className="btn primary" onClick={save}>{record ? "Save" : "Create"}</button>
         </footer>
       </div>
-    </div>,
+    </Overlay>,
     document.body,
     )}
     {refRec && <EntityModal type={getType(tax, refRec.type)!} tax={tax} study={study} record={refRec}
