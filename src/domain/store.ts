@@ -10,6 +10,7 @@ import type {
 } from "./types";
 import { DEFAULT_TAXONOMY, getType, recordTitle, reconcileTaxonomy, refFields } from "./taxonomy";
 import { reconcileCalibration, type Calibration } from "./calibration";
+import { scopeValue } from "./scope";
 import { loadRaw, saveState } from "./persistence";
 import { appendAll, appendLog, diffValues, entryKey, getEditor, hashValues, sealLog, STUDY_SCOPE, verdictText, verifyLog, type LogInput } from "./audit";
 
@@ -295,6 +296,10 @@ export interface StoreState {
 
   addEntity: (type: string, values: Record<string, FieldValue>, source?: string, comment?: string) => ID;
   updateEntity: (id: ID, values: Record<string, FieldValue>, comment?: string) => void;
+  /** Put a set of records in or out of scope in ONE action - the record asked about and
+   *  everything scope.ts says goes with it. One entry per record, all in the same instant,
+   *  so the log reads as the single decision it was rather than as five separate edits. */
+  setScope: (ids: ID[], inPlay: boolean, comment?: string) => void;
   deleteEntity: (id: ID, comment?: string) => void;
   setNodePos: (id: ID, x: number, y: number) => void;
   setLayout: (layout: Record<ID, { x: number; y: number }>) => void;
@@ -463,6 +468,26 @@ export const useStore = create<StoreState>((set, get) => ({
         entities: study.entities.map((e) => (e.id === id ? next : e)),
         log: appendLog(study.log, { ...stamp(tax, next, ts), kind: "update", changes, comment, state: hashValues(values) }),
       };
+    });
+  },
+  setScope: (ids, inPlay, comment) => {
+    const tax = get().taxonomy;
+    mutateActive(get, set, (study) => {
+      const ts = nowISO();
+      const want = new Set(ids);
+      const entries: LogInput[] = [];
+      const entities = study.entities.map((e) => {
+        if (!want.has(e.id)) return e;
+        const sv = scopeValue(tax, e, inPlay);
+        if (!sv || String(e.values[sv.key] ?? "") === sv.value) return e;   // already there
+        const values = { ...e.values, [sv.key]: sv.value };
+        const next = { ...e, values, updatedAt: ts };
+        entries.push({ ...stamp(tax, next, ts), kind: "update",
+          changes: diffValues(e.values, values), comment, state: hashValues(values) });
+        return next;
+      });
+      if (!entries.length) return study;
+      return { ...study, entities, log: appendAll(study.log, entries) };
     });
   },
   deleteEntity: (id, comment) => {

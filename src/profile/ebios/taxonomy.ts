@@ -45,6 +45,11 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
         { key: "description", label: "Description", type: "textarea" },
         { key: "asset_type", label: "Type", type: "enum", options: ["Information", "Process", "Function"] },
         { key: "criticality", label: "Criticality", type: "scale", scaleLabels: SCALE },
+        // Out of scope rather than deleted: what the analysis said about it stays
+        // readable, and every figure ignores it. See domain/scope.ts for what taking
+        // one out carries with it and what refuses.
+        { key: "scope", label: "In scope", type: "enum", options: ["out of scope", "in scope"], toggle: true,
+          help: "Whether this record is part of the perimeter under analysis. Out of scope keeps the record and its judgement, and takes it out of every count, chart and figure." },
       ],
     },
     {
@@ -54,6 +59,11 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
         { key: "description", label: "Description", type: "textarea" },
         { key: "asset_type", label: "Type", type: "enum", options: ["Software", "Hardware", "Network", "Personnel", "Site", "Process", "Media", "Provider"] },
         { key: "supports", label: "Supports", type: "multiref", refType: "business_asset", relation: "supports" },
+        // Out of scope rather than deleted: what the analysis said about it stays
+        // readable, and every figure ignores it. See domain/scope.ts for what taking
+        // one out carries with it and what refuses.
+        { key: "scope", label: "In scope", type: "enum", options: ["out of scope", "in scope"], toggle: true,
+          help: "Whether this record is part of the perimeter under analysis. Out of scope keeps the record and its judgement, and takes it out of every count, chart and figure." },
       ],
     },
     {
@@ -64,6 +74,11 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
         { key: "business_asset", label: "Business Asset", type: "ref", refType: "business_asset", relation: "affects", required: true },
         { key: "impact", label: "Impact", type: "enum", options: ["Confidentiality", "Integrity", "Availability", "Traceability"] },
         { key: "severity", label: "Severity", type: "scale", scaleLabels: ["negligible", "noticeable", "severe", "existential"] },
+        // Out of scope rather than deleted: what the analysis said about it stays
+        // readable, and every figure ignores it. See domain/scope.ts for what taking
+        // one out carries with it and what refuses.
+        { key: "scope", label: "In scope", type: "enum", options: ["out of scope", "in scope"], toggle: true,
+          help: "Whether this record is part of the perimeter under analysis. Out of scope keeps the record and its judgement, and takes it out of every count, chart and figure." },
       ],
     },
     {
@@ -77,6 +92,8 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
         { key: "resources", label: "Resources", type: "scale", scaleLabels: SCALE, column: false },
         { key: "activity", label: "Activity", type: "scale", scaleLabels: ["dormant", "occasional", "regular", "persistent"], column: false },
         { key: "relevance", label: "Relevance", type: "scale", scaleLabels: ["unlikely", "possible", "likely", "very likely"] },
+        { key: "scope", label: "In scope", type: "enum", options: ["out of scope", "in scope"], toggle: true,
+          help: "Whether this record is part of the perimeter under analysis. Out of scope keeps the record and its judgement, and takes it out of every count, chart and figure." },
       ],
     },
     {
@@ -86,6 +103,8 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
         { key: "description", label: "Description", type: "textarea" },
         { key: "risk_origin", label: "Pursued by", type: "ref", refType: "risk_origin", relation: "pursued by", required: true },
         { key: "aims_at", label: "Aims at", type: "multiref", refType: "business_asset", relation: "aims at" },
+        { key: "scope", label: "In scope", type: "enum", options: ["out of scope", "in scope"], toggle: true,
+          help: "Whether this record is part of the perimeter under analysis. Out of scope keeps the record and its judgement, and takes it out of every count, chart and figure." },
       ],
     },
     {
@@ -97,6 +116,8 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
         { key: "exposure", label: "Exposure", type: "scale", scaleLabels: SCALE },
         { key: "reliability", label: "Reliability", type: "scale", scaleLabels: RELIABILITY, polarity: "positive" },
         { key: "provides_access_to", label: "Provides access to", type: "multiref", refType: "supporting_asset", relation: "access to" },
+        { key: "scope", label: "In scope", type: "enum", options: ["out of scope", "in scope"], toggle: true,
+          help: "Whether this record is part of the perimeter under analysis. Out of scope keeps the record and its judgement, and takes it out of every count, chart and figure." },
       ],
     },
     {
@@ -109,6 +130,11 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
         { key: "feared_event", label: "Causes", type: "ref", refType: "feared_event", relation: "causes" },
         { key: "likelihood", label: "Likelihood", type: "scale", scaleLabels: LIKELIHOOD },
         { key: "gravity", label: "Gravity", type: "scale", scaleLabels: GRAVITY },
+        // Out of scope rather than deleted: what the analysis said about it stays
+        // readable, and every figure ignores it. See domain/scope.ts for what taking
+        // one out carries with it and what refuses.
+        { key: "scope", label: "In scope", type: "enum", options: ["out of scope", "in scope"], toggle: true,
+          help: "Whether this record is part of the perimeter under analysis. Out of scope keeps the record and its judgement, and takes it out of every count, chart and figure." },
       ],
     },
     {
@@ -119,6 +145,11 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
         { key: "strategic_scenario", label: "Implements", type: "ref", refType: "strategic_scenario", relation: "implements", required: true },
         { key: "likelihood", label: "Likelihood", type: "scale", scaleLabels: LIKELIHOOD },
         { key: "difficulty", label: "Difficulty", type: "scale", scaleLabels: ["trivial", "low", "moderate", "high"], polarity: "positive" },
+        // Out of scope rather than deleted: what the analysis said about it stays
+        // readable, and every figure ignores it. See domain/scope.ts for what taking
+        // one out carries with it and what refuses.
+        { key: "scope", label: "In scope", type: "enum", options: ["out of scope", "in scope"], toggle: true,
+          help: "Whether this record is part of the perimeter under analysis. Out of scope keeps the record and its judgement, and takes it out of every count, chart and figure." },
       ],
     },
     {
@@ -131,6 +162,10 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
         { key: "tactic", label: "Tactic", type: "enum", options: TACTICS },
         { key: "technique", label: "Technique / TTP", type: "text", suggest: "mitre_technique", help: "e.g. T1566 Phishing" },
         { key: "targets_asset", label: "Targets asset", type: "ref", refType: "supporting_asset", relation: "targets" },
+        // Carried out of scope with the scenario it belongs to (domain/scope.ts), so it
+        // needs a place to record that state of its own.
+        { key: "scope", label: "In scope", type: "enum", options: ["out of scope", "in scope"], toggle: true,
+          help: "Whether this record is part of the perimeter under analysis. Out of scope keeps the record and its judgement, and takes it out of every count, chart and figure." },
         { key: "predecessors", label: "Preceded by", type: "multiref", refType: "kill_chain_step", relation: "precedes", column: false, help: "Steps that must occur before this one. Within this scenario only earlier steps are offered (keeps the escalation forward); steps from other scenarios model a cascade. Choices that would create a cycle are hidden." },
         { key: "join", label: "Requires", type: "enum", options: ["all", "any"], column: false, help: "With several predecessors: 'all' = every prerequisite (AND), 'any' = one path is enough (OR)." },
       ],
@@ -164,6 +199,10 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
         { key: "owner", label: "Owner", type: "text" },
         { key: "deadline", label: "Deadline / target date", type: "text" },
         { key: "status", label: "Status", type: "enum", options: TREAT_STATUS },
+        // Carried out of scope with the scenario it belongs to (domain/scope.ts), so it
+        // needs a place to record that state of its own.
+        { key: "scope", label: "In scope", type: "enum", options: ["out of scope", "in scope"], toggle: true,
+          help: "Whether this record is part of the perimeter under analysis. Out of scope keeps the record and its judgement, and takes it out of every count, chart and figure." },
         { key: "justification", label: "Justification", type: "textarea", help: "Measures aren't re-listed here: they already mitigate this risk via the kill chain (measure covers step). The residual is derived from that coverage." },
       ],
     },

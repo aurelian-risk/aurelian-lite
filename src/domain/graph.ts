@@ -119,3 +119,41 @@ export function spreadOut(items: Placed[], radius: number,
   for (const p of out) clamp(p);
   return out;
 }
+
+/** One column of boxes, pushed apart along a single axis.
+ *
+ *  The layered attack-path diagram places a risk source at the mean height of the
+ *  scenarios it feeds. That reads well until two sources feed interleaved scenarios: both
+ *  means land in the middle and the boxes cover each other. Sorting by the wanted position
+ *  and then enforcing a minimum gap keeps the ORDER the means expressed - which is the
+ *  information - and gives up only the exact height, which was never the information.
+ *
+ *  `want` is the preferred centre of each box, in input order; the result is in the same
+ *  order. The block is re-centred on the mean it started from, then held inside
+ *  [lo, hi] if those are given, so a column does not drift off the sheet. */
+export function spreadColumn(want: number[], minGap: number, lo?: number, hi?: number): number[] {
+  const n = want.length;
+  if (n <= 1) return [...want];
+  const idx = want.map((_, i) => i).sort((a, b) => want[a] - want[b] || a - b);
+  const out = new Array<number>(n);
+  // Forward pass: each box sits at least `minGap` below the one before it.
+  let prev = -Infinity;
+  for (const i of idx) {
+    const y = Math.max(want[i], prev + minGap);
+    out[i] = y; prev = y;
+  }
+  // The pass above only ever pushes DOWN, so the block drifts low. Put it back on the
+  // centre of gravity it had, which is what the means were saying.
+  const mean = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
+  const shift = mean(want) - mean(out);
+  for (let i = 0; i < n; i++) out[i] += shift;
+  // Then hold it inside the sheet, keeping the spacing: move the whole block, not one box.
+  if (lo != null || hi != null) {
+    const top = Math.min(...out), bottom = Math.max(...out);
+    let d = 0;
+    if (lo != null && top < lo) d = lo - top;
+    else if (hi != null && bottom > hi) d = hi - bottom;
+    if (d) for (let i = 0; i < n; i++) out[i] += d;
+  }
+  return out;
+}

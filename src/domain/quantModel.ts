@@ -145,7 +145,11 @@ function chainTypes(tax: Taxonomy) {
 export function coverageOf(study: Study, tax: Taxonomy, op: EntityRecord, cal: Calibration = DEFAULT_CALIBRATION): Coverage {
   const { stepType, parentF, measureType, coversF, implF } = chainTypes(tax);
   if (!stepType || !parentF || !measureType || !coversF) return { mitigated: 0, total: 0, impl: 0, value: 0, steps: [] };
-  const steps = study.entities.filter((e) => e.type === stepType.key && e.values[parentF.key] === op.id);
+  // A step out of scope is not walked: the chain is what the study still considers, and a
+  // figure that counted a step nobody is analysing any more would answer a question that
+  // was withdrawn. Same reading as the measures below - see domain/scope.ts.
+  const steps = study.entities.filter((e) => e.type === stepType.key
+    && e.values[parentF.key] === op.id && !isSetBack(tax, e));
   // A measure that is present but set back defends nothing - the coverage matrix and the
   // framework radar already read it that way, and a quantification that counted it would
   // answer the same question differently.

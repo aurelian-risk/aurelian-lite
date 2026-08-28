@@ -4,7 +4,7 @@
 // one polygon; the axes are the score dimensions. Falls back to bars for <3 scores.
 import { useMemo } from "react";
 import type { EntityTypeDef, Study } from "../domain/types";
-import { recordTitle, scaleMax } from "../domain/taxonomy";
+import { isSetBackIn, recordTitle, scaleMax } from "../domain/taxonomy";
 import { SERIES_PALETTE } from "../domain/viz";
 import { RadarChart, type RadarSeries } from "./RadarChart";
 
@@ -12,7 +12,8 @@ export function ThreatActorRadar({ study, actorType, color }: { study: Study; ac
   const { axisLabels, series } = useMemo(() => {
     const scales = actorType.fields.filter((f) => f.type === "scale");
     const catF = actorType.fields.find((f) => f.type === "enum");
-    const actors = study.entities.filter((e) => e.type === actorType.key);
+    // An actor out of scope is off the chart: the radar compares who is being analysed.
+    const actors = study.entities.filter((e) => e.type === actorType.key && !isSetBackIn(actorType, e));
     const axisLabels = scales.map((f) => f.label);
     const series: RadarSeries[] = actors.map((a, i) => ({
       label: recordTitle(actorType, a),

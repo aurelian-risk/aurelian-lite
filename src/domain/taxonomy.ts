@@ -141,7 +141,13 @@ export function toggleField(t: EntityTypeDef): FieldDef | undefined {
  *  nobody has adopted yet. */
 export function isSetBack(tax: Taxonomy, r: EntityRecord): boolean {
   const t = getType(tax, r.type);
-  const f = t && toggleField(t);
+  return t ? isSetBackIn(t, r) : false;
+}
+
+/** The same question where the caller already holds the type - a view that was handed one
+ *  type and its records has no reason to be handed the whole taxonomy as well. */
+export function isSetBackIn(t: EntityTypeDef, r: EntityRecord): boolean {
+  const f = toggleField(t);
   if (!f?.options) return false;
   const v = r.values[f.key];
   if (v == null || v === "") return false;

@@ -5,6 +5,47 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.6.4] — 2026-08-28
+
+### Added
+- **Records can be taken out of scope instead of deleted.** A `Disable` button sits beside
+  Edit in the detail view of every type. What the analysis said about a record is part of the
+  record, so it stays and is ignored by every figure rather than being removed. Before it
+  goes, the dialog says what hangs on it: what has to go with it (an operational scenario
+  cannot stand without its strategic scenario), what stands in the way (a step that would be
+  left pointing at an asset the study no longer considers), and what merely loses one of
+  several reasons. A relation within a type — a kill-chain step pointing at the step before
+  it — states an order, not a need, and is not counted.
+- **The flow view can be pulled back from.** The wheel zooms between 35% and 160%, dragging
+  the background pans, and both axes scroll. Selecting a card centres the view on it.
+
+### Changed
+- **The report quantifies only what was opted in.** Scenarios that were not chosen for the
+  Monte-Carlo run no longer carry monetary figures into the document.
+- **Attack paths fit on a sheet that ends.** The middle column used to grow with the study —
+  ninety boxes came to 2772px. The rows are compressed to a floor where both lines of a box
+  still fit, and what even that cannot hold is left out and said so, rather than drawn on top
+  of itself.
+- **Muted text meets the contrast small text needs.** The two greys used for table headings,
+  hint lines and sublines were short of 4.5:1 in both themes, measured at their worst call
+  site on the ground they are actually drawn on.
+- **Panels are plain rather than frosted.** The background blur sat on eight surfaces that are
+  always on screen and dominated everything else: switching tabs ran at a median frame of
+  44ms, against 16.6 without it. It is kept where a surface is small and short-lived —
+  dialogs, menus, the overlay.
+
+### Fixed
+- **The flow view no longer throws its cards about.** Away from 100% the cards were carried
+  past their place and snapped back; the ribbons were drawn where a card belonged rather than
+  where it was being shown; a zoom left the arrangement behind; and selecting could send the
+  sheet sideways to a scroll position that no longer existed. The tree now has a fixed place
+  in the sheet and the view is scrolled to the clicked card, which lands in the middle, clear
+  of the lane headings and in view. The move itself runs at 1:1, where the two scales agree.
+- **Every card in the flown tree can be scrolled to.** The tree is positioned with transforms,
+  which do not extend the scrollable area, so a column reaching past the sheet's own height
+  hung where no scrolling could follow — six cards, overhanging by up to 406px. The sheet now
+  grows to hold what it is showing.
+
 ## [0.6.3] — 2026-08-25
 
 ### Added

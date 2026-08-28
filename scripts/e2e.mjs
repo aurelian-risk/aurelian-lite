@@ -7,9 +7,11 @@ import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { mkdirSync, readFileSync } from "node:fs";
+import { requireFreshBuild } from "./built.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const distPath = resolve(here, "../dist/index.html");
+// Refuses to run against a stale artefact - see built.mjs.
+const distPath = requireFreshBuild(resolve(here, ".."));
 const file = "file://" + distPath;
 // Built with the generative branch or without it? The artefact says so, so one test file
 // serves both and neither has to be kept in a second version by hand.
@@ -458,15 +460,39 @@ try {
       ok("a node is visible from a scrolled position", !!visible);
       await page.locator(`[data-nk="${visible}"]`).click();
       await page.waitForTimeout(900);
-      const left = await sc.evaluate((el) => el.scrollLeft);
       const overAfter = await sc.evaluate((el) => el.scrollWidth - el.clientWidth);
       // The assertion is only about something if the selection leaves the lanes wider
       // than the viewport. Where the tree collapses to one lane, 0 is the only position
       // there is and the browser clamps for a good reason - that is not this behaviour
       // failing, it is the case being empty, and it has to read differently.
       ok("...the selected tree still has more width than the viewport", overAfter >= 200);
-      if (left !== 200) console.log(`   left=${left} overflow before=${over} after=${overAfter}`);
-      ok("...and a selecting click keeps the reader where they were", left === 200);
+      // THE CLICKED CARD LANDS IN THE MIDDLE, and the reader's own scroll is not what is
+      // preserved. Carrying that offset across the re-render is what this view kept
+      // breaking on - it had to be remembered (a wheel scroll was missed), restored against
+      // a sheet that changes width, and agreed with by a tree placed with transforms, which
+      // do not move the scrollable area. The view is scrolled to the card instead.
+      const where = await page.evaluate((k) => {
+        const sc = document.querySelector(".flow-scroll"), c = document.querySelector(`[data-nk="${k}"]`);
+        if (!c) return null;
+        const r = c.getBoundingClientRect(), sr = sc.getBoundingClientRect();
+        const heads = [...document.querySelectorAll(".lane-header[data-lane]")];
+        const hb = heads.length ? Math.max(...heads.map((h) => h.getBoundingClientRect().bottom)) - sr.top : 0;
+        const maxX = sc.scrollWidth - sc.clientWidth;
+        return { dx: Math.round((r.left + r.right) / 2 - (sr.left + sr.right) / 2),
+                 dy: Math.round((r.top + r.bottom) / 2 - (sr.top + sr.bottom) / 2),
+                 // At a clamp there is nothing left to scroll, so "centred" cannot be asked for.
+                 // "As far as the scroll can reach" is not exact: the sheet's width settles
+                 // over a few frames, so the browser's clamp lands near the limit rather
+                 // than on it. Near enough to the end counts as having reached it.
+                 klemmt: sc.scrollLeft <= 1 || sc.scrollLeft >= maxX - 100 || maxX < 100,
+                 underHead: Math.round(hb - (r.top - sr.top)),
+                 visible: r.top - sr.top >= 0 && r.bottom - sr.top <= sc.clientHeight };
+      }, visible);
+      console.log(`   clicked card: ${where.dx}px / ${where.dy}px off centre, ${where.underHead}px under the headings, visible=${where.visible}, at a clamp=${where.klemmt}`);
+      ok("...the clicked card is clear of the lane headings", where.underHead <= 0);
+      ok("...and fully in view", where.visible);
+      ok("...and centred, as far as the scroll can reach", where.klemmt || Math.abs(where.dx) <= 80);
+      ok("...vertically on the middle", Math.abs(where.dy) <= 60);
       await page.keyboard.press("Escape");        // leave highlight mode for what follows
       await page.waitForTimeout(400);
     }
@@ -484,6 +510,251 @@ try {
   ok("multi-select keeps ≥2 selected", await page.locator(".flow-node.selected").count() >= 2);
   await page.keyboard.press("Escape"); // Escape clears the selection
   await page.waitForTimeout(200);
+  // Zoom back to 1:1 and to the top left, so a step that follows starts where it expects to.
+  const resetFlowView = async () => {
+    const btn = page.locator(".flow-main button", { hasText: /^\d+%$/ });
+    if (await btn.count()) { await btn.first().click(); await page.waitForTimeout(400); }
+    await page.evaluate(() => {
+      const sc = document.querySelector(".flow-scroll");
+      if (sc) { sc.scrollLeft = 0; sc.scrollTop = 0; }
+    });
+    await page.waitForTimeout(150);
+  };
+
+  // The wheel zooms and the background pans - a dense flow is read by pulling back, not by
+  // scrolling a 2400px sheet. CSS `zoom` was chosen over a transform because it is the one
+  // that lets the scroller reach what was pushed out of view (measured: both axes follow).
+  {
+    const state = () => page.evaluate(() => {
+      const sc = document.querySelector(".flow-scroll"), lanes = document.querySelector(".flow-lanes");
+      return { zoom: +getComputedStyle(lanes).zoom, w: sc.scrollWidth, h: sc.scrollHeight,
+               left: Math.round(sc.scrollLeft), top: Math.round(sc.scrollTop) };
+    });
+    const box = await page.locator(".flow-scroll").boundingBox();
+    const a = await state();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    for (let i = 0; i < 3; i++) { await page.mouse.wheel(0, 120); await page.waitForTimeout(120); }
+    const b2 = await state();
+    ok("the wheel zooms the flow out", b2.zoom < a.zoom, `${a.zoom} → ${b2.zoom}`);
+    ok("...and the sheet follows on both axes", b2.w < a.w && b2.h < a.h, `${a.w}x${a.h} → ${b2.w}x${b2.h}`);
+    for (let i = 0; i < 3; i++) { await page.mouse.wheel(0, -120); await page.waitForTimeout(120); }
+    const c2 = await state();
+    ok("...and back in", Math.abs(c2.zoom - a.zoom) < 0.01, `${c2.zoom}`);
+    // A selection must aim ONCE. The tree is placed against the viewport the dock will
+    // leave behind, not the one it is measured in, and the observer that corrects for the
+    // dock's growth waits for it to settle: without either, every moving card was given
+    // nine targets in 309ms and one of them travelled 186px after the flight had landed -
+    // boxes snapping about while the reader watches. Counted here at the source, by
+    // recording every transform this view writes.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    // A card in the UPPER THIRD of the view. Two rules meet here and only one of them is
+    // under test: a card that would be hidden is deliberately pulled into sight, because
+    // the dock takes the lower 40% of the viewport as it opens. Clicking a card down there
+    // asserts against that rule instead of against the anchor - measured at 91 and 105px of
+    // perfectly correct movement. A card near the top is still in view after the dock opens,
+    // so what is left to see is whether the anchor holds.
+    const candidates = await page.evaluate(() => {
+      const sc = document.querySelector(".flow-scroll");
+      const r = sc.getBoundingClientRect();
+      return [...document.querySelectorAll("[data-nk]")].filter((c) => {
+        const b = c.getBoundingClientRect();
+        return b.top > r.top + 20 && b.bottom < r.top + r.height * 0.33
+          && b.left > r.left && b.right < r.right;
+      }).map((c) => c.dataset.nk);
+    });
+    // ...and one that actually has a network. The first visible card was a node with no
+    // connections: one card flew, no ribbons, and the check measured an empty scene.
+    let aimAt = null;
+    for (const k of candidates.slice(0, 4)) {
+      await page.locator(`[data-nk="${k}"]`).click({ force: true });
+      await page.waitForTimeout(700);
+      const flown = await page.locator("[data-nk].ef-floating").count();
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(400);
+      if (flown >= 5) { aimAt = k; break; }
+    }
+    await page.evaluate(() => {
+      window.__aim = [];
+      window.__aimObs = new MutationObserver((ms) => {
+        for (const m of ms) {
+          const el = m.target;
+          if (el.dataset && el.dataset.nk) window.__aim.push({ k: el.dataset.nk, tr: el.style.transform || "" });
+        }
+      });
+      window.__aimObs.observe(document.querySelector(".flow-lanes"),
+        { attributes: true, attributeFilter: ["style"], subtree: true });
+    });
+    // Said out loud: without it, a run where nothing suitable was in view would skip every
+    // assertion below and still report a clean suite.
+    ok("the flow has a connected card near the top to click", !!aimAt);
+    if (aimAt) {
+      const topOf = () => page.evaluate((k) => {
+        const c = document.querySelector(`[data-nk="${k}"]`), sc = document.querySelector(".flow-scroll");
+        return c && sc ? c.getBoundingClientRect().top - sc.getBoundingClientRect().top : null;
+      }, aimAt);
+      const beforeTop = await topOf();
+      // Watch the whole tree, frame by frame: it must fly ONCE. Placing it against an
+      // offset the scroll had not reached yet sent every card out to one side and brought
+      // them back a few frames later - a round trip, and the reader sees both halves.
+      await page.evaluate(() => {
+        window.__trip = [];
+        const t = () => {
+          // Against the LANES, not the scroller: the view is scrolled to the card on
+          // purpose, and measuring across that scroll turns an intended move into a
+          // phantom round trip.
+          const lanes = document.querySelector(".flow-lanes");
+          const xs = [...document.querySelectorAll("[data-nk].ef-floating")]
+            .map((c) => c.getBoundingClientRect().left - lanes.getBoundingClientRect().left);
+          if (xs.length) window.__trip.push(Math.min(...xs));
+          window.__tripRaf = requestAnimationFrame(t);
+        };
+        t();
+      });
+      await page.locator(`[data-nk="${aimAt}"]`).click({ force: true });
+      await page.waitForTimeout(2200);
+      const trip = await page.evaluate(() => { cancelAnimationFrame(window.__tripRaf); return window.__trip; });
+      if (trip.length) {
+        const fin = trip[trip.length - 1];
+        const overshoot = Math.max(0, ...trip.map((x) => x - fin));
+        console.log(`   the tree settled at ${Math.round(fin)}px, furthest past that ${Math.round(overshoot)}px`);
+        ok("the tree flies once, it does not go out and come back", overshoot <= 40);
+      }
+      const afterTop = await topOf();
+      // The card the reader pointed at is the one thing that must not move. Hanging the
+      // tree on the viewport centre instead made it travel 124px at zoom 1 and 215px in
+      // the median at 1.6, which is what a snap under the click is.
+      const moved = Math.abs((afterTop ?? 0) - (beforeTop ?? 0));
+      console.log(`   the clicked card moved ${moved.toFixed(0)}px`);
+      ok("the card that was clicked stays where it was", moved <= 20);
+      const aim = await page.evaluate(() => {
+        window.__aimObs.disconnect();
+        const per = new Map();
+        for (const a of window.__aim) {
+          if (!a.tr) continue;
+          if (!per.has(a.k)) per.set(a.k, []);
+          const v = per.get(a.k);
+          if (v[v.length - 1] !== a.tr) v.push(a.tr);
+        }
+        const y = (t) => Number((t.match(/translate\([^,]+,\s*(-?[\d.]+)px/) || [])[1] ?? 0);
+        let worstCount = 0, worstMove = 0;
+        for (const v of per.values()) {
+          worstCount = Math.max(worstCount, v.length);
+          if (v.length > 1) worstMove = Math.max(worstMove, Math.abs(y(v[v.length - 1]) - y(v[0])));
+        }
+        return { cards: per.size, worstCount, worstMove: Math.round(worstMove) };
+      });
+      console.log(`   ${aim.cards} cards placed, at most ${aim.worstCount} targets each, largest re-aim ${aim.worstMove}px`);
+      ok("a selection aims the tree once, not once per frame of the opening dock", aim.worstCount <= 2);
+      ok("...and what is left to correct is a few pixels, not a jump", aim.worstMove <= 20);
+    }
+
+    // The ribbons and the cards have to move as one PER FRAME, not just once the zoom has
+    // settled. They are drawn from measured rectangles every frame while the cards are laid
+    // out by the browser, so a zoom read from the wrong side of the repaint puts the two in
+    // different scales for as long as the change takes to land: measured at 228px of drift
+    // mid-zoom, back to nothing afterwards - lines that hang and then jump. Sampled here
+    // frame by frame, as the distance from each ribbon END to the nearest card.
+    //
+    // Two nodes are picked first: an Escape above left highlight mode, and with no selection
+    // there are no ribbons and nothing flown - the first run of this check passed on an
+    // empty scene, which is why the scene itself is asserted below.
+    await page.locator("[data-nk]").first().click({ force: true });
+    await page.waitForTimeout(500);
+    await page.locator("[data-nk]").nth(1).click({ force: true });
+    await page.waitForTimeout(900);
+    await page.evaluate(() => {
+      window.__sync = { worst: 0, frames: 0, flown: 0, paths: 0 };
+      const svg = document.querySelector(".ribbons");
+      const tick = () => {
+        const paths = [...document.querySelectorAll(".ribbons path")].filter((x) => x.getAttribute("d"));
+        const cards = [...document.querySelectorAll("[data-nk]")].map((c) => c.getBoundingClientRect());
+        const ctm = svg?.getScreenCTM();
+        if (ctm && cards.length) {
+          const pt = svg.createSVGPoint();
+          for (const pa of paths) {
+            const len = pa.getTotalLength(); if (!len) continue;
+            for (const t of [0, 1]) {
+              const q = pa.getPointAtLength(t * len);
+              pt.x = q.x; pt.y = q.y;
+              const s = pt.matrixTransform(ctm);
+              let d = Infinity;
+              for (const c of cards) d = Math.min(d, Math.hypot(
+                Math.max(c.left - s.x, 0, s.x - c.right), Math.max(c.top - s.y, 0, s.y - c.bottom)));
+              window.__sync.worst = Math.max(window.__sync.worst, d);
+            }
+          }
+        }
+        window.__sync.frames++;
+        window.__sync.paths = Math.max(window.__sync.paths, paths.length);
+        window.__sync.flown = Math.max(window.__sync.flown, document.querySelectorAll(".ef-floating").length);
+        window.__syncRaf = requestAnimationFrame(tick);
+      };
+      tick();
+    });
+    for (let i = 0; i < 3; i++) { await page.mouse.wheel(0, -120); await page.waitForTimeout(90); }
+    await page.waitForTimeout(400);
+    const sync = await page.evaluate(() => { cancelAnimationFrame(window.__syncRaf); return window.__sync; });
+    console.log(`   ${sync.paths} ribbons, ${sync.flown} flown, worst ${Math.round(sync.worst)}px over ${sync.frames} frames`);
+    ok("the scene under test has ribbons and flown cards", sync.paths > 0 && sync.flown > 0);
+    ok("ribbons stay on their cards throughout a zoom, not only after it", sync.worst <= 6);
+    // Correct positions are not enough if getting them costs the frame. This is its OWN
+    // pass: the sampling above walks 51 ribbons and 46 rectangles every frame and would be
+    // measuring itself - it reported 4 slow frames where a clean run had none.
+    //
+    // And from a known starting point: zooming on top of whatever the checks above left
+    // behind measures a different sheet each run, and a budget compared against a moving
+    // scene is not a measurement.
+    await resetFlowView();
+    await page.evaluate(() => {
+      window.__fr = []; let last = performance.now();
+      const t = () => { const n = performance.now(); window.__fr.push(n - last); last = n;
+                        window.__frRaf = requestAnimationFrame(t); };
+      window.__frRaf = requestAnimationFrame(t);
+    });
+    for (let i = 0; i < 4; i++) { await page.mouse.wheel(0, i < 2 ? -120 : 120); await page.waitForTimeout(110); }
+    await page.waitForTimeout(300);
+    const fr = (await page.evaluate(() => { cancelAnimationFrame(window.__frRaf); return window.__fr; }))
+      .slice(2).sort((a, b) => a - b);
+    const slow = fr.filter((d) => d > 32).length;
+    console.log(`   frame times while zooming: p50 ${fr[Math.floor(fr.length / 2)]?.toFixed(1)}ms, p95 ${fr[Math.floor(fr.length * 0.95)]?.toFixed(1)}ms, ${slow} over 32ms of ${fr.length}`);
+    ok("...and the zoom keeps its frames, so the view does not judder", slow <= 3);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    // Dragging the ground pans. The start point has to BE ground: a press on a card is a
+    // click on that card by design, which is what made the first version of this check fail.
+    const ground = await page.evaluate(() => {
+      const sc = document.querySelector(".flow-scroll");
+      const r = sc.getBoundingClientRect();
+      for (let y = r.bottom - 30; y > r.top + 40; y -= 20) {
+        for (let x = r.right - 40; x > r.left + 40; x -= 40) {
+          const el = document.elementFromPoint(x, y);
+          if (el && sc.contains(el) && !el.closest("[data-nk], .lane-header, button")) return { x, y };
+        }
+      }
+      return null;
+    });
+    ok("the flow has ground to drag on", !!ground, JSON.stringify(ground));
+    if (ground) {
+      // Read the position immediately before the drag. Taking it from further up compares
+      // against a scroll the selection and the Escape in between have already moved.
+      const p0 = await state();
+      await page.mouse.move(ground.x, ground.y);
+      await page.mouse.down();
+      await page.mouse.move(ground.x - 160, ground.y - 60, { steps: 6 });
+      await page.mouse.up();
+      await page.waitForTimeout(250);
+      const d2 = await state();
+      if (d2.left <= p0.left) console.log(`   left ${p0.left} → ${d2.left}`);
+      ok("dragging the background pans the flow", d2.left > p0.left);
+    }
+    // Back to a plain view. What follows clicks nodes by name, and a node the zoom or the
+    // pan has pushed out of sight is clicked at coordinates nobody can see: this suite once
+    // stopped at check 111 with a thirty-second timeout waiting for a button that only
+    // appears once something is selected.
+    await resetFlowView();
+  }
+
   ok("Escape clears the flow selection", (await page.locator(".flow-node.selected").count()) === 0);
   await page.locator(".flow-node").filter({ hasText: "Ransomware group" }).first().click({ force: true });
   await page.waitForTimeout(300);
@@ -1064,6 +1335,58 @@ try {
     await page.keyboard.press("Escape");
     await page.waitForTimeout(250);
     ok("Escape closes a dialog, not only a click outside", (await page.locator(".ft-card").count()) === 0);
+    await page.locator(".ws-tab", { hasText: "Compliance" }).click();
+    await page.waitForTimeout(300);
+  }
+
+  // Taking something out of scope: what goes with it, what refuses, and what it does to
+  // the figures. The rule is in domain/scope.ts with its own tests; this checks that the
+  // button, the dialog and the consequence are the same thing.
+  {
+    await page.locator(".ws-tab", { hasText: "Strategic Scenarios" }).click();
+    await page.waitForTimeout(500);
+    const panel = page.locator(".panel").filter({ has: page.locator(".panel-head h3", { hasText: /^Strategic Scenarios/ }) });
+    // The name cell, not the row: a chip in another cell opens that record instead.
+    await panel.locator("tbody tr.row-clickable").first().locator("td").first().click();
+    await page.waitForTimeout(400);
+    const btn = page.locator(".detail-actions button", { hasText: /^\s*Disable\s*$/ });
+    ok("a record offers to be disabled, next to Edit", (await btn.count()) === 1);
+    await btn.click();
+    await page.waitForTimeout(400);
+    const dlg = page.locator(".modal-lg").last();
+    const txt = await dlg.innerText();
+    ok("...and lists what is disabled with it", /Disabled with it/i.test(txt) && /Operational Scenario/.test(txt), txt.slice(0, 140));
+    ok("...and what else is affected", /Also affected/i.test(txt) && /Security Measure/.test(txt));
+    await dlg.locator(".modal-lg-foot .btn.danger").click();
+    await page.waitForTimeout(700);
+    ok("the change is recorded as one decision",
+      (await page.locator("tbody tr .cell-toggle:not(.on)").count()) > 0);
+
+    // A record something in play still points at refuses, and names it.
+    await page.locator(".ws-tab", { hasText: "Assets" }).click();
+    await page.waitForTimeout(500);
+    const sa = page.locator(".panel").filter({ has: page.locator(".panel-head h3", { hasText: /^Supporting Assets/ }) });
+    await sa.locator("tbody tr.row-clickable", { hasText: "HIS database" }).first().locator("td").first().click();
+    await page.waitForTimeout(400);
+    await page.locator(".detail-actions button", { hasText: /^\s*Disable\s*$/ }).click();
+    await page.waitForTimeout(400);
+    const dlg2 = page.locator(".modal-lg").last();
+    ok("a record that is still pointed at refuses", /Currently in use by/i.test(await dlg2.innerText()));
+    ok("...and the refusal is a disabled button, not a dead one",
+      await dlg2.locator(".modal-lg-foot .btn.danger").isDisabled());
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    // Put it back, so the sections after this read the study they expect.
+    await page.locator(".ws-tab", { hasText: "Strategic Scenarios" }).click();
+    await page.waitForTimeout(500);
+    const back = page.locator(".panel").filter({ has: page.locator(".panel-head h3", { hasText: /^Strategic Scenarios/ }) });
+    await back.locator("tbody tr.row-clickable").first().locator("td").first().click();
+    await page.waitForTimeout(400);
+    await page.locator(".detail-actions button", { hasText: /Enable/ }).click();
+    await page.waitForTimeout(300);
+    await page.locator(".modal-lg-foot .btn.primary").click();
+    await page.waitForTimeout(500);
+    ok("...and it can be put back", (await page.locator(".detail-actions button", { hasText: /^\s*Disable\s*$/ }).count()) === 1);
     await page.locator(".ws-tab", { hasText: "Compliance" }).click();
     await page.waitForTimeout(300);
   }

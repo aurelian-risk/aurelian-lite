@@ -11,7 +11,7 @@
 import { pathToFileURL } from "node:url";
 
 const need = (k) => { const v = process.env[k]; if (!v) { console.error(`set ${k}`); process.exit(2); } return v; };
-const { spreadOut } = await import(pathToFileURL(need("MOD_G")).href);
+const { spreadOut, spreadColumn } = await import(pathToFileURL(need("MOD_G")).href);
 
 let pass = 0, fail = 0;
 const ok = (n, c, d = "") => { c ? pass++ : fail++; console.log(`${c ? "✓" : "✗"} ${n}${d ? `  (${d})` : ""}`); };
@@ -80,6 +80,32 @@ const closest = (ps) => {
   const out = spreadOut(spread, 20);
   ok("a scene that already fits is left exactly as it is",
     out.every((p, i) => p.x === spread[i].x && p.y === spread[i].y));
+}
+
+// ── 6. one column, pushed apart along its own axis ──────────────────────────
+// The attack-path diagram puts a risk source at the mean height of the scenarios it feeds.
+// Interleaved scenarios give two sources nearly the same mean, and the boxes cover each
+// other. What must survive is the ORDER the means expressed, not the exact heights.
+{
+  const gap = 52;
+  const out = spreadColumn([100, 102, 101], gap);
+  ok("boxes that wanted the same height are separated", 
+    Math.min(...out.map((v, i) => out.filter((_, j) => j !== i).reduce((m, w) => Math.min(m, Math.abs(v - w)), Infinity))) >= gap - 0.001,
+    out.map((v) => v.toFixed(0)).join(", "));
+  ok("...keeping the order they asked for", out[0] < out[2] && out[2] < out[1],
+    `wanted 100 < 101 < 102, got ${out.map((v) => v.toFixed(0)).join(", ")}`);
+  const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+  ok("...and staying centred where they were", Math.abs(mean(out) - 101) < 0.001, mean(out).toFixed(2));
+
+  const wide = spreadColumn([100, 400, 700], 52);
+  ok("a column that already fits is untouched", wide.join() === "100,400,700", wide.join());
+
+  const held = spreadColumn([10, 12, 14], 60, 0, 200);
+  ok("the block is held inside the sheet", Math.min(...held) >= -0.001 && Math.max(...held) <= 200.001,
+    held.map((v) => v.toFixed(0)).join(", "));
+  ok("...and keeps its spacing while being held",
+    Math.abs(held[1] - held[0] - 60) < 0.001 && Math.abs(held[2] - held[1] - 60) < 0.001);
+  ok("one box needs no spreading", spreadColumn([42], 50).join() === "42");
 }
 
 console.log(`\n${pass}/${pass + fail} graph-layout assertions passed · ${fail} failed`);

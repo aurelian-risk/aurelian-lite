@@ -7,7 +7,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { EntityRecord, Study, Taxonomy } from "../domain/types";
-import { getType, recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
+import { getType, isSetBack, recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
 import { useStore } from "../domain/store";
 import { DEFAULT_CALIBRATION, type Calibration } from "../domain/calibration";
 import { simulate, type QuantInputs, type QuantResult, type Range } from "../domain/montecarlo";
@@ -42,9 +42,12 @@ export function QuantificationView({ tax, study, color }: { tax: Taxonomy; study
     && study.entities.some((s) => s.type === stepType?.key && s.values[parentF?.key ?? ""] === e.id)) : [];
   const { toggleQuantScenario } = useStore();
   const enabledIds = study.quantScenarios ?? [];
-  // Quantification is opt-in: only scenarios the user added get monetary figures.
-  const ops = allOps.filter((o) => enabledIds.includes(o.id));
-  const available = allOps.filter((o) => !enabledIds.includes(o.id));
+  // Quantification is opt-in: only scenarios the user added get monetary figures. And a
+  // scenario taken out of scope is out of the figures whether or not it was opted in -
+  // otherwise the view would answer a question the study has withdrawn. The opt-in is not
+  // cleared: put the scenario back in scope and its figures come back with it.
+  const ops = allOps.filter((o) => enabledIds.includes(o.id) && !isSetBack(tax, o));
+  const available = allOps.filter((o) => !enabledIds.includes(o.id) && !isSetBack(tax, o));
   const [open, setOpen] = useState(0);
   const [adding, setAdding] = useState(false);
   if (!opType || !allOps.length) return null;
