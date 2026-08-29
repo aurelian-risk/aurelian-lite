@@ -437,6 +437,26 @@ try {
   ok("flow lanes present", await page.locator(".flow-lane").count() > 5);
   ok("flow nodes present", await page.locator(".flow-node").count() > 5);
   await page.screenshot({ path: `${shots}/Flow.png` });
+  // NOTHING IS BEHIND THE HEADINGS BEFORE ANYONE TOUCHES ANYTHING. The mask over the header
+  // row is opaque to 44px and fades to 60; the lane body used to start at 34, so the first
+  // card of every lane sat inside the opaque part at rest - twelve of them in this study.
+  // The measurement asserts the view IS at rest first, because a scrolled or selected page
+  // would answer the question silently and pass.
+  {
+    const at = await page.evaluate(() => {
+      const sc = document.querySelector(".flow-scroll"), sr = sc.getBoundingClientRect();
+      const heads = [...document.querySelectorAll(".lane-header[data-lane]")];
+      const hb = heads.length ? Math.max(...heads.map((h) => h.getBoundingClientRect().bottom - sr.top)) : 0;
+      const tops = [...document.querySelectorAll("[data-nk]")].map((c) => c.getBoundingClientRect().top - sr.top);
+      return { rest: sc.scrollTop === 0 && sc.scrollLeft === 0 && !document.querySelector(".flow-node.selected"),
+               hb: Math.round(hb), first: Math.round(Math.min(...tops)),
+               masked: tops.filter((t) => t < 60).length, n: tops.length };
+    });
+    ok("the flow view is at rest, so the next check means something", at.rest);
+    console.log(`   headings end at ${at.hb}px, first card at ${at.first}px, ${at.masked} of ${at.n} inside the mask`);
+    ok("...and no card starts inside the mask over the headings", at.masked === 0);
+  }
+
   // Where the reader is scrolled to survives a selecting click - the FIRST one too. The
   // lanes narrow for a few frames while the tree is laid out, and a browser clamps the
   // scroll to what fits in that moment and leaves it there; restoring once lands inside
@@ -1338,53 +1358,65 @@ try {
   }
 
   // Taking something out of scope: what goes with it, what refuses, and what it does to
-  // the figures. The rule is in domain/scope.ts with its own tests; this checks that the
-  // button, the dialog and the consequence are the same thing.
+  // the figures. There is ONE way in and out of the perimeter now - the switch in the table.
+  // A separate button was the same field under a second name with a second rule: it carried
+  // dependants where the switch left them behind, so a strategic scenario could be outside
+  // the perimeter while the operational scenario implementing it stayed inside.
   {
     await page.locator(".ws-tab", { hasText: "Strategic Scenarios" }).click();
     await page.waitForTimeout(500);
+    ok("there is no second door into the perimeter",
+      (await page.locator(".detail-actions button", { hasText: /Disable|Enable/ }).count()) === 0);
     const panel = page.locator(".panel").filter({ has: page.locator(".panel-head h3", { hasText: /^Strategic Scenarios/ }) });
-    // The name cell, not the row: a chip in another cell opens that record instead.
-    await panel.locator("tbody tr.row-clickable").first().locator("td").first().click();
-    await page.waitForTimeout(400);
-    const btn = page.locator(".detail-actions button", { hasText: /^\s*Disable\s*$/ });
-    ok("a record offers to be disabled, next to Edit", (await btn.count()) === 1);
-    await btn.click();
-    await page.waitForTimeout(400);
+    const row = panel.locator("tbody tr.row-clickable", { hasText: "Ransomware via maintenance access" }).first();
+    await row.locator(".cell-toggle").click();
+    await page.waitForTimeout(500);
     const dlg = page.locator(".modal-lg").last();
     const txt = await dlg.innerText();
-    ok("...and lists what is disabled with it", /Disabled with it/i.test(txt) && /Operational Scenario/.test(txt), txt.slice(0, 140));
+    ok("the switch asks when something hangs on the record", (await page.locator(".scope-dlg").count()) === 1);
+    ok("...and lists what goes with it", /Disabled with it/i.test(txt) && /Operational Scenario/.test(txt), txt.slice(0, 140));
     ok("...and what else is affected", /Also affected/i.test(txt) && /Security Measure/.test(txt));
     await dlg.locator(".modal-lg-foot .btn.danger").click();
     await page.waitForTimeout(700);
-    ok("the change is recorded as one decision",
-      (await page.locator("tbody tr .cell-toggle:not(.on)").count()) > 0);
+    // The cascade is the point: the dependants have to follow, or the study says two things.
+    await page.locator(".ws-tab", { hasText: "Operational Scenarios" }).click();
+    await page.waitForTimeout(600);
+    const out = await page.locator(".cell-toggle:not(.on)").count();
+    console.log(`   ${out} dependent record(s) followed the strategic scenario out`);
+    ok("...and the dependants follow it out", out >= 6);
 
     // A record something in play still points at refuses, and names it.
     await page.locator(".ws-tab", { hasText: "Assets" }).click();
     await page.waitForTimeout(500);
     const sa = page.locator(".panel").filter({ has: page.locator(".panel-head h3", { hasText: /^Supporting Assets/ }) });
-    await sa.locator("tbody tr.row-clickable", { hasText: "HIS database" }).first().locator("td").first().click();
-    await page.waitForTimeout(400);
-    await page.locator(".detail-actions button", { hasText: /^\s*Disable\s*$/ }).click();
-    await page.waitForTimeout(400);
+    await sa.locator("tbody tr.row-clickable", { hasText: "HIS database" }).first().locator(".cell-toggle").click();
+    await page.waitForTimeout(500);
     const dlg2 = page.locator(".modal-lg").last();
-    ok("a record that is still pointed at refuses", /Currently in use by/i.test(await dlg2.innerText()));
-    ok("...and the refusal is a disabled button, not a dead one",
-      await dlg2.locator(".modal-lg-foot .btn.danger").isDisabled());
-    await page.keyboard.press("Escape");
-    await page.waitForTimeout(300);
-    // Put it back, so the sections after this read the study they expect.
+    const t2 = await dlg2.innerText();
+    ok("a record that is still pointed at refuses", /Currently in use by/i.test(t2));
+    // ...and the refusal can be overruled, the way a delete can: what stands in the way
+    // goes too, and whatever stands in ITS way after that. A study is the analyst's to
+    // decide; the tool's job is to say what the decision costs before it is taken.
+    const over = dlg2.locator(".modal-lg-foot button", { hasText: /Out of scope anyway/ });
+    ok("...and the refusal can be overruled, with the price named", (await over.count()) === 1, t2.slice(0, 160));
+    const said = Number((await over.innerText()).match(/\((\d+)\)/)?.[1] ?? 0);
+    ok("...naming more records than stand in the way", said > 1);
+    await over.click();
+    await page.waitForTimeout(800);
+    const left = await page.locator(".panel").filter({ has: page.locator(".panel-head h3", { hasText: /^Supporting Assets/ }) })
+      .locator(".cell-toggle.on").count();
+    console.log(`   overruled: ${said} records in all, ${left} supporting assets still in scope`);
+    ok("...and the record itself is out", left < 7);
+
+    // Back in is one click: it conflicts with nothing, so there is nothing to ask.
     await page.locator(".ws-tab", { hasText: "Strategic Scenarios" }).click();
     await page.waitForTimeout(500);
-    const back = page.locator(".panel").filter({ has: page.locator(".panel-head h3", { hasText: /^Strategic Scenarios/ }) });
-    await back.locator("tbody tr.row-clickable").first().locator("td").first().click();
-    await page.waitForTimeout(400);
-    await page.locator(".detail-actions button", { hasText: /Enable/ }).click();
-    await page.waitForTimeout(300);
-    await page.locator(".modal-lg-foot .btn.primary").click();
+    const back = page.locator(".panel").filter({ has: page.locator(".panel-head h3", { hasText: /^Strategic Scenarios/ }) })
+      .locator("tbody tr.row-clickable", { hasText: "Ransomware via maintenance access" }).first();
+    await back.locator(".cell-toggle").click();
     await page.waitForTimeout(500);
-    ok("...and it can be put back", (await page.locator(".detail-actions button", { hasText: /^\s*Disable\s*$/ }).count()) === 1);
+    ok("coming back in asks nothing", (await page.locator(".scope-dlg").count()) === 0);
+    ok("...and takes effect", (await back.locator(".cell-toggle.on").count()) === 1);
     await page.locator(".ws-tab", { hasText: "Compliance" }).click();
     await page.waitForTimeout(300);
   }

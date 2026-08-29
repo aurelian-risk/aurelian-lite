@@ -49,7 +49,14 @@ export function emptyValues(t: EntityTypeDef): Record<string, FieldValue> {
       case "boolean": v[f.key] = false; break;
       case "multiref": v[f.key] = []; break;
       case "ref": v[f.key] = null; break;
-      case "enum": v[f.key] = f.options?.[0] ?? ""; break;
+      // A NEW RECORD IS IN THE PERIMETER. For an ordinary enum the first option is a fair
+      // default, but a two-state switch reads its FIRST option as "taken out" - so this
+      // created every record outside the analysis, where no count, chart or figure would
+      // ever see it, and nothing said so. The switch defaults to its second state; every
+      // other enum keeps the first.
+      case "enum":
+        v[f.key] = (f.toggle && f.options?.length === 2 ? f.options[1] : f.options?.[0]) ?? "";
+        break;
       default: v[f.key] = "";
     }
   }

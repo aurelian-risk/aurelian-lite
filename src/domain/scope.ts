@@ -34,6 +34,13 @@ export interface ScopeChange {
   blocked: { record: EntityRecord; field: string }[];
   /** In play, points here among others - keeps standing, with one less reason to. */
   weakened: { record: EntityRecord; field: string; left: number }[];
+  /** Everything that would have to go with it if the analyst overrules the refusal: the
+   *  closure of `carried` AND `blocked`, taken until it stops growing. A record that stands
+   *  in the way can be taken out too - it is a judgement about the perimeter, not a
+   *  technical impossibility - but then whatever stands in ITS way has to go as well, or
+   *  the same contradiction reappears one step further out. Includes the record asked
+   *  about; equals `carried` when nothing is in the way. */
+  forced: EntityRecord[];
   /** False when the taxonomy has no switch for one of the types involved. */
   possible: boolean;
 }
@@ -46,7 +53,7 @@ const idsOf = (v: unknown): string[] =>
 export function scopeChange(tax: Taxonomy, study: Study, id: string): ScopeChange {
   const byId = new Map(study.entities.map((e) => [e.id, e]));
   const start = byId.get(id);
-  if (!start) return { carried: [], blocked: [], weakened: [], possible: false };
+  if (!start) return { carried: [], blocked: [], weakened: [], possible: false, forced: [] };
 
   // ── the closure: this record, and what cannot stand without it ──────────────
   const carried = new Map<string, EntityRecord>([[start.id, start]]);
@@ -122,7 +129,25 @@ export function scopeChange(tax: Taxonomy, study: Study, id: string): ScopeChang
     const t = getType(tax, e.type);
     return !!(t && toggleStates(t));
   });
-  return { carried: [...carried.values()], blocked, weakened, possible };
+  // The override closure: keep adding what is carried and what is in the way until it
+  // stops growing. Same two rules as above, applied to a set that is allowed to grow past
+  // a refusal instead of stopping at it.
+  const forced = new Map(carried);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const e of study.entities) {
+      if (forced.has(e.id) || isSetBack(tax, e)) continue;
+      const t = getType(tax, e.type); if (!t) continue;
+      const hit = refFields(t).some((f) => {
+        if (f.type !== "ref" || f.refType === t.key) return false;
+        const v = e.values[f.key];
+        return typeof v === "string" && forced.has(v);
+      }) || refFields(t).some((f) =>
+        f.required && f.type === "ref" && idsOf(e.values[f.key]).some((r) => forced.has(r)));
+      if (hit) { forced.set(e.id, e); grew = true; }
+    }
+  }
+  return { carried: [...carried.values()], blocked, weakened, possible, forced: [...forced.values()] };
 }
 
 /** The values that put a record out of / back into play, for the caller to write. */

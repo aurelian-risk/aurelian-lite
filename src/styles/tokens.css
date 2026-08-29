@@ -98,7 +98,9 @@
      rather than avoided one call site at a time.
      Measured on the rendered pixels, warning text against a panel: 0.8 → 3.63:1 (short of
      the 4.5:1 body text needs), 0.44 → 5.21:1. The hue is pulled towards red as it darkens,
-     because amber at low lightness turns to mud. */
+     because amber at low lightness turns to mud. The error red is here for the same reason:
+     it is now used as TEXT on the mark a deleted reference leaves behind. */
+  --color-state-error: oklch(0.5 0.19 25);
   --color-state-warning: oklch(0.44 0.15 55);
   --color-state-info: oklch(0.48 0.13 245);
   --color-state-success: oklch(0.45 0.13 158);

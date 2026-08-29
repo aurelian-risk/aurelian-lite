@@ -25,13 +25,21 @@ export function FieldInput({
     case "textarea":
       return <textarea value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} />;
 
-    case "enum":
+    case "enum": {
+      // A TWO-STATE SWITCH IS NEVER UNSET. Silence means the second state is in force, and
+      // every count reads it that way - so offering a blank option here showed a dash for
+      // something the study has already decided, and picking it would have written "no
+      // answer" into a field that has no such value. The dash stays for ordinary optional
+      // enums, where "not stated" is a real answer.
+      const two = !!field.toggle && field.options?.length === 2;
+      const shown = two && String(value ?? "") !== field.options![0] ? field.options![1] : String(value ?? "");
       return (
-        <select value={String(value ?? "")} onChange={(e) => onChange(e.target.value)}>
-          {!field.required && <option value="">—</option>}
+        <select value={shown} onChange={(e) => onChange(e.target.value)}>
+          {!field.required && !two && <option value="">—</option>}
           {(field.options ?? []).map((o) => <option key={o} value={o}>{optionLabel(field, o)}</option>)}
         </select>
       );
+    }
 
     case "scale": {
       const max = scaleMax(field);

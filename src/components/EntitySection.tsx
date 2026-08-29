@@ -93,6 +93,13 @@ function FieldValueView({ field, value, tax, study, recordId, onOpen, onToggle, 
           </button>
         );
       }
+      // A two-state field is never unset. Silence means the first state is NOT in force -
+      // `isSetBack` reads it that way, every count reads it that way - so a read-only view
+      // has to say so too. Rendered without a switch (the row detail passes no onToggle) an
+      // untouched record showed a dash, which reads as "not decided" for something the study
+      // has already decided.
+      if (field.toggle && field.options?.length === 2)
+        return <span className="badge">{optionLabel(field, field.options[String(value ?? "") !== field.options[0] ? 1 : 0])}</span>;
       return value ? <span className="badge" title={String(value)}>{optionLabel(field, String(value))}</span> : <span className="hint">—</span>;
     }
     case "scale": {
@@ -127,6 +134,9 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
   const deleteEntity = useStore((s) => s.deleteEntity);
   const updateEntity = useStore((s) => s.updateEntity);
   const [expanded, setExpanded] = useState<string | null>(null);
+  // The scope switch is the only way in or out of the perimeter now, so the dialog that
+  // knows what hangs on a record belongs beside the switch rather than in the row detail.
+  const [scopeAsk, setScopeAsk] = useState<EntityRecord | null>(null);
   const [modal, setModal] = useState<{ typeKey: string; record: EntityRecord | null } | null>(null);
 
   const items = study.entities.filter((e) => e.type === type.key);
@@ -249,8 +259,21 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
                       </td>
                       {cols.map((c) => <td key={c.key}><FieldValueView field={c} value={r.values[c.key] ?? null} tax={tax} study={study} recordId={r.id}
                         onOpen={openEntity} toggleBlocked={setBackBlocked(tax, study, r)}
-                        onToggle={(f, next) => updateEntity(r.id, { ...r.values, [f.key]: next },
-                          `${f.label}: ${optionLabel(f, next)}`)} /></td>)}
+                        onToggle={(f, next) => {
+                          // Out of the perimeter is the direction with consequences: what
+                          // cannot stand without this record goes too, and what would be
+                          // left pointing at it has to be named. Coming back IN never
+                          // conflicts with anything, so that stays one click. And where
+                          // nothing hangs off the record - 28 of 62 in the sample study -
+                          // the dialog would have nothing to say, so it does not appear.
+                          const out = next === f.options?.[0];
+                          const ch = out ? scopeChange(tax, study, r.id) : null;
+                          if (ch && (ch.carried.length > 1 || ch.blocked.length || ch.weakened.length)) {
+                            setScopeAsk(r);
+                            return;
+                          }
+                          updateEntity(r.id, { ...r.values, [f.key]: next }, `${f.label}: ${optionLabel(f, next)}`);
+                        }} /></td>)}
                     </tr>
                     {isOpen && (
                       <tr className="detail-row">
@@ -271,6 +294,7 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
         )}
       </div>
 
+      {scopeAsk && <ScopeDialog record={scopeAsk} tax={tax} study={study} onClose={() => setScopeAsk(null)} />}
       {modal && <EntityModal type={getType(tax, modal.typeKey)!} tax={tax} study={study} record={modal.record} onClose={() => setModal(null)} />}
     </div>
   );
@@ -320,6 +344,15 @@ function ScopeDialog({ record, tax, study, onClose }:
             <>
               <p className="scope-lead warn">Currently in use by {blocked.length} record{blocked.length === 1 ? "" : "s"}</p>
               {boxes(blocked, "block")}
+              {/* Standing in the way is a judgement about the perimeter, not a technical
+                  impossibility - so it can be overruled, the way a delete can. What it
+                  costs is said first: the ones in the way go too, and whatever stands in
+                  THEIR way after that, or the same contradiction reappears one step out. */}
+              {/* Says what the number on the button means, and nothing else. The count is
+                  larger than the list above because taking those out can be refused in
+                  turn, and that refusal is lifted with them. */}
+              <p className="scope-lead">Taking it out anyway takes those {blocked.length} with it
+                — {change.forced.length} records in all.</p>
             </>
           ) : (
             <>
@@ -346,6 +379,19 @@ function ScopeDialog({ record, tax, study, onClose }:
         <div className="modal-lg-foot">
           <span className="spacer" />
           <button className="btn ghost sm" onClick={onClose}>Cancel</button>
+          {inPlay && blocked.length > 0 && change.possible && (
+            <button className="btn sm danger" onClick={() => {
+              setScope(change.forced.map((r) => r.id), false,
+                `Out of scope with ${change.forced.length - 1} dependent record${change.forced.length === 2 ? "" : "s"}, over ${blocked.length} in use`);
+              onClose();
+            }}>
+              <Icon.ban /> Out of scope anyway ({change.forced.length})
+            </button>
+          )}
+          {/* Not shown beside the override: a dead button next to a live one asks the reader
+              to work out why one of them is grey. Where the refusal cannot be lifted at all -
+              a type without a switch - it stays, disabled, because then there IS nothing else. */}
+          {!(inPlay && blocked.length > 0 && change.possible) && (
           <button className={"btn sm " + (inPlay ? "danger" : "primary")}
             disabled={inPlay && (blocked.length > 0 || !change.possible)}
             onClick={() => {
@@ -357,6 +403,7 @@ function ScopeDialog({ record, tax, study, onClose }:
                 count, and a disabled button reading "Disable 4" reads like a threat. */}
             {inPlay ? <><Icon.ban /> Disable{others.length && !blocked.length ? ` ${change.carried.length}` : ""}</> : "Enable"}
           </button>
+          )}
         </div>
       </div>
     </Overlay>
@@ -437,7 +484,6 @@ function EntityDetail({ type, record, tax, study, color, onEdit, onDelete, onOpe
   onEdit: () => void; onDelete: () => void; onOpenEntity: (id: string) => void; extra?: ReactNode;
 }) {
   const [histOpen, setHistOpen] = useState(false);
-  const [scopeAsk, setScopeAsk] = useState(false);
   const [delAsk, setDelAsk] = useState(false);
   const [openRels, setOpenRels] = useState<Set<string>>(new Set());
   const title = titleField(type);
@@ -487,20 +533,12 @@ function EntityDetail({ type, record, tax, study, color, onEdit, onDelete, onOpe
       <div className="detail-actions">
         <span className="d-sub" style={{ margin: 0, flex: 1 }}>Details</span>
         <button className="btn sm" style={{ background: `color-mix(in oklch, ${color} 20%, transparent)`, borderColor: `color-mix(in oklch, ${color} 45%, transparent)`, color: "var(--fg)" }} onClick={onEdit}><Icon.edit /> Edit</button>
-        {/* Out of scope sits next to Edit because it is an edit - of what the study still
-            considers, not of what it says. Delete is the other thing entirely and keeps
-            its distance. */}
-        {toggleStates(type) && (
-          <button className="btn sm warn" onClick={() => setScopeAsk(true)}
-            title={isSetBack(tax, record)
-              ? "Bring this record back into the analysis"
-              : "Keep the record, take it out of every count"}>
-            <Icon.ban /> {isSetBack(tax, record) ? "Enable" : "Disable"}
-          </button>
-        )}
+        {/* No second door into the perimeter. Scope is one state with one rule, and the
+            switch in the table carries it - including the dialog, when something hangs on
+            the record. A button here would be the same field with a different name and a
+            different rule, which is what it had become. */}
         <button className="btn sm danger" onClick={() => setDelAsk(true)}><Icon.trash /> Delete</button>
       </div>
-      {scopeAsk && <ScopeDialog record={record} tax={tax} study={study} onClose={() => setScopeAsk(false)} />}
       {delAsk && <DeleteDialog record={record} tax={tax} study={study}
         onConfirm={onDelete} onClose={() => setDelAsk(false)} />}
       {record.source && <div className="ent-source" style={{ marginBottom: 8 }} title="Extracted from this source"><Icon.doc /> {record.source}</div>}

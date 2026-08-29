@@ -139,6 +139,38 @@ const names = (rs) => rs.map((x) => name(x.record ?? x)).sort().join(", ");
   ok("...written to the field the taxonomy names", off?.key === "scope");
 }
 
+// ── 5b. the refusal can be overruled, and then it has to close ──────────────
+// Standing in the way is a judgement about the perimeter, not an impossibility - so the
+// dialog offers to take those records out too. What that costs has to be the CLOSURE: the
+// ones in the way, plus whatever stands in THEIR way, or the same contradiction reappears
+// one step further out and the override would have created what it was meant to resolve.
+{
+  const asset = of("supporting_asset").find((a) =>
+    of("kill_chain_step").some((st) => st.values.targets_asset === a.id));
+  const c = scopeChange(tax, study, asset.id);
+  ok("a record that is pointed at is refused", c.blocked.length > 0, `${c.blocked.length} in the way`);
+  const forcedIds = new Set(c.forced.map((r) => r.id));
+  ok("...but the override takes the ones in the way with it",
+    c.blocked.every((b) => forcedIds.has(b.record.id)),
+    `${c.forced.length} in all: ${names(c.forced)}`);
+  ok("...and it includes the record asked about", forcedIds.has(asset.id));
+  // The closure has to be stable: nothing outside it may still point INTO it.
+  const rest = study.entities.filter((e) => !forcedIds.has(e.id));
+  const dangling = rest.filter((e) => {
+    const t = tax.entityTypes.find((x) => x.key === e.type);
+    return (t?.fields || []).some((f) => f.type === "ref" && f.refType !== t.key
+      && typeof e.values[f.key] === "string" && forcedIds.has(e.values[f.key]));
+  });
+  ok("...and nothing left in play still points into it", dangling.length === 0,
+    dangling.map((e) => e.type).join(", "));
+  // Where nothing is in the way, the override is the ordinary answer, not a bigger one.
+  const lonely = of("security_measure")[0];
+  const c2 = scopeChange(tax, study, lonely.id);
+  ok("with nothing in the way the override equals the ordinary closure",
+    c2.blocked.length === 0 && c2.forced.length === c2.carried.length,
+    `${c2.forced.length} vs ${c2.carried.length}`);
+}
+
 // ── 6b. deleting: the same walk, the destructive answer ─────────────────────
 // The warning shown before a delete and the deletion itself read THIS function, so what a
 // reader is told is what happens. These assertions are about the three shapes a reference
@@ -193,20 +225,32 @@ const names = (rs) => rs.map((x) => name(x.record ?? x)).sort().join(", ");
 // carried nor named. Rather than guess which meaning a future field has, this asserts the
 // shape that the reporting cannot express, and fails by name if one appears.
 {
-  const selfRefs = [];
+  // ONE predicate, asked twice. Written out a second time for the negative case it would
+  // prove that the IDEA fires, not that this check does - and a check that has never been
+  // red has not been tested, it has only been run. Where the case cannot occur on its own,
+  // it has to be made to occur.
+  const singleSelfRefs = (t9) => {
+    const out = [];
+    for (const t of t9.entityTypes)
+      for (const f of t.fields || [])
+        if (f.type === "ref" && f.refType === t.key)
+          out.push(`${t.key}.${f.key}${f.required ? " (required)" : ""}`);
+    return out;
+  };
+  const all = [];
   for (const t of tax.entityTypes)
     for (const f of t.fields || [])
-      if ((f.type === "ref" || f.type === "multiref") && f.refType === t.key)
-        selfRefs.push({ t: t.key, f: f.key, type: f.type, required: !!f.required });
-  const single = selfRefs.filter((r) => r.type === "ref");
-  ok("no type points at itself through a SINGLE reference",
-    single.length === 0,
-    single.length ? single.map((r) => `${r.t}.${r.f}${r.required ? " (required)" : ""}`).join(", ")
-                  : `${selfRefs.length} self-reference(s), all multi-valued: ${selfRefs.map((r) => `${r.t}.${r.f}`).join(", ")}`);
-  // ...and the other direction: the check would speak up if one were declared.
-  const pretend = JSON.parse(JSON.stringify({ entityTypes: [{ key: "x", fields: [{ key: "parent", type: "ref", refType: "x", required: true }] }] }));
-  const wouldFail = pretend.entityTypes.some((t) => (t.fields || []).some((f) => f.type === "ref" && f.refType === t.key));
-  ok("...and the check is not vacuous - a declared one would fail it", wouldFail);
+      if ((f.type === "ref" || f.type === "multiref") && f.refType === t.key) all.push(`${t.key}.${f.key} (${f.type})`);
+  const found = singleSelfRefs(tax);
+  ok("no type points at itself through a SINGLE reference", found.length === 0,
+    found.length ? found.join(", ") : `${all.length} self-reference(s), all multi-valued: ${all.join(", ")}`);
+  // The same predicate against a taxonomy that declares the shape - if this comes back
+  // empty, the check above is blind rather than satisfied.
+  const planted = { entityTypes: [...tax.entityTypes,
+    { key: "planted", label: "Planted", fields: [{ key: "parent", label: "Parent", type: "ref", refType: "planted", required: true }] }] };
+  const caught = singleSelfRefs(planted);
+  ok("...and the same check finds one that is planted in the taxonomy",
+    caught.length === 1 && caught[0] === "planted.parent (required)", JSON.stringify(caught));
 }
 
 console.log(`\n${pass}/${pass + fail} scope assertions passed · ${fail} failed`);

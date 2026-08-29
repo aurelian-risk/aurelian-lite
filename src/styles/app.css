@@ -244,12 +244,6 @@ select { cursor: pointer; }
 .tbl tbody tr.row-clickable.expanded > td { background: var(--bg-hover); }
 .caret { display: inline-flex; color: var(--fg-subtle); transition: transform 0.16s var(--ease); }
 .caret.open { transform: rotate(90deg); color: var(--primary); }
-/* A reference that pointed at something now deleted. Struck through and in the error
-   colour: the name is kept because "deleted" alone does not say WHAT is gone, and a reader
-   comparing two studies needs the name. Not clickable - there is nothing to open. */
-.chip.gone { color: var(--color-state-error); border-color: color-mix(in oklch, var(--color-state-error) 40%, transparent);
-  background: color-mix(in oklch, var(--color-state-error) 12%, transparent); text-decoration: line-through;
-  text-decoration-thickness: 1px; }
 .chip.link { cursor: pointer; border: none; font: inherit; font-size: 12px; transition: background 0.14s, color 0.14s; }
 .chip.link:hover { background: color-mix(in oklch, var(--primary) 22%, transparent); color: var(--fg); }
 .link-rel { display: inline-flex; align-items: center; gap: 5px; }
@@ -475,6 +469,15 @@ select { cursor: pointer; }
 .tbl .chip { background: transparent; border-color: var(--border); color: var(--fg-muted); padding: 2px 8px; font-size: 11.5px;
   max-width: 15ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
 .tbl .chip.link:hover { background: color-mix(in oklch, var(--primary) 14%, transparent); color: var(--fg); border-color: color-mix(in oklch, var(--primary) 38%, var(--border)); }
+/* A reference that pointed at something now deleted: the old name, struck through, on a
+   light red ground. The name is kept because "deleted" alone does not say WHAT is gone.
+   Both selectors, and AFTER `.tbl .chip` - that rule has the same specificity and would
+   otherwise win on order alone, which is how this first shipped grey. */
+.chip.gone, .tbl .chip.gone {
+  color: var(--color-state-error);
+  background: color-mix(in oklch, var(--color-state-error) 16%, transparent);
+  border-color: color-mix(in oklch, var(--color-state-error) 45%, transparent);
+  text-decoration: line-through; text-decoration-thickness: 1px; }
 .chip.more { background: transparent; color: var(--fg-subtle); border: 1px dashed var(--border); padding: 2px 8px; font-size: 11.5px; border-radius: 8px; font-variant-numeric: tabular-nums; }
 
 /* ── Hints / empty states ─────────────────────────────────────────── */
@@ -715,7 +718,14 @@ select { cursor: pointer; }
 .lane-add:hover { background: var(--bg-hover); color: var(--fg); }
 /* No overflow/height cap: cards must be able to fly out of their column during
  * the FLIP flight without being clipped or hidden behind neighbouring lanes. */
-.lane-body { display: flex; flex-direction: column; gap: 6px; padding: 8px 3px 4px; }
+/* The first row starts BELOW the mask, not behind it. `.flow-topmask` is opaque to 44px and
+   fades to 60; the body used to start at 34, so the first card of every lane sat inside the
+   opaque part before anything had been scrolled or selected - twelve cards in the sample
+   study, at rest. Reserved in the layout rather than corrected afterwards, which is the same
+   rule the flown tree follows: a transform does not move the scrollable area, and neither
+   does a correction move what a reader is looking at before they touch anything. Scrolling
+   still carries rows under the headings, which is what a sticky heading is for. */
+.lane-body { display: flex; flex-direction: column; gap: 6px; padding: 34px 3px 4px; }
 .lane-empty { color: var(--fg-subtle); font-size: 11px; text-align: center; padding: 12px 0; }
 
 .flow-node { position: relative; display: block; width: 100%; text-align: left; border: 1.5px solid var(--border);

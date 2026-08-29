@@ -47,6 +47,7 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
   const placeRef = useRef<((why: "select" | "zoom" | "rescroll") => void) | null>(null);
   const clearRef = useRef<(() => void) | null>(null);
   const anchoredRef = useRef<{ startX: number; centerY: number } | null>(null);
+  const enteredRef = useRef(false);   // already inside the tree? then a click does not re-centre
 
   // Applied after the DOM carries the new zoom and before it is painted, so the zoom and
   // the scroll that keeps the pointer's spot under the pointer land in the same frame.
@@ -210,7 +211,13 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
     const el = lanesRef.current;
     if (!el) return;
     roRef.current?.disconnect(); roRef.current = null; cancelAnimationFrame(centerRafRef.current);
-    placeRef.current = null; clearRef.current = null; anchoredRef.current = null;
+    placeRef.current = null; clearRef.current = null;
+    // Coming in from nothing, or moving around inside a tree that is already up? The tree is
+    // hung on the reader's viewport only on the way IN. A later click rearranges the cards -
+    // that is what was asked for - but it must not move the ground they stand on as well.
+    const entering = !enteredRef.current;
+    enteredRef.current = true;
+    if (entering) anchoredRef.current = null;
     const cards = Array.from(el.querySelectorAll<HTMLElement>("[data-nk]"));
     const headers = Array.from(el.querySelectorAll<HTMLElement>(".lane-header[data-lane]"));
     const reset = (c: HTMLElement) => { c.style.transform = ""; c.style.animationDelay = ""; c.classList.remove("ef-floating"); };
@@ -223,6 +230,7 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
       const sc = el.parentElement;
       if (sc && (sc.scrollLeft > 0 || sc.scrollTop > 0)) sc.scrollTo({ left: 0, top: 0, behavior: "smooth" });
       if (zoomRef.current !== 1) { zoomRef.current = 1; setZoom(1); }   // and back to 1:1
+      enteredRef.current = false;      // the next click is a way in again
       return;
     }
     headers.forEach(resetHeader);
@@ -415,10 +423,11 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
     const focusCol = focused ? lanesSorted.indexOf(laneIndexOf(focused)) : -1;
     const room = Math.max(0, (viewW - colW) / 2 - (focusCol > 0 ? focusCol * (colW + colGap) : 0));
     const sheetW = el.offsetWidth;
-    const startX = why === "zoom" && anchoredRef.current ? anchoredRef.current.startX
+    const keepAnchor = (why === "zoom" || !entering) && anchoredRef.current;
+    const startX = keepAnchor ? anchoredRef.current!.startX
       : Math.min(Math.max(8, scrollX + Math.max(8, (viewW - totalW) / 2) + room),
                  Math.max(8, sheetW - totalW - 8));
-    if (why === "zoom" && anchoredRef.current) centerY = anchoredRef.current.centerY;
+    if (keepAnchor) centerY = anchoredRef.current!.centerY;
     else anchoredRef.current = { startX, centerY };
     const flown: { c: HTMLElement; dx: number; dy: number }[] = [];
     lanesSorted.forEach((li, idx) => {
@@ -473,11 +482,28 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
     // alone. Shifting every card by a delta instead - which is what this did - moves things
     // to where the scroll cannot follow, because a transform does not grow the scrollable
     // area. The headings stay stuck to the top edge, so the card is nudged clear of them.
-    const centreOnFocus = () => {
+    // ONLY THE WAY IN RE-CENTRES. Once the tree is up, the reader has a place in it, and a
+    // further click is a step within something they are already reading - moving the ground
+    // under them for it costs the orientation the tree was built to give. So a later click
+    // only nudges: enough to keep the card it selected visible and clear of the headings,
+    // nothing more.
+    const centreOnFocus = (mode: "centre" | "keep" = "centre") => {
       if (!scroller || !focused) return;
       const g = cur.flown.find((x) => x.c.dataset.nk === focused);
       if (!g || !g.c.isConnected || !scroller.isConnected) return;
       const r = g.c.getBoundingClientRect(), sr = scroller.getBoundingClientRect();
+      const heads0 = Array.from(el.querySelectorAll<HTMLElement>(".lane-header[data-lane]"));
+      const hb0 = heads0.length ? Math.max(...heads0.map((h) => h.getBoundingClientRect().bottom)) - sr.top : 0;
+      if (mode === "keep") {
+        // Visible and readable is the whole requirement here.
+        const top = r.top - sr.top, bottom = r.bottom - sr.top;
+        if (top < hb0 + 14) scroller.scrollTop = Math.max(0, scroller.scrollTop - ((hb0 + 14) - top));
+        else if (bottom > scroller.clientHeight - 8) scroller.scrollTop += bottom - (scroller.clientHeight - 8);
+        const left = r.left - sr.left, right = r.right - sr.left;
+        if (left < 8) scroller.scrollLeft = Math.max(0, scroller.scrollLeft - (8 - left));
+        else if (right > scroller.clientWidth - 8) scroller.scrollLeft += right - (scroller.clientWidth - 8);
+        return;
+      }
       const wantX = Math.max(0, scroller.scrollLeft + (r.left - sr.left) - (scroller.clientWidth - r.width) / 2);
       let wantY = scroller.scrollTop + (r.top - sr.top) - (scroller.clientHeight - r.height) / 2;
       // NO ROW ENDS UP BEHIND THE HEADINGS. They are stuck to the top edge, so scrolling down
@@ -498,11 +524,12 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
       if (far) scroller.scrollTo({ left: wantX, top: wantY, behavior: "smooth" });
       else { scroller.scrollLeft = wantX; scroller.scrollTop = wantY; }
     };
-    centreOnFocus();
+    const mode: "centre" | "keep" = entering ? "centre" : "keep";
+    centreOnFocus(mode);
     // ...and once more when the sheet has settled its width. The call is idempotent - it
     // computes an absolute target, so a second one either changes nothing or finishes the
     // job the first could not, because the sheet was momentarily narrower.
-    centerRafRef.current = requestAnimationFrame(() => requestAnimationFrame(() => centreOnFocus()));
+    centerRafRef.current = requestAnimationFrame(() => requestAnimationFrame(() => centreOnFocus(mode)));
     // After a zoom the view stays where the pointer put it - re-centring there would fight
     // the wheel's own anchor. It only has to be nudged far enough that the clicked card is
     // not left behind the headings: measured at 106px under them before this.
@@ -520,7 +547,7 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
     if (scroller && focused) {
       // The dock rises under the view and the window can be dragged; both change how much
       // there is to see, so the card is put back in the middle of it.
-      const ro = new ResizeObserver(() => centreOnFocus());
+      const ro = new ResizeObserver(() => centreOnFocus(mode));
       ro.observe(scroller);
       roRef.current = ro;
     }

@@ -5,6 +5,38 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.6.6] — 2026-08-29
+
+### Changed
+- **Scope is one switch with one rule.** The `Disable` button beside Edit and the in-scope
+  switch in the table wrote the same field with the same two values, but by different rules:
+  the button carried the dependants out with the record, the switch left them behind — so a
+  strategic scenario could sit outside the perimeter while the operational scenario
+  implementing it stayed inside. The button is gone. The switch now asks when something
+  hangs on the record, carries what cannot stand without it, and stays a single click where
+  nothing is affected (28 of 62 records in the sample study).
+- **A refusal can be overruled.** Where something still in play points at the record, taking
+  it out is refused and the records are named — but that is a judgement about the perimeter,
+  not an impossibility, so the dialog offers to take them out too. What that costs is the
+  closure and it is stated: for one asset in the sample, 7 records stand in the way and 8 go
+  in all; for a business asset, 2 in the way and 11 in all.
+- **Only entering the flown tree moves the view.** Selecting from outside centres on the card
+  that was clicked; a further click inside rearranges the cards but leaves the ground where
+  it is, nudging only when the new card would otherwise sit behind the lane headings or off
+  the edge. The tree used to be rebuilt around each new focus, so every click threw the view
+  — usually upward — and cost the orientation the tree is there to give.
+
+### Fixed
+- **A new record started outside the perimeter.** Every enum took its first option as a
+  default, and for the scope switch the first option is "out of scope" — so a record was
+  created outside the analysis, counted by nothing, and nothing said so. New records now
+  start in scope; ordinary enums keep their first option.
+- **The first row of every lane in the flow view was behind the mask.** The strip over the
+  lane headings is opaque for its first 44 pixels and fades out at 60, while the lanes began
+  at 34 — so the top card of each lane sat under it before anything had been scrolled or
+  selected: twelve cards in the sample study, at rest. The space is now reserved in the
+  layout rather than corrected afterwards.
+
 ## [0.6.5] — 2026-08-29
 
 ### Added
