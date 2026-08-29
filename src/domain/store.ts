@@ -8,9 +8,9 @@ import { forgetStudy } from "./viewstate";
 import type {
   AppState, Bundle, ChangeEntry, EntityRecord, FieldValue, ID, QuantTuning, Study, Taxonomy,
 } from "./types";
-import { DEFAULT_TAXONOMY, getType, recordTitle, reconcileTaxonomy, refFields } from "./taxonomy";
+import { DEFAULT_TAXONOMY, getType, recordTitle, reconcileTaxonomy } from "./taxonomy";
 import { reconcileCalibration, type Calibration } from "./calibration";
-import { scopeValue } from "./scope";
+import { scopeValue, deleteChange } from "./scope";
 import { loadRaw, saveState } from "./persistence";
 import { appendAll, appendLog, diffValues, entryKey, getEditor, hashValues, sealLog, STUDY_SCOPE, verdictText, verifyLog, type LogInput } from "./audit";
 
@@ -39,47 +39,14 @@ const stamp = (tax: Taxonomy, rec: EntityRecord, ts: string) => ({
 });
 
 // ── Cascade delete across ref fields ──────────────────────────────────────
-/** Deleting a record also removes whatever required it, and clears references to it on
- *  the records that survive. Both have to be reported: the removals become delete
- *  entries in the log, and the cleared references are real value changes that need
- *  update entries - without them those records would immediately read as edited
- *  outside the application. */
+/** The traversal lives in `domain/scope.ts`, next to the one that answers the same question
+ *  for taking a record out of scope - and the dialog that warns before a delete asks THAT
+ *  function. Two copies of the rule would let the warning describe something the store does
+ *  not do, which is worse than no warning. */
 function cascadeDelete(tax: Taxonomy, study: Study, removeId: ID, ts: string): {
   study: Study; removed: EntityRecord[]; touched: Array<{ before: EntityRecord; after: EntityRecord }>;
 } {
-  const toRemove = new Set<ID>([removeId]);
-  const before = new Map(study.entities.map((e) => [e.id, e]));
-  let changed = true;
-  let entities = study.entities;
-
-  while (changed) {
-    changed = false;
-    const next: EntityRecord[] = [];
-    for (const r of entities) {
-      if (toRemove.has(r.id)) continue;
-      const t = getType(tax, r.type);
-      if (!t) { next.push(r); continue; }
-      let values = r.values;
-      let dirty = false;
-      for (const f of refFields(t)) {
-        const v = values[f.key];
-        if (f.type === "multiref" && Array.isArray(v)) {
-          const filtered = v.filter((x) => !toRemove.has(x as ID));
-          if (filtered.length !== v.length) { values = { ...values, [f.key]: filtered }; dirty = true; }
-        } else if (f.type === "ref" && typeof v === "string" && toRemove.has(v)) {
-          if (f.required) { toRemove.add(r.id); changed = true; break; }
-          values = { ...values, [f.key]: null }; dirty = true;
-        }
-      }
-      if (toRemove.has(r.id)) { changed = true; continue; }
-      next.push(dirty ? { ...r, values, updatedAt: ts } : r);
-    }
-    entities = next;
-  }
-  const removed = [...toRemove].map((id) => before.get(id)!).filter(Boolean);
-  const touched = entities
-    .filter((r) => before.get(r.id) && before.get(r.id) !== r)
-    .map((r) => ({ before: before.get(r.id)!, after: r }));
+  const { entities, removed, touched } = deleteChange(tax, study, removeId, ts);
   return { study: { ...study, entities }, removed, touched };
 }
 

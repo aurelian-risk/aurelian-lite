@@ -7,7 +7,7 @@
 import { pathToFileURL } from "node:url";
 
 const need = (n) => { const v = process.env[n]; if (!v) { console.error(`set ${n}`); process.exit(2); } return v; };
-const { sealLog, appendLog, appendAll, verifyLog, hashValues, entryOf, diffValues, entryKey, verdictText } = await import(pathToFileURL(need("MOD_A")).href);
+const { sealLog, appendLog, appendAll, verifyLog, hashValues, entryOf, diffValues, entryKey, verdictText, deletedRefs } = await import(pathToFileURL(need("MOD_A")).href);
 const { makeSampleStudy } = await import(pathToFileURL(need("MOD_S")).href);
 
 let pass = 0, fail = 0;
@@ -181,6 +181,33 @@ const mkLog = () => sealLog([
     after.some((e) => e.kind === "delete" && e.title === "Beta"));
   ok("the study-scope entry never makes a record look tracked",
     verifyLog(after, [changedRec, { id: "", values: {} }]).untracked.join() === "");
+}
+
+// ── what a record lost to a deletion, read back out of the log ──────────────
+// The mark shown where a reference used to be is derived from here rather than kept in the
+// data: a deletion clears the reference, so the record itself no longer knows. The log has
+// both halves - the delete entry with the title as of that moment, and the update entry
+// written for the survivor.
+{
+  const log = [
+    { seq: 1, ts: "t1", editor: "x", kind: "delete", entity: "gone-1", entityType: "supporting_asset", title: "HIS database server" },
+    { seq: 2, ts: "t1", editor: "x", kind: "update", entity: "step-1", entityType: "kill_chain_step", title: "Phishing",
+      changes: [{ field: "targets_asset", from: "gone-1", to: null }] },
+    { seq: 3, ts: "t1", editor: "x", kind: "update", entity: "measure-1", entityType: "security_measure", title: "MFA",
+      changes: [{ field: "protects", from: ["gone-1", "keep-1"], to: ["keep-1"] }] },
+    { seq: 4, ts: "t1", editor: "x", kind: "update", entity: "step-2", entityType: "kill_chain_step", title: "Other",
+      changes: [{ field: "targets_asset", from: "keep-1", to: null }] },
+  ];
+  const a = deletedRefs(log, "step-1");
+  ok("a single reference that lost a deleted target is reported, with the title it had",
+    a.get("targets_asset")?.[0]?.title === "HIS database server", JSON.stringify([...a]));
+  const b2 = deletedRefs(log, "measure-1");
+  ok("...and so is one entry dropped from a list", b2.get("protects")?.length === 1);
+  const c = deletedRefs(log, "step-2");
+  ok("a reference cleared for any OTHER reason is not marked as deleted", c.size === 0,
+    "keep-1 was never deleted");
+  ok("a record with no history at all has nothing to report", deletedRefs(log, "unknown").size === 0);
+  ok("...and neither has an empty log", deletedRefs([], "step-1").size === 0);
 }
 
 console.log(`\n${pass}/${pass + fail} audit assertions passed · ${fail} failed`);

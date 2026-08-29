@@ -218,6 +218,11 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
     if (!availableSet || selected.size === 0) {
       cards.forEach(reset); headers.forEach(resetHeader);
       el.style.minHeight = "";        // the sheet goes back to its own height
+      // ...and the view goes back to the start. The tree took the reader somewhere; with the
+      // tree gone, that somewhere is the middle of a sheet they did not choose.
+      const sc = el.parentElement;
+      if (sc && (sc.scrollLeft > 0 || sc.scrollTop > 0)) sc.scrollTo({ left: 0, top: 0, behavior: "smooth" });
+      if (zoomRef.current !== 1) { zoomRef.current = 1; setZoom(1); }   // and back to 1:1
       return;
     }
     headers.forEach(resetHeader);
@@ -358,7 +363,13 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
     // not merely hidden behind the sticky headings, it is UNREACHABLE. Measured from the
     // headings' real lower edge (offsetHeight is 5px short of it - the lane body's padding)
     // and kept in screen pixels, since 20 card pixels read as 7 at zoom 0.35 and 32 at 1.6.
-    const ceiling = 8;          // a top margin in the SHEET, independent of where the view is
+    // The ceiling sits BELOW THE HEADINGS, not at the top of the sheet. They are sticky, but
+    // sticky keeps its place in the layout: in the sheet's own coordinates the lane body
+    // starts under the heading, and a tree begun at the sheet's top edge is drawn behind it -
+    // measured at zoom 1, the first row sat 31px above the headings' lower edge with no
+    // scrolling involved at all. offsetHeight is in the cards' own space, like everything
+    // else here, so no conversion.
+    const ceiling = Math.max(...[...laneHeads.values()].map((h) => h.h), 0) + 16 / z;
     // ROOM ABOVE THE TREE, so that centring the clicked card is actually reachable. The view
     // can only scroll to what exists: with the tree hard against the top of the sheet, a card
     // in its first rows cannot be brought to the middle and lands 73-154px above it. Half a
@@ -467,20 +478,31 @@ export function CanvasView({ tax, study }: { tax: Taxonomy; study: Study }) {
       const g = cur.flown.find((x) => x.c.dataset.nk === focused);
       if (!g || !g.c.isConnected || !scroller.isConnected) return;
       const r = g.c.getBoundingClientRect(), sr = scroller.getBoundingClientRect();
-      const wantX = scroller.scrollLeft + (r.left - sr.left) - (scroller.clientWidth - r.width) / 2;
+      const wantX = Math.max(0, scroller.scrollLeft + (r.left - sr.left) - (scroller.clientWidth - r.width) / 2);
       let wantY = scroller.scrollTop + (r.top - sr.top) - (scroller.clientHeight - r.height) / 2;
+      // NO ROW ENDS UP BEHIND THE HEADINGS. They are stuck to the top edge, so scrolling down
+      // slides whatever is above the fold underneath them - and the tree's first row is what
+      // is above the fold once a card further down is centred. Protecting only the clicked
+      // card was not enough; the limit belongs on the SCROLL, so it holds for every row at
+      // once. Centring then happens as far as that allows.
       const heads = Array.from(el.querySelectorAll<HTMLElement>(".lane-header[data-lane]"));
       const hb = heads.length ? Math.max(...heads.map((h) => h.getBoundingClientRect().bottom)) - sr.top : 0;
-      const topAfter = (r.top - sr.top) - (wantY - scroller.scrollTop);
-      if (topAfter < hb + 14) wantY -= (hb + 14) - topAfter;
-      scroller.scrollLeft = Math.max(0, wantX);
-      scroller.scrollTop = Math.max(0, wantY);
+      const tops = cur.flown.filter((x) => x.c.isConnected).map((x) => x.c.getBoundingClientRect().top - sr.top);
+      if (tops.length) wantY = Math.min(wantY, scroller.scrollTop + Math.min(...tops) - (hb + 14));
+      wantY = Math.max(0, wantY);
+      // The DISTANCE decides, not the occasion. Tying it to the first call let a later
+      // correction overtake the smooth one and jump the rest: measured at zoom 1.6, one
+      // frame carrying 545px. Anything worth noticing is travelled, anything small - the
+      // few pixels the dock's rise asks for - is simply set.
+      const far = Math.abs(wantX - scroller.scrollLeft) > 40 || Math.abs(wantY - scroller.scrollTop) > 40;
+      if (far) scroller.scrollTo({ left: wantX, top: wantY, behavior: "smooth" });
+      else { scroller.scrollLeft = wantX; scroller.scrollTop = wantY; }
     };
     centreOnFocus();
     // ...and once more when the sheet has settled its width. The call is idempotent - it
     // computes an absolute target, so a second one either changes nothing or finishes the
     // job the first could not, because the sheet was momentarily narrower.
-    centerRafRef.current = requestAnimationFrame(() => requestAnimationFrame(centreOnFocus));
+    centerRafRef.current = requestAnimationFrame(() => requestAnimationFrame(() => centreOnFocus()));
     // After a zoom the view stays where the pointer put it - re-centring there would fight
     // the wheel's own anchor. It only has to be nudged far enough that the clicked card is
     // not left behind the headings: measured at 106px under them before this.

@@ -244,6 +244,12 @@ select { cursor: pointer; }
 .tbl tbody tr.row-clickable.expanded > td { background: var(--bg-hover); }
 .caret { display: inline-flex; color: var(--fg-subtle); transition: transform 0.16s var(--ease); }
 .caret.open { transform: rotate(90deg); color: var(--primary); }
+/* A reference that pointed at something now deleted. Struck through and in the error
+   colour: the name is kept because "deleted" alone does not say WHAT is gone, and a reader
+   comparing two studies needs the name. Not clickable - there is nothing to open. */
+.chip.gone { color: var(--color-state-error); border-color: color-mix(in oklch, var(--color-state-error) 40%, transparent);
+  background: color-mix(in oklch, var(--color-state-error) 12%, transparent); text-decoration: line-through;
+  text-decoration-thickness: 1px; }
 .chip.link { cursor: pointer; border: none; font: inherit; font-size: 12px; transition: background 0.14s, color 0.14s; }
 .chip.link:hover { background: color-mix(in oklch, var(--primary) 22%, transparent); color: var(--fg); }
 .link-rel { display: inline-flex; align-items: center; gap: 5px; }

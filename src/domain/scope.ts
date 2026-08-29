@@ -131,3 +131,87 @@ export function scopeValue(tax: Taxonomy, r: EntityRecord, inPlay: boolean): { k
   const st = toggleStates(t); if (!st) return null;
   return { key: st.field.key, value: inPlay ? st.on : st.off };
 }
+
+// ── Deleting: the same question, with a destructive answer ──────────────────
+//
+// Taking a record out of scope and deleting it walk the SAME references and part ways on
+// what they do with them. Deleting is the one that cannot be undone, so it is the one that
+// has to say what it will take - and the rule it announces must be the rule the store runs,
+// or the dialog is a description of something else. Hence one traversal, used by both:
+// `deleteChange` answers the question, and the store applies the result it returns.
+//
+// Three outcomes, matching the three shapes a reference can have:
+//   REMOVED    a required single reference cannot survive its target; the record goes too,
+//              recursively. Measured on the sample: deleting one risk source takes 13 of 62.
+//   CLEARED    an optional single reference is set to null. The record stays, with a hole.
+//   SHORTENED  a multi-valued reference loses one entry. The record stays, with one less.
+//
+// Unlike `scopeChange`, self-references are NOT skipped here. Within a type a reference is
+// an ordering rather than a need, which is why setting a record back does not follow it -
+// but a deleted predecessor is still a predecessor that is gone, and the reader should be
+// told before it happens.
+export interface DeleteChange {
+  /** The record asked about, and everything the cascade takes with it. */
+  removed: EntityRecord[];
+  /** Survives, and loses a single reference to null. */
+  cleared: { record: EntityRecord; field: string }[];
+  /** Survives, and loses one entry from a list. */
+  shortened: { record: EntityRecord; field: string; left: number }[];
+  /** The study's records after the deletion - what the store writes. */
+  entities: EntityRecord[];
+  /** Records whose values changed, for the log. */
+  touched: { before: EntityRecord; after: EntityRecord }[];
+}
+
+/** What deleting `id` would remove and what it would leave with a hole. */
+export function deleteChange(tax: Taxonomy, study: Study, id: string, ts?: string): DeleteChange {
+  const before = new Map(study.entities.map((e) => [e.id, e]));
+  const gone = new Set<string>([id]);
+  let entities = study.entities;
+
+  for (let changed = true; changed; ) {
+    changed = false;
+    const next: EntityRecord[] = [];
+    for (const r of entities) {
+      if (gone.has(r.id)) continue;
+      const t = getType(tax, r.type);
+      if (!t) { next.push(r); continue; }
+      let values = r.values;
+      let dirty = false;
+      for (const f of refFields(t)) {
+        const v = values[f.key];
+        if (f.type === "multiref" && Array.isArray(v)) {
+          const kept = v.filter((x) => !gone.has(x as string));
+          if (kept.length !== v.length) { values = { ...values, [f.key]: kept }; dirty = true; }
+        } else if (f.type === "ref" && typeof v === "string" && gone.has(v)) {
+          if (f.required) { gone.add(r.id); changed = true; break; }
+          values = { ...values, [f.key]: null }; dirty = true;
+        }
+      }
+      if (gone.has(r.id)) { changed = true; continue; }
+      next.push(dirty ? { ...r, values, ...(ts ? { updatedAt: ts } : {}) } : r);
+    }
+    entities = next;
+  }
+
+  // What the survivors lost, named per field, for the dialog to show.
+  const cleared: DeleteChange["cleared"] = [];
+  const shortened: DeleteChange["shortened"] = [];
+  for (const r of entities) {
+    const was = before.get(r.id);
+    if (!was || was === r) continue;
+    const t = getType(tax, r.type); if (!t) continue;
+    for (const f of refFields(t)) {
+      const a = was.values[f.key], b = r.values[f.key];
+      if (f.type === "ref" && typeof a === "string" && b == null) cleared.push({ record: was, field: f.label });
+      else if (f.type === "multiref" && Array.isArray(a) && Array.isArray(b) && b.length < a.length)
+        shortened.push({ record: was, field: f.label, left: b.length });
+    }
+  }
+  return {
+    removed: [...gone].map((g) => before.get(g)!).filter(Boolean),
+    cleared, shortened, entities,
+    touched: entities.filter((r) => before.get(r.id) && before.get(r.id) !== r)
+      .map((r) => ({ before: before.get(r.id)!, after: r })),
+  };
+}

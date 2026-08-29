@@ -10,7 +10,7 @@
 import { pathToFileURL } from "node:url";
 
 const need = (k) => { const v = process.env[k]; if (!v) { console.error(`set ${k}`); process.exit(2); } return v; };
-const { scopeChange, scopeValue } = await import(pathToFileURL(need("MOD_SC")).href);
+const { scopeChange, scopeValue, deleteChange } = await import(pathToFileURL(need("MOD_SC")).href);
 const { DEFAULT_TAXONOMY } = await import(pathToFileURL(need("MOD_P")).href);
 const { makeSampleStudy } = await import(pathToFileURL(need("MOD_S")).href);
 
@@ -137,6 +137,51 @@ const names = (rs) => rs.map((x) => name(x.record ?? x)).sort().join(", ");
   ok("the value for out of play is the type's own first option", off?.value === "not in use", JSON.stringify(off));
   ok("...and back in play is the second", on?.value === "in use", JSON.stringify(on));
   ok("...written to the field the taxonomy names", off?.key === "scope");
+}
+
+// ── 6b. deleting: the same walk, the destructive answer ─────────────────────
+// The warning shown before a delete and the deletion itself read THIS function, so what a
+// reader is told is what happens. These assertions are about the three shapes a reference
+// can have, because that is what the three lists in the dialog are.
+{
+  const strat = of("strategic_scenario").find((x) =>
+    of("operational_scenario").some((o) => o.values.strategic_scenario === x.id));
+  const d = deleteChange(tax, study, strat.id);
+  const goneIds = new Set(d.removed.map((r) => r.id));
+  const ops = of("operational_scenario").filter((o) => o.values.strategic_scenario === strat.id);
+  const steps = of("kill_chain_step").filter((st) => ops.some((o) => o.id === st.values.operational_scenario));
+  ok("a required single reference cannot survive its target",
+    ops.every((o) => goneIds.has(o.id)) && steps.every((st) => goneIds.has(st.id)),
+    `${d.removed.length} removed: ${names(d.removed)}`);
+  ok("...and the survivors are exactly the rest",
+    d.entities.length === study.entities.length - d.removed.length,
+    `${d.entities.length} + ${d.removed.length} = ${study.entities.length}`);
+  ok("...none of the removed is still in the result",
+    !d.entities.some((r) => goneIds.has(r.id)));
+  ok("...a measure that covered a deleted step is reported as shortened, not removed",
+    d.shortened.some((x) => x.record.type === "security_measure") &&
+    !d.removed.some((r) => r.type === "security_measure"),
+    JSON.stringify(d.shortened.filter((x) => x.record.type === "security_measure").map((x) => `${x.field}: ${x.left} left`)));
+
+  // An OPTIONAL single reference is emptied, and the record stays - the case the "deleted"
+  // mark in the table is for.
+  const asset = of("supporting_asset").find((a) =>
+    of("kill_chain_step").some((st) => st.values.targets_asset === a.id));
+  const d2 = deleteChange(tax, study, asset.id);
+  ok("an optional single reference is emptied, and its record survives",
+    d2.removed.length === 1 && d2.cleared.some((c) => c.record.type === "kill_chain_step"),
+    `${d2.removed.length} removed, ${d2.cleared.length} cleared, ${d2.shortened.length} shortened`);
+  ok("...and the surviving record really has null in that field",
+    d2.entities.filter((r) => r.type === "kill_chain_step").some((r) => r.values.targets_asset === null));
+
+  // Unlike setting a record back, a lost PREDECESSOR is worth saying: it is gone, not
+  // merely reordered.
+  const step = of("kill_chain_step").find((st) =>
+    of("kill_chain_step").some((o) => (o.values.predecessors ?? []).includes(st.id)));
+  const d3 = deleteChange(tax, study, step.id);
+  ok("a deleted predecessor is reported, where setting one back is not",
+    d3.shortened.some((x) => x.record.type === "kill_chain_step"),
+    JSON.stringify(d3.shortened.map((x) => `${x.record.type}.${x.field}`)));
 }
 
 // ── 7. the heuristic is watched, because it is a heuristic ──────────────────

@@ -5,6 +5,33 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.6.5] — 2026-08-29
+
+### Added
+- **Deleting asks first, and says what it will take.** A record can require another one, so
+  deleting cascades — measured on the sample study, removing a single risk source takes 13 of
+  62 records with it: two target objectives, two strategic scenarios, an operational scenario,
+  six kill-chain steps and a treatment. That happened on one click, unannounced. The dialog now
+  names what goes with it, what merely loses a reference to it, and offers disabling instead;
+  the warning and the deletion read the same traversal, so what is listed is what happens.
+- **A deleted reference leaves a mark.** Where a record pointed at something that has since
+  been deleted, the field shows the old name struck through rather than falling silently
+  empty. Read back out of the change log — a deletion clears the reference, so the record
+  itself no longer knows — which leaves the data model, the exports and the state
+  fingerprints untouched.
+
+### Changed
+- **Selecting travels to the card rather than jumping to it**, and no row of the flown tree
+  ends up behind the lane headings — the limit sits on the scroll, so it holds for every row
+  at once rather than only for the card that was clicked. Clearing the selection returns to
+  where it started: the left edge, the top, and 1:1.
+
+### Fixed
+- **The in-scope switch said the opposite of what the model counted.** A record whose scope
+  had never been set displayed "out of scope" while every count, chart and figure included
+  it: the cell asked whether the value said "in scope", the model asks whether it says "out
+  of scope". Silence means in use, and the cell now says so.
+
 ## [0.6.4] — 2026-08-28
 
 ### Added
@@ -41,6 +68,10 @@ downloadable single-file build under [Releases](https://github.com/aurelian-risk
   sheet sideways to a scroll position that no longer existed. The tree now has a fixed place
   in the sheet and the view is scrolled to the clicked card, which lands in the middle, clear
   of the lane headings and in view. The move itself runs at 1:1, where the two scales agree.
+- **Selecting travels to the card rather than jumping to it**, and no row of the tree ends up
+  behind the lane headings — the limit is on the scroll, so it holds for every row at once,
+  not only for the card that was clicked. Clearing the selection returns to where it started:
+  the left edge, the top, and 1:1.
 - **Every card in the flown tree can be scrolled to.** The tree is positioned with transforms,
   which do not extend the scrollable area, so a column reaching past the sheet's own height
   hung where no scrolling could follow — six cards, overhanging by up to 406px. The sheet now

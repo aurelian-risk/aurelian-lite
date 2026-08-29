@@ -621,12 +621,10 @@ try {
         ok("the tree flies once, it does not go out and come back", overshoot <= 40);
       }
       const afterTop = await topOf();
-      // The card the reader pointed at is the one thing that must not move. Hanging the
-      // tree on the viewport centre instead made it travel 124px at zoom 1 and 215px in
-      // the median at 1.6, which is what a snap under the click is.
-      const moved = Math.abs((afterTop ?? 0) - (beforeTop ?? 0));
-      console.log(`   the clicked card moved ${moved.toFixed(0)}px`);
-      ok("the card that was clicked stays where it was", moved <= 20);
+      // The card MOVES now, and on purpose: the view is scrolled to it so that it lands in
+      // the middle. Where it ends up is asserted above - centred, in view, clear of the
+      // headings - so all that is left to say here is how far it travelled, for the record.
+      console.log(`   the clicked card travelled ${Math.abs((afterTop ?? 0) - (beforeTop ?? 0)).toFixed(0)}px to its place`);
       const aim = await page.evaluate(() => {
         window.__aimObs.disconnect();
         const per = new Map();
@@ -1413,9 +1411,13 @@ try {
   const reqName = (await reqRow.locator(".name").innerText()).trim();
   await reqRow.click();
   await page.waitForTimeout(200);
-  page.once("dialog", (d) => d.accept());
+  // Deleting now asks first, and the dialog says what goes with it - so the confirmation
+  // is part of deleting, not an extra step this check may skip.
   await page.locator(".detail-actions button", { hasText: "Delete" }).first().click();
   await page.waitForTimeout(300);
+  ok("deleting asks before it deletes", (await page.locator(".scope-dlg").count()) > 0);
+  await page.locator(".scope-dlg .modal-lg-foot .danger").click();
+  await page.waitForTimeout(400);
   ok("the deleted record is gone from its table",
     (await page.locator(".tbl .name", { hasText: reqName }).count()) === 0);
   await page.locator(".sidebar .nav-item", { hasText: "Timeline" }).click();
@@ -1732,6 +1734,46 @@ try {
         llmBuild ? hit : !hit, re.source);
     }
   }
+  // DELETING ASKS FIRST, and says what it will take. The cascade removes 13 of 62 records in
+  // the sample from a single risk source, which is a fifth of the study on one click; the
+  // dialog is the only place a reader sees that before it happens. Afterwards the survivors
+  // carry a mark where the reference was, read out of the change log.
+  {
+    // Back into the study: this runs after the Model section, where none is open.
+    await page.locator(".sidebar .nav-item", { hasText: "Studies" }).click();
+    await page.waitForTimeout(300);
+    if (!(await page.locator(".ws-tabs").count())) {
+      await page.getByText("Riverside").first().click();
+      await page.waitForSelector(".ws-tabs", { timeout: 10000 });
+    }
+    await page.locator(".ws-tab", { hasText: "Assets & Scope" }).click();
+    await page.waitForTimeout(400);
+    const rows = () => page.locator("table.tbl tbody tr:not(.detail-row):not(.group-row)").count();
+    const before = await rows();
+    const row = page.locator("table.tbl tbody tr", { hasText: "HIS database server" }).first();
+    await row.click();
+    await page.waitForTimeout(400);
+    await page.getByRole("button", { name: /Delete/ }).first().click();
+    await page.waitForTimeout(400);
+    ok("deleting opens a dialog instead of deleting", (await page.locator(".scope-dlg").count()) > 0);
+    const said = (await page.locator(".scope-dlg .scope-lead, .scope-dlg .scope-h").allTextContents()).join(" | ");
+    console.log(`   ${said}`);
+    ok("...and says what loses a reference to it", /Loses a reference to it \(\d+\)/.test(said));
+    await page.locator(".scope-dlg .btn.ghost").click();
+    await page.waitForTimeout(300);
+    ok("...cancelling deletes nothing", (await rows()) === before);
+    await page.getByRole("button", { name: /Delete/ }).first().click();
+    await page.waitForTimeout(300);
+    await page.locator(".scope-dlg .modal-lg-foot .danger").click();
+    await page.waitForTimeout(700);
+    ok("...confirming deletes the record", (await rows()) === before - 1);
+    await page.locator(".ws-tab", { hasText: "Operational Scenarios" }).click();
+    await page.waitForTimeout(600);
+    const pills = await page.locator(".chip.gone").count();
+    console.log(`   ${pills} record(s) show the deleted reference`);
+    ok("...and the survivors show what they lost", pills > 0);
+  }
+
   await page.screenshot({ path: `${shots}/Model.png` });
 } catch (e) {
   errors.push("exception: " + (e?.message ?? String(e)));
