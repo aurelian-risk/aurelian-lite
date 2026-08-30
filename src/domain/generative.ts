@@ -11,6 +11,7 @@
 import type { EntityTypeDef, FieldValue, Taxonomy } from "./types";
 import type { TypeCandidates, Candidate } from "./extraction";
 import { getUserModels } from "./modelRegistry";
+import { scaleMax } from "./taxonomy";
 
 type Progress = { status?: string; text?: string; progress?: number; file?: string; tokens?: number; chunk?: number; chunks?: number };
 export type GenBackend = "webllm" | "transformers" | "endpoint";
@@ -291,6 +292,14 @@ export async function extractByLLM(tax: Taxonomy, text: string, model: GenModel,
       if (v == null || v === "") continue;
       if (f.type === "enum" && f.options?.length) { const m = f.options.find((o) => nkey(o) === nkey(v)); if (m) values[f.key] = m; }
       else if (f.type === "number") { const n = Number(v); if (!Number.isNaN(n)) values[f.key] = n; }
+      // A scale is stored as a NUMBER everywhere else - the sample study, the matrix, the
+      // quantification - and a field input handed a string falls back to 1 without saying
+      // so. A model answers "3" as often as 3, and off the end of the scale as often as on
+      // it, so both are handled here rather than discovered in a chart later.
+      else if (f.type === "scale") {
+        const n = Math.round(Number(v));
+        if (Number.isFinite(n)) values[f.key] = Math.min(Math.max(n, 1), scaleMax(f));
+      }
       else if (f.type === "boolean") values[f.key] = Boolean(v);
       else values[f.key] = String(v);
     }

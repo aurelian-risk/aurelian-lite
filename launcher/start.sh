@@ -2,10 +2,14 @@
 # SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 # Serve this folder over http://127.0.0.1 and open Aurelian Lite in a browser.
 #
-# Why bother, when the page opens by double-click: a page opened from file:// gets an
-# opaque origin, and a browser does not keep IndexedDB for one. Every start downloads
-# the extraction model again. Served from a local address it is a normal origin, so the
-# model is downloaded once and stays.
+# Why bother, when the page opens by double-click: a page opened from file:// cannot
+# fetch the file next to it, so nothing served alongside the page can be reached - a
+# model answering on this machine included. Served from a local address it can.
+#
+# It is NOT about losing the downloaded model: that was measured (harness/origin-
+# persistence.mjs, which closes the whole browser and reopens the same profile) and
+# IndexedDB survives on file:// just as it does over http. The claim used to stand here
+# and was wrong.
 #
 #   ./start.sh                 serve the folder, open the browser
 #   ./start.sh --llm           also run a local language model (llama.cpp) that answers

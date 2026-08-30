@@ -16,16 +16,12 @@ import { parseTable, guessMapping, tableToItems, looksLikeJson, FIELD_KEYS, MULT
 import { detectShape, readList, type ListRead } from "../domain/listimport";
 import { looksLikeOscal, parseOscalCatalog } from "../domain/oscal";
 import { isExtractable, extractFileText } from "../domain/docextract";
-import { embed, cosine, isLoaded } from "../domain/embeddings";
+import { isSpreadsheet, readWorkbook, sheetToCsv, type Sheet } from "../domain/xlsx";
 import { useStore } from "../domain/store";
 import { downloadText } from "../domain/clipboard";
 import { Icon, Overlay } from "./ui";
 
 const FIELD_LABEL: Record<FieldKey, string> = { ref_id: "Reference ID", title: "Title", category: "Category", description: "Description" };
-const FIELD_TEXT: Record<FieldKey, string> = {
-  ref_id: "reference identifier code number clause", title: "title name of the requirement or control",
-  category: "category family domain group function", description: "description details guidance explanation text",
-};
 /** A field's columns as a list, whichever form the mapping holds. */
 const multiOf = (m: number | number[] | undefined): number[] =>
   m == null ? [] : Array.isArray(m) ? m.filter((i) => i >= 0) : m >= 0 ? [m] : [];
@@ -41,7 +37,6 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
   const [table, setTable] = useState<ParsedTable | null>(null);
   const [map, setMap] = useState<Mapping>({});
   const [jsonItems, setJsonItems] = useState<FrameworkItem[] | null>(null);
-  const [aiBusy, setAiBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [excluded, setExcluded] = useState<Set<number>>(new Set()); // items the user un-checked
   /** A document read as a list, kept so its sections can be dropped without re-reading. */
@@ -53,6 +48,11 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
   const [skipVocab, setSkipVocab] = useState<Set<string>>(new Set());
   const [vocabMode, setVocabMode] = useState<VocabularyMode>("add");
   const [srcLabel, setSrcLabel] = useState("");                     // the catalogue's own provenance line
+  /** The sheets of a workbook. Published catalogues ship as several sheets - the
+   *  controls, the evidence list, the assessment objectives - and which one is meant is
+   *  the user's call, not a guess. */
+  const [book, setBook] = useState<{ base: string; sheets: Sheet[] } | null>(null);
+  const [sheetIdx, setSheetIdx] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const setTaxonomy = useStore((s) => s.setTaxonomy);
 
@@ -65,7 +65,7 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
     const headers = ["Reference ID", "Title", ...(r.markers.length ? ["Level"] : []), "Description", "Section"];
     const rows = kept.map((it) => [it.ref_id, it.title, ...(r.markers.length ? [it.marker ?? ""] : []), it.description ?? "", it.section ?? ""]);
     setTable({ headers, rows, delimiter: "\t" });
-    setMap(guessMapping(headers));
+    setMap(guessMapping(headers, { rows }));
     setExcluded(new Set());
   };
 
@@ -98,7 +98,7 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
       const probe = parseTable(raw);
       const shape = detectShape(raw, probe);
       if (shape.shape === "table") {
-        setTable(probe); setMap(guessMapping(probe.headers)); setName(fallbackName || "Imported");
+        setTable(probe); setMap(guessMapping(probe.headers, { rows: probe.rows })); setName(fallbackName || "Imported");
       } else if (shape.shape === "list") {
         const r = readList(raw);
         setListRead(r); setDropped(new Set());
@@ -115,8 +115,35 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
   // A PDF or Word file has to be extracted, not read as text: reading the bytes as UTF-8
   // yields the compressed streams, which is neither a table nor a list and is rightly
   // refused - but for the wrong reason, and after the user has already chosen the file.
+  /** Read one sheet of the workbook currently held. */
+  const useSheet = (sheets: Sheet[], i: number, base: string) => {
+    setSheetIdx(i);
+    const csv = sheetToCsv(sheets[i]?.rows ?? []);
+    if (!csv.trim()) { setTable(null); setMsg(`The sheet "${sheets[i]?.name}" is empty.`); return; }
+    setText(csv.length < 200_000 ? csv : "");
+    parse(csv, sheets.length > 1 ? `${base} — ${sheets[i].name}` : base);
+  };
+
   const onFile = async (f: File) => {
     const base = f.name.replace(/\.[^.]+$/, "");
+    if (isSpreadsheet(f.name, f.type)) {
+      setMsg(`Reading ${f.name}…`);
+      const sheets = (await readWorkbook(await f.arrayBuffer())).filter((sh) => sh.rows.length > 1);
+      if (!sheets.length) {
+        setBook(null);
+        setMsg(`No sheet with any rows could be read from ${f.name}. `
+          + "Only the current Excel format (.xlsx) can be read; an .xls or .ods file has to be saved as .xlsx or CSV first.");
+        return;
+      }
+      setBook({ base, sheets });
+      // The biggest sheet is the opening bid, never the final word - the picker below
+      // says which one is showing and every other sheet is one press away.
+      let big = 0;
+      sheets.forEach((sh, i) => { if (sh.rows.length > sheets[big].rows.length) big = i; });
+      useSheet(sheets, big, base);
+      return;
+    }
+    setBook(null);
     if (!isExtractable(f.name, f.type)) {
       const raw = await f.text();
       setText(raw); parse(raw, base);
@@ -151,19 +178,6 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
     setFetching(null);
   };
 
-  const suggestWithAI = async () => {
-    if (!table || !isLoaded()) return;
-    setAiBusy(true);
-    try {
-      const headers = table.headers;
-      const vecs = await embed([...FIELD_KEYS.map((f) => FIELD_TEXT[f]), ...headers]);
-      const fv = FIELD_KEYS.map((_, i) => vecs[i]);
-      const hv = headers.map((_, i) => vecs[FIELD_KEYS.length + i]);
-      const score = (field: FieldKey, header: string) => { const hi = headers.indexOf(header); const fi = FIELD_KEYS.indexOf(field); return fi >= 0 && hi >= 0 ? cosine(fv[fi], hv[hi]) : 0; };
-      setMap(guessMapping(headers, score));
-    } catch (e) { setMsg("AI mapping failed: " + (e instanceof Error ? e.message : String(e))); }
-    setAiBusy(false);
-  };
 
   const items: FrameworkItem[] = jsonItems ?? (table ? tableToItems(table, map) : []);
   const fw: Framework = { key: name || "imported", name: name || "Imported", source: srcLabel || "user import", items };
@@ -293,12 +307,23 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
             );
           })()}
 
+          {book && book.sheets.length > 1 && (
+            <div className="panel" style={{ marginTop: 14 }}>
+              <div className="panel-head"><h3>Sheet</h3><span className="badge">{book.sheets.length} in this workbook</span></div>
+              <div className="panel-body" style={{ padding: "8px 14px 12px", display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {book.sheets.map((sh, i) => (
+                  <button key={sh.name + i} className={"btn sm " + (i === sheetIdx ? "primary" : "ghost")}
+                    onClick={() => useSheet(book.sheets, i, book.base)}>
+                    {sh.name} <span className="badge">{sh.rows.length - 1}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {table && (
             <div className="panel" style={{ marginTop: 14 }}>
               <div className="panel-head"><h3>Map columns</h3><span className="badge">{table.rows.length} rows</span><span className="spacer" />
-                <button className="btn ghost sm" disabled={!isLoaded() || aiBusy} title={isLoaded() ? "Guess mapping with the embedding model" : "Load the embedding model in the Model section"} onClick={suggestWithAI}>
-                  <Icon.spark /> {aiBusy ? "…" : "Suggest with AI"}
-                </button>
               </div>
               <div className="panel-body" style={{ padding: "8px 14px 12px", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10 }}>
                 {FIELD_KEYS.map((f) => {
@@ -434,7 +459,7 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
           <button className="btn ghost" onClick={onClose}>Close</button>
           <button className="btn primary" disabled={!target || chosen.length === 0} onClick={doImport}>Add {chosen.length || ""} selected</button>
         </footer>
-        <input ref={fileRef} type="file" accept=".csv,.tsv,.json,.txt,.md,.pdf,.docx,.xml" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
+        <input ref={fileRef} type="file" accept=".csv,.tsv,.xlsx,.json,.txt,.md,.pdf,.docx,.xml" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
       </div>
     </Overlay>,
     document.body,

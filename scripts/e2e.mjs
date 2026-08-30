@@ -4,6 +4,7 @@
 // workshop tab + the graph, and asserts the data view renders. Screenshots
 // go to /tmp/ebios-e2e/. Exits non-zero on any console error or failed check.
 import { chromium } from "playwright";
+import { buildXlsx } from "./xlsx-fixture.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { mkdirSync, readFileSync } from "node:fs";
@@ -990,6 +991,50 @@ try {
     ok("a chosen PDF is extracted, not read as bytes", /Invented requirement number 1/.test(preview));
     ok("the extracted document is read as a list", /Read as a list: 12 entries/.test(await page.locator(".modal-lg .guide.warn").innerText().catch(() => "")));
     ok("its levels are derived from the document", (await page.locator(".modal-lg .ex-cand").count()) === 12);
+    // back to the table case the rest of this block asserts on
+    await page.locator(".modal-lg textarea").fill("Control ID,Requirement,Domain,Guidance\nX-1,Just-in-time admin,Access,Grant admin temporarily\nX-2,Immutable backups,Resilience,Keep an offline copy");
+    await page.locator(".modal-lg button", { hasText: "Parse" }).click();
+    await page.waitForTimeout(300);
+  }
+  // A workbook has to arrive as the TABLE it is, and the sheet has to be the user's
+  // choice: every published control catalogue in the set ships several sheets, and the
+  // first one is as often a cover page as the controls.
+  {
+    const book = buildXlsx([
+      { name: "Cover", rows: [["Secure Controls Framework"], ["Edition 2026.2"]] },
+      { name: "Controls", rows: [
+        ["Domain", "Control", "SCF #", "Control Description"],
+        ...Array.from({ length: 10 }, (_, k) => [
+          k < 5 ? "Governance" : "Asset Management",
+          `Invented control ${k + 1}`,
+          `INV-${String(k + 1).padStart(2, "0")}`,
+          `Mechanisms exist to carry out invented duty number ${k + 1} across the enterprise.`,
+        ]),
+      ] },
+      { name: "Evidence", rows: [
+        ["#", "ERL #", "Area of Focus", "Documentation Artifact", "Artifact Description"],
+        ...Array.from({ length: 6 }, (_, k) => [
+          String(k + 1), `E-INV-${k + 1}`, k < 3 ? "Governance" : "Assets",
+          `Artifact ${k + 1}`, `Documented evidence of invented artifact number ${k + 1}.`,
+        ]),
+      ] },
+    ]);
+    await page.locator('.modal-lg input[type=file]').setInputFiles(
+      { name: "catalogue.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: book });
+    await page.waitForTimeout(1200);
+    ok("a workbook is read from the file picker", (await page.locator(".modal-lg .panel-head h3", { hasText: "Map columns" }).count()) > 0);
+    const sheetBtns = page.locator(".modal-lg .panel-head h3", { hasText: "Sheet" });
+    ok("its sheets are offered rather than guessed at", (await sheetBtns.count()) > 0);
+    ok("the sheet with rows is opened, not the cover page", (await page.locator(".modal-lg .ex-cand").count()) === 10);
+    const first = await page.locator(".modal-lg .ex-cand").first().innerText();
+    ok("the reference comes from the code column, not the name", /INV-01/.test(first), first.slice(0, 60));
+    ok("...and the entry is named by the control", /Invented control 1/.test(first), first.slice(0, 60));
+    // switching sheet re-reads the workbook rather than re-parsing the old table
+    await page.locator(".modal-lg .panel .btn.sm", { hasText: "Evidence" }).click();
+    await page.waitForTimeout(500);
+    ok("choosing another sheet imports that sheet", (await page.locator(".modal-lg .ex-cand").count()) === 6);
+    const ev = await page.locator(".modal-lg .ex-cand").first().innerText();
+    ok("the sheet's own row counter is not taken as the reference", /E-INV-1/.test(ev) && !/^1\b/.test(ev.trim()), ev.slice(0, 60));
     // back to the table case the rest of this block asserts on
     await page.locator(".modal-lg textarea").fill("Control ID,Requirement,Domain,Guidance\nX-1,Just-in-time admin,Access,Grant admin temporarily\nX-2,Immutable backups,Resilience,Keep an offline copy");
     await page.locator(".modal-lg button", { hasText: "Parse" }).click();
