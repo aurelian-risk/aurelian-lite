@@ -5,6 +5,110 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.6.6] — 2026-08-29
+
+### Changed
+- **Scope is one switch with one rule.** The `Disable` button beside Edit and the in-scope
+  switch in the table wrote the same field with the same two values, but by different rules:
+  the button carried the dependants out with the record, the switch left them behind — so a
+  strategic scenario could sit outside the perimeter while the operational scenario
+  implementing it stayed inside. The button is gone. The switch now asks when something
+  hangs on the record, carries what cannot stand without it, and stays a single click where
+  nothing is affected (28 of 62 records in the sample study).
+- **A refusal can be overruled.** Where something still in play points at the record, taking
+  it out is refused and the records are named — but that is a judgement about the perimeter,
+  not an impossibility, so the dialog offers to take them out too. What that costs is the
+  closure and it is stated: for one asset in the sample, 7 records stand in the way and 8 go
+  in all; for a business asset, 2 in the way and 11 in all.
+- **Only entering the flown tree moves the view.** Selecting from outside centres on the card
+  that was clicked; a further click inside rearranges the cards but leaves the ground where
+  it is, nudging only when the new card would otherwise sit behind the lane headings or off
+  the edge. The tree used to be rebuilt around each new focus, so every click threw the view
+  — usually upward — and cost the orientation the tree is there to give.
+
+### Fixed
+- **A new record started outside the perimeter.** Every enum took its first option as a
+  default, and for the scope switch the first option is "out of scope" — so a record was
+  created outside the analysis, counted by nothing, and nothing said so. New records now
+  start in scope; ordinary enums keep their first option.
+- **The first row of every lane in the flow view was behind the mask.** The strip over the
+  lane headings is opaque for its first 44 pixels and fades out at 60, while the lanes began
+  at 34 — so the top card of each lane sat under it before anything had been scrolled or
+  selected: twelve cards in the sample study, at rest. The space is now reserved in the
+  layout rather than corrected afterwards.
+
+## [0.6.5] — 2026-08-29
+
+### Added
+- **Deleting asks first, and says what it will take.** A record can require another one, so
+  deleting cascades — measured on the sample study, removing a single risk source takes 13 of
+  62 records with it: two target objectives, two strategic scenarios, an operational scenario,
+  six kill-chain steps and a treatment. That happened on one click, unannounced. The dialog now
+  names what goes with it, what merely loses a reference to it, and offers disabling instead;
+  the warning and the deletion read the same traversal, so what is listed is what happens.
+- **A deleted reference leaves a mark.** Where a record pointed at something that has since
+  been deleted, the field shows the old name struck through rather than falling silently
+  empty. Read back out of the change log — a deletion clears the reference, so the record
+  itself no longer knows — which leaves the data model, the exports and the state
+  fingerprints untouched.
+
+### Changed
+- **Selecting travels to the card rather than jumping to it**, and no row of the flown tree
+  ends up behind the lane headings — the limit sits on the scroll, so it holds for every row
+  at once rather than only for the card that was clicked. Clearing the selection returns to
+  where it started: the left edge, the top, and 1:1.
+
+### Fixed
+- **The in-scope switch said the opposite of what the model counted.** A record whose scope
+  had never been set displayed "out of scope" while every count, chart and figure included
+  it: the cell asked whether the value said "in scope", the model asks whether it says "out
+  of scope". Silence means in use, and the cell now says so.
+
+## [0.6.4] — 2026-08-28
+
+### Added
+- **Records can be taken out of scope instead of deleted.** A `Disable` button sits beside
+  Edit in the detail view of every type. What the analysis said about a record is part of the
+  record, so it stays and is ignored by every figure rather than being removed. Before it
+  goes, the dialog says what hangs on it: what has to go with it (an operational scenario
+  cannot stand without its strategic scenario), what stands in the way (a step that would be
+  left pointing at an asset the study no longer considers), and what merely loses one of
+  several reasons. A relation within a type — a kill-chain step pointing at the step before
+  it — states an order, not a need, and is not counted.
+- **The flow view can be pulled back from.** The wheel zooms between 35% and 160%, dragging
+  the background pans, and both axes scroll. Selecting a card centres the view on it.
+
+### Changed
+- **The report quantifies only what was opted in.** Scenarios that were not chosen for the
+  Monte-Carlo run no longer carry monetary figures into the document.
+- **Attack paths fit on a sheet that ends.** The middle column used to grow with the study —
+  ninety boxes came to 2772px. The rows are compressed to a floor where both lines of a box
+  still fit, and what even that cannot hold is left out and said so, rather than drawn on top
+  of itself.
+- **Muted text meets the contrast small text needs.** The two greys used for table headings,
+  hint lines and sublines were short of 4.5:1 in both themes, measured at their worst call
+  site on the ground they are actually drawn on.
+- **Panels are plain rather than frosted.** The background blur sat on eight surfaces that are
+  always on screen and dominated everything else: switching tabs ran at a median frame of
+  44ms, against 16.6 without it. It is kept where a surface is small and short-lived —
+  dialogs, menus, the overlay.
+
+### Fixed
+- **The flow view no longer throws its cards about.** Away from 100% the cards were carried
+  past their place and snapped back; the ribbons were drawn where a card belonged rather than
+  where it was being shown; a zoom left the arrangement behind; and selecting could send the
+  sheet sideways to a scroll position that no longer existed. The tree now has a fixed place
+  in the sheet and the view is scrolled to the clicked card, which lands in the middle, clear
+  of the lane headings and in view. The move itself runs at 1:1, where the two scales agree.
+- **Selecting travels to the card rather than jumping to it**, and no row of the tree ends up
+  behind the lane headings — the limit is on the scroll, so it holds for every row at once,
+  not only for the card that was clicked. Clearing the selection returns to where it started:
+  the left edge, the top, and 1:1.
+- **Every card in the flown tree can be scrolled to.** The tree is positioned with transforms,
+  which do not extend the scrollable area, so a column reaching past the sheet's own height
+  hung where no scrolling could follow — six cards, overhanging by up to 406px. The sheet now
+  grows to hold what it is showing.
+
 ## [0.6.3] — 2026-08-25
 
 ### Added

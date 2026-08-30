@@ -111,6 +111,95 @@ ok("the report fetches nothing at read time", fetched.length === 0, fetched.join
 ok("its diagrams are inline SVG", /<svg[^>]*xmlns=/.test(md));
 ok("...and mermaid is nowhere in it", !/mermaid/i.test(md));
 
+// ── 5b. quantification is opt-in, in the report too ─────────────────────────
+// The app derives a monetary figure only for the scenarios someone picked. The report
+// used to quantify every scenario that had a kill chain, so a study with the
+// quantification switched off still left the building carrying annual-loss figures.
+{
+  const optedIn = study.quantScenarios ?? [];
+  ok("the sample has opted a scenario in", optedIn.length > 0, `${optedIn.length}`);
+  ok("...and the report quantifies it", /## Quantitative risk/.test(md));
+
+  const off = JSON.parse(JSON.stringify(study));
+  delete off.quantScenarios;
+  const mdOff = reportMarkdown(tax, off);
+  ok("a study that quantifies nothing gets no quantification section",
+    !/## Quantitative risk/.test(mdOff));
+  ok("...and no monetary figure anywhere", !/€|Expected annual loss|ALE/.test(mdOff),
+    (mdOff.match(/.{0,30}(€|ALE).{0,30}/) ?? ["-"])[0]);
+
+  // One of two: the other must not appear.
+  const one = JSON.parse(JSON.stringify(study));
+  one.quantScenarios = [optedIn[0]];
+  const mdOne = reportMarkdown(tax, one);
+  const opTitles = study.entities.filter((e) => e.type === "operational_scenario")
+    .map((e) => ({ id: e.id, name: String(e.values.name) }));
+  const kept = opTitles.find((o) => o.id === optedIn[0]);
+  const dropped = opTitles.find((o) => o.id !== optedIn[0]);
+  const quantPart = mdOne.slice(mdOne.indexOf("## Quantitative risk"));
+  ok("quantifying one scenario quantifies only that one",
+    quantPart.includes(kept.name) && !quantPart.includes(dropped.name),
+    `kept ${kept.name}, dropped ${dropped.name}`);
+}
+
+// ── 5c. the attack-path diagram, at the size a real study reaches ───────────
+// It lays a risk source at the mean height of the scenarios it feeds. With interleaved
+// scenarios two of those means coincide and the boxes cover each other - 26 overlapping
+// pairs at 90 boxes, measured. And the sheet grew with the study: 2772px, endlessly.
+{
+  const grown = JSON.parse(JSON.stringify(study));
+  const seedO = grown.entities.find((e) => e.type === "risk_origin");
+  const seedF = grown.entities.find((e) => e.type === "feared_event");
+  const seedS = grown.entities.find((e) => e.type === "strategic_scenario");
+  const os = [], fs = [];
+  for (let i = 0; i < 20; i++) {
+    os.push({ ...seedO, id: `o-${i}`, values: { ...seedO.values, name: `Actor ${i}` } });
+    fs.push({ ...seedF, id: `f-${i}`, values: { ...seedF.values, name: `Feared ${i}` } });
+  }
+  grown.entities.push(...os, ...fs);
+  // Round robin, so the means the outer columns are placed at land on top of each other.
+  for (let row = 0; row < 40; row++) {
+    grown.entities.push({ ...seedS, id: `s-${row}`, values: { ...seedS.values,
+      name: `Scenario ${row}`, risk_origin: os[row % os.length].id, feared_event: fs[row % fs.length].id } });
+  }
+  const svg = (() => { const m = reportMarkdown(tax, grown); const i = m.indexOf("## Attack paths"); return m.slice(i, m.indexOf("</svg>", i)); })();
+  const boxes = [...svg.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" rx="9"/g)]
+    .map((m) => ({ x: +m[1], y: +m[2], h: +m[4] }));
+  let over = 0;
+  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+    const a = boxes[i], b = boxes[j];
+    if (a.x === b.x && a.y < b.y + b.h && b.y < a.y + a.h) over++;
+  }
+  ok("the grown study really is big enough to be a test", boxes.length > 60, `${boxes.length} boxes`);
+  ok("no two boxes in a column cover each other", over === 0, `${over} overlapping pairs`);
+  const h = +(/height="([\d.]+)" viewBox/.exec(svg) ?? [0, 0])[1];
+  ok("the sheet does not grow without limit", h > 0 && h <= 1600, `${h}px`);
+  ok("...and says so where it stopped drawing", /not drawn/.test(svg));
+}
+
+// ── 5d. out of scope is out of the figures ──────────────────────────────────
+// A record taken out of scope keeps its judgement and leaves every count. That was true
+// for measures and requirements; scenarios and assets can be taken out now too, and a
+// state that only half the report honours is worse than no state at all.
+{
+  const out = JSON.parse(JSON.stringify(study));
+  const op = out.entities.find((e) => e.type === "operational_scenario");
+  const strat = out.entities.find((e) => e.type === "strategic_scenario");
+  op.values.scope = "out of scope";
+  strat.values.scope = "out of scope";
+  const mdOut = reportMarkdown(tax, out);
+  const quantPart = mdOut.includes("## Quantitative risk") ? mdOut.slice(mdOut.indexOf("## Quantitative risk")) : "";
+  ok("an operational scenario out of scope is not quantified",
+    !quantPart.includes(String(op.values.name)), String(op.values.name));
+  const chain = mdOut.includes("## Chain defence") ? mdOut.slice(mdOut.indexOf("## Chain defence"), mdOut.indexOf("---", mdOut.indexOf("## Chain defence"))) : "";
+  ok("...and does not appear in chain defence", !chain.includes(String(op.values.name)));
+  const paths = mdOut.slice(mdOut.indexOf("## Attack paths"), mdOut.indexOf("</svg>", mdOut.indexOf("## Attack paths")));
+  ok("a strategic scenario out of scope is off the attack-path diagram",
+    !paths.includes(String(strat.values.name)), String(strat.values.name));
+  const matrix = mdOut.slice(mdOut.indexOf("## Risk matrix"), mdOut.indexOf("</svg>", mdOut.indexOf("## Risk matrix")));
+  ok("...and off the risk matrix", !matrix.includes(String(strat.values.name)));
+}
+
 // ── 6. how it is set ────────────────────────────────────────────────────────
 // Typesetting, not wording - but the same kind of drift: the report grew tables and kept
 // printing all of them as the one table it had a style for.

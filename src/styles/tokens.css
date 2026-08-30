@@ -57,8 +57,12 @@
   --hairline: oklch(1 0 0 / 0.06);
 
   --fg: oklch(0.97 0.005 265);
-  --fg-muted: oklch(0.74 0.012 265);
-  --fg-subtle: oklch(0.56 0.014 265);
+  /* Both greys carry small text - table headers, hints, sublines, badges - and both were
+     short of the 4.5:1 that small text needs. Measured at their WORST call site on the
+     ground they are actually drawn on (npm run test:contrast): subtle 3.40:1 on a table
+     cell, muted 4.11:1 on a badge. Only the lightness moves, so the tone is unchanged. */
+  --fg-muted: oklch(0.78 0.012 265);
+  --fg-subtle: oklch(0.635 0.014 265);
 
   --primary: var(--teal-bright);
   --primary-fg: oklch(0.16 0.02 250);
@@ -89,9 +93,21 @@
   --border-strong: oklch(0.2 0.02 265 / 0.2);
   --hairline: oklch(0.2 0.02 265 / 0.07);
 
+  /* The state colours are set for a dark ground. On a light one the amber is a pale wash
+     that fails as TEXT, and it is used as text in fourteen places - so it is darkened here
+     rather than avoided one call site at a time.
+     Measured on the rendered pixels, warning text against a panel: 0.8 → 3.63:1 (short of
+     the 4.5:1 body text needs), 0.44 → 5.21:1. The hue is pulled towards red as it darkens,
+     because amber at low lightness turns to mud. The error red is here for the same reason:
+     it is now used as TEXT on the mark a deleted reference leaves behind. */
+  --color-state-error: oklch(0.5 0.19 25);
+  --color-state-warning: oklch(0.44 0.15 55);
+  --color-state-info: oklch(0.48 0.13 245);
+  --color-state-success: oklch(0.45 0.13 158);
   --fg: oklch(0.24 0.02 265);
-  --fg-muted: oklch(0.44 0.02 265);
-  --fg-subtle: oklch(0.58 0.02 265);
+  /* The same two, darkened for a light ground: 3.66:1 on a hint line and 4.44:1 on a badge. */
+  --fg-muted: oklch(0.435 0.02 265);
+  --fg-subtle: oklch(0.525 0.02 265);
 
   --primary: var(--teal-base);
   --primary-fg: oklch(1 0 0);

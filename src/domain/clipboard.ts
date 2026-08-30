@@ -4,6 +4,7 @@
 // relationships resolved to names). Paste into an LLM chat as grounded context.
 import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue, Study, Taxonomy } from "./types";
 import { columnFields, getType, recordTitle, scaleLabel, scaleMax, isSetBack } from "./taxonomy";
+import { spreadColumn } from "./graph";
 import { PRODUCT } from "../profile";
 import { deriveInputs, meanOf } from "./quantModel";
 import { residualPos } from "./treatment";
@@ -109,7 +110,7 @@ export function riskMatrixSvg(tax: Taxonomy, study: Study, opts?: { posFn?: (e: 
   const scales = type.fields.filter((f) => f.type === "scale");
   const xF = scales[0], yF = scales[1];
   const xMax = scaleMax(xF), yMax = scaleMax(yF);
-  const items = study.entities.filter((e) => e.type === type.key);
+  const items = study.entities.filter((e) => e.type === type.key && !isSetBack(tax, e));
   if (!items.length) return null;
   const pos = opts?.posFn ?? ((e: EntityRecord) => ({ x: Number(e.values[xF.key]) || 1, y: Number(e.values[yF.key]) || 1 }));
   const at = (x: number, y: number) => items.filter((e) => { const p = pos(e); return p.x === x && p.y === y; });
@@ -294,7 +295,7 @@ function threatRadarSvg(tax: Taxonomy, study: Study): string | null {
   const scales = t.fields.filter((f) => f.type === "scale");
   if (scales.length < 3) return null;
   const catF = t.fields.find((f) => f.type === "enum");
-  const actors = study.entities.filter((e) => e.type === t.key);
+  const actors = study.entities.filter((e) => e.type === t.key && !isSetBack(tax, e));
   if (!actors.length) return null;
   const series: RSeries[] = actors.map((a, i) => ({
     label: recordTitle(t, a), color: SERIES_HEX[i % SERIES_HEX.length],
@@ -329,8 +330,10 @@ const truncTxt = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).tri
 function attackFlowSvg(tax: Taxonomy, study: Study): string | null {
   const originType = getType(tax, "risk_origin"), stratType = getType(tax, "strategic_scenario"), fearedType = getType(tax, "feared_event");
   if (!originType || !stratType) return null;
-  const origins = study.entities.filter((e) => e.type === "risk_origin");
-  const strat = study.entities.filter((e) => e.type === "strategic_scenario" && origins.some((o) => o.id === e.values.risk_origin));
+  // Out of scope is out of the picture: the diagram draws the perimeter as it stands now.
+  const origins = study.entities.filter((e) => e.type === "risk_origin" && !isSetBack(tax, e));
+  const strat = study.entities.filter((e) => e.type === "strategic_scenario" && !isSetBack(tax, e)
+    && origins.some((o) => o.id === e.values.risk_origin));
   if (!origins.length || !strat.length) return null;
   const byId = new Map(study.entities.map((e) => [e.id, e]));
   const get = (id: FieldValue | undefined) => (typeof id === "string" ? byId.get(id) : undefined);
@@ -352,34 +355,60 @@ function attackFlowSvg(tax: Taxonomy, study: Study): string | null {
     feared.set(s.fearedId, { id: s.fearedId, title: recordTitle(fearedType, fe), sub });
   }
 
-  const PAD = 14, colW = 272, gap = 42, rowH = 62, boxH = 46;
+  // The middle column gets one row per scenario, so the sheet used to grow with the study
+  // and nothing else: 90 boxes came to 2772px. The rows are compressed instead, down to a
+  // floor where both lines of a box still fit, and past what even that can hold the rest is
+  // left out AND SAID SO - a diagram that silently drops half a study is worse than a
+  // diagram that admits where it stopped.
+  const PAD = 14, colW = 272, gap = 42;
+  const MAX_H = 1500, ROW_MAX = 62, ROW_MIN = 44;
+  const capacity = Math.floor((MAX_H - PAD * 2 - 16) / ROW_MIN);
+  const omitted = Math.max(0, sNodes.length - capacity);
+  const shown = omitted ? sNodes.slice(0, capacity) : sNodes;
+  const rowH = Math.max(ROW_MIN, Math.min(ROW_MAX, (MAX_H - PAD * 2 - 16) / Math.max(1, shown.length)));
+  const boxH = Math.min(46, rowH - 16);
   const x0 = PAD, x1 = PAD + colW + gap, x2 = PAD + 2 * (colW + gap), W = x2 + colW + PAD;
-  const H = PAD * 2 + sNodes.length * rowH + 16;          // extra room for the column captions
+  const H = PAD * 2 + shown.length * rowH + 16 + (omitted ? 18 : 0);
   const yMid = (i: number) => PAD + i * rowH + rowH / 2;
-  const sY = new Map(sNodes.map((s, i) => [s.id, yMid(i)]));
+  const sY = new Map(shown.map((s, i) => [s.id, yMid(i)]));
   const avgY = (ids: string[]) => ids.reduce((a, id) => a + (sY.get(id) ?? 0), 0) / (ids.length || 1);
-  const oY = new Map(origins.map((o) => [o.id, avgY(sNodes.filter((s) => s.originId === o.id).map((s) => s.id))]));
-  const fY = new Map([...feared.keys()].map((fid) => [fid, avgY(sNodes.filter((s) => s.fearedId === fid).map((s) => s.id))]));
+  // An outer box sits at the mean height of what it connects to - which puts two of them on
+  // top of each other as soon as their scenarios interleave. Sorting by that mean and then
+  // enforcing a gap keeps the ORDER the means expressed and gives up only the exact height.
+  const spread = (ids: string[], wants: number[]) => {
+    const ys = spreadColumn(wants, boxH + 6, PAD + boxH / 2, H - PAD - 16 - boxH / 2);
+    return new Map(ids.map((id, i) => [id, ys[i]]));
+  };
+  const oIds = origins.filter((o) => shown.some((s) => s.originId === o.id)).map((o) => o.id);
+  const oY = spread(oIds, oIds.map((id) => avgY(shown.filter((s) => s.originId === id).map((s) => s.id))));
+  const fIds = [...feared.keys()].filter((fid) => shown.some((s) => s.fearedId === fid));
+  const fY = spread(fIds, fIds.map((fid) => avgY(shown.filter((s) => s.fearedId === fid).map((s) => s.id))));
 
   const p: string[] = [`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif">`];
   p.push(`<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="14" fill="${HEX.card}" stroke="${HEX.edge}"/>`);
   const edge = (xa: number, ya: number, xb: number, yb: number) => `<path d="M${xa} ${ya} C${xa + gap * 0.6} ${ya}, ${xb - gap * 0.6} ${yb}, ${xb} ${yb}" fill="none" stroke="#b7c0cd" stroke-width="1.4"/>`;
-  for (const s of sNodes) {                              // edges first (under boxes)
+  for (const s of shown) {                               // edges first (under boxes)
     if (oY.has(s.originId)) p.push(edge(x0 + colW, oY.get(s.originId)!, x1, sY.get(s.id)!));
     if (s.fearedId && fY.has(s.fearedId)) p.push(edge(x1 + colW, sY.get(s.id)!, x2, fY.get(s.fearedId)!));
   }
+  // Both lines keep their place inside a box that may have been compressed.
   const box = (x: number, ycenter: number, n: { title: string; sub: string }, tint: string) => {
     const y = ycenter - boxH / 2;
-    return `<rect x="${x}" y="${y}" width="${colW}" height="${boxH}" rx="9" fill="${tint}" fill-opacity="0.14" stroke="${tint}" stroke-opacity="0.55"/>`
-      + `<text x="${x + 12}" y="${y + 19}" font-size="11.5" font-weight="600" fill="${HEX.ink}">${esc(truncTxt(n.title, 44))}</text>`
-      + (n.sub ? `<text x="${x + 12}" y="${y + 34}" font-size="10" fill="${HEX.muted}">${esc(truncTxt(n.sub, 44))}</text>` : "");
+    const t1 = y + (n.sub ? boxH * 0.42 : boxH * 0.62), t2 = y + boxH * 0.78;
+    return `<rect x="${x}" y="${y.toFixed(1)}" width="${colW}" height="${boxH.toFixed(1)}" rx="9" fill="${tint}" fill-opacity="0.14" stroke="${tint}" stroke-opacity="0.55"/>`
+      + `<text x="${x + 12}" y="${t1.toFixed(1)}" font-size="11.5" font-weight="600" fill="${HEX.ink}">${esc(truncTxt(n.title, 44))}</text>`
+      + (n.sub ? `<text x="${x + 12}" y="${t2.toFixed(1)}" font-size="10" fill="${HEX.muted}">${esc(truncTxt(n.sub, 44))}</text>` : "");
   };
   for (const o of origins) if (oY.has(o.id)) p.push(box(x0, oY.get(o.id)!, { title: recordTitle(originType, o), sub: catF ? String(o.values[catF.key] ?? "") : "" }, HEX.red));
-  for (const s of sNodes) p.push(box(x1, sY.get(s.id)!, s, HEX.amber));
+  for (const s of shown) p.push(box(x1, sY.get(s.id)!, s, HEX.amber));
   for (const [fid, n] of feared) if (fY.has(fid)) p.push(box(x2, fY.get(fid)!, n, HEX.orange));
   // column captions
   const cap = (x: number, t: string) => `<text x="${x + colW / 2}" y="${H - 2}" text-anchor="middle" font-size="10" font-weight="600" fill="${HEX.muted}">${t}</text>`;
   p.push(cap(x0, "Risk source") + cap(x1, "Strategic scenario") + cap(x2, "Feared event"));
+  if (omitted) {
+    p.push(`<text x="${W / 2}" y="${H - 20}" text-anchor="middle" font-size="10.5" fill="${HEX.muted}">`
+      + `${omitted} further scenario${omitted === 1 ? "" : "s"} not drawn - the full list is in the Strategic Scenarios section</text>`);
+  }
   p.push("</svg>");
   return p.join("");
 }
@@ -525,7 +554,15 @@ function quantSection(tax: Taxonomy, study: Study): string[] | null {
   const stepType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
   const parentF = stepType?.fields.find((f) => f.type === "ref" && f.refType);
   if (!opType || !stepType || !parentF) return null;
-  const ops = study.entities.filter((e) => e.type === opType.key
+  // Quantification is OPT-IN, one scenario at a time - the app derives a monetary figure
+  // only for the ones the analyst picked. The report used to ignore that and quantify
+  // every scenario that had a chain, so a study with the quantification switched off
+  // still went out carrying annual-loss figures nobody had asked for. A study from before
+  // the opt-in existed carries no list, which the app reads as "none"; the report now
+  // reads it the same way, because two answers to "is this quantified" is one too many.
+  const chosen = new Set(study.quantScenarios ?? []);
+  const ops = study.entities.filter((e) => e.type === opType.key && chosen.has(e.id)
+    && !isSetBack(tax, e)
     && study.entities.some((s) => s.type === stepType.key && s.values[parentF.key] === e.id));
   if (!ops.length) return null;
 
@@ -600,7 +637,7 @@ function treatmentSection(tax: Taxonomy, study: Study): string[] | null {
   const refF = treatType?.fields.find((f) => f.type === "ref" && f.refType);
   const riskType = refF?.refType ? getType(tax, refF.refType) : undefined;
   if (!treatType || !refF || !riskType) return null;
-  const treatments = study.entities.filter((e) => e.type === treatType.key);
+  const treatments = study.entities.filter((e) => e.type === treatType.key && !isSetBack(tax, e));
   if (!treatments.length) return null;
   const byId = new Map(study.entities.map((e) => [e.id, e]));
   const scales = riskType.fields.filter((f) => f.type === "scale");
@@ -715,7 +752,7 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
   // Threat landscape (radar comparing actors) + per-actor rating bar charts.
   const attackerType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "scale" && f.key === "capability"));
   if (attackerType) {
-    const actors = study.entities.filter((e) => e.type === attackerType.key);
+    const actors = study.entities.filter((e) => e.type === attackerType.key && !isSetBack(tax, e));
     if (actors.length) {
       L.push("## Threat landscape & attacker profiles\n");
       const radar = threatRadarSvg(tax, study);
@@ -747,7 +784,7 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
   const kcOpKey = kcParentF?.refType;
   const kcStepsHtml = (op: EntityRecord): string => {
     if (!kcStepType || !kcParentF || !kcOrderF) return "";
-    const steps = study.entities.filter((s) => s.type === kcStepType.key && s.values[kcParentF.key] === op.id)
+    const steps = study.entities.filter((s) => s.type === kcStepType.key && s.values[kcParentF.key] === op.id && !isSetBack(tax, s))
       .sort((a, b) => Number(a.values[kcOrderF.key] || 0) - Number(b.values[kcOrderF.key] || 0));
     if (!steps.length) return "";
     const rows = steps.map((s, i) => {
@@ -887,7 +924,7 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
       p.push("</svg>");
       return p.join("");
     };
-    const ops = study.entities.filter((e) => e.type === opType.key
+    const ops = study.entities.filter((e) => e.type === opType.key && !isSetBack(tax, e)
       && study.entities.some((s) => s.type === stepType.key && s.values[parentF.key] === e.id));
     if (ops.length) {
       // Written into its own list and emitted with the operational scenarios below, not
@@ -900,7 +937,7 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
         + "figures - they reduce the loss, or the number of attempts - but they do not stop him "
         + "reaching it, so they do not make the step look handled._\n");
       for (const op of ops) {
-        const steps = study.entities.filter((e) => e.type === stepType.key && e.values[parentF.key] === op.id)
+        const steps = study.entities.filter((e) => e.type === stepType.key && e.values[parentF.key] === op.id && !isSetBack(tax, e))
           .sort((a, b) => Number(a.values[orderF.key] || 0) - Number(b.values[orderF.key] || 0));
         const covering = (sid: string) => measures.filter((m) => Array.isArray(m.values[coversF.key]) && (m.values[coversF.key] as string[]).includes(sid));
         // Defended, not merely covered: the same rule the app's chain view applies.

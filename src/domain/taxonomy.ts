@@ -49,7 +49,14 @@ export function emptyValues(t: EntityTypeDef): Record<string, FieldValue> {
       case "boolean": v[f.key] = false; break;
       case "multiref": v[f.key] = []; break;
       case "ref": v[f.key] = null; break;
-      case "enum": v[f.key] = f.options?.[0] ?? ""; break;
+      // A NEW RECORD IS IN THE PERIMETER. For an ordinary enum the first option is a fair
+      // default, but a two-state switch reads its FIRST option as "taken out" - so this
+      // created every record outside the analysis, where no count, chart or figure would
+      // ever see it, and nothing said so. The switch defaults to its second state; every
+      // other enum keeps the first.
+      case "enum":
+        v[f.key] = (f.toggle && f.options?.length === 2 ? f.options[1] : f.options?.[0]) ?? "";
+        break;
       default: v[f.key] = "";
     }
   }
@@ -141,7 +148,13 @@ export function toggleField(t: EntityTypeDef): FieldDef | undefined {
  *  nobody has adopted yet. */
 export function isSetBack(tax: Taxonomy, r: EntityRecord): boolean {
   const t = getType(tax, r.type);
-  const f = t && toggleField(t);
+  return t ? isSetBackIn(t, r) : false;
+}
+
+/** The same question where the caller already holds the type - a view that was handed one
+ *  type and its records has no reason to be handed the whole taxonomy as well. */
+export function isSetBackIn(t: EntityTypeDef, r: EntityRecord): boolean {
+  const f = toggleField(t);
   if (!f?.options) return false;
   const v = r.values[f.key];
   if (v == null || v === "") return false;

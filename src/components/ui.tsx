@@ -42,6 +42,8 @@ export const Icon = {
       <rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>
   ),
   check: () => P("M20 6L9 17l-5-5"),
+  /** A circle with a bar through it: not gone, not in play. */
+  ban: () => P("M12 3a9 9 0 100 18 9 9 0 000-18zM5.6 5.6l12.8 12.8"),
   canvas: () => (
     <svg className="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

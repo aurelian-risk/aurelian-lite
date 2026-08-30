@@ -8,8 +8,9 @@ import { forgetStudy } from "./viewstate";
 import type {
   AppState, Bundle, ChangeEntry, EntityRecord, FieldValue, ID, QuantTuning, Study, Taxonomy,
 } from "./types";
-import { DEFAULT_TAXONOMY, getType, recordTitle, reconcileTaxonomy, refFields } from "./taxonomy";
+import { DEFAULT_TAXONOMY, getType, recordTitle, reconcileTaxonomy } from "./taxonomy";
 import { reconcileCalibration, type Calibration } from "./calibration";
+import { scopeValue, deleteChange } from "./scope";
 import { loadRaw, saveState } from "./persistence";
 import { appendAll, appendLog, diffValues, entryKey, getEditor, hashValues, sealLog, STUDY_SCOPE, verdictText, verifyLog, type LogInput } from "./audit";
 
@@ -38,47 +39,14 @@ const stamp = (tax: Taxonomy, rec: EntityRecord, ts: string) => ({
 });
 
 // ── Cascade delete across ref fields ──────────────────────────────────────
-/** Deleting a record also removes whatever required it, and clears references to it on
- *  the records that survive. Both have to be reported: the removals become delete
- *  entries in the log, and the cleared references are real value changes that need
- *  update entries - without them those records would immediately read as edited
- *  outside the application. */
+/** The traversal lives in `domain/scope.ts`, next to the one that answers the same question
+ *  for taking a record out of scope - and the dialog that warns before a delete asks THAT
+ *  function. Two copies of the rule would let the warning describe something the store does
+ *  not do, which is worse than no warning. */
 function cascadeDelete(tax: Taxonomy, study: Study, removeId: ID, ts: string): {
   study: Study; removed: EntityRecord[]; touched: Array<{ before: EntityRecord; after: EntityRecord }>;
 } {
-  const toRemove = new Set<ID>([removeId]);
-  const before = new Map(study.entities.map((e) => [e.id, e]));
-  let changed = true;
-  let entities = study.entities;
-
-  while (changed) {
-    changed = false;
-    const next: EntityRecord[] = [];
-    for (const r of entities) {
-      if (toRemove.has(r.id)) continue;
-      const t = getType(tax, r.type);
-      if (!t) { next.push(r); continue; }
-      let values = r.values;
-      let dirty = false;
-      for (const f of refFields(t)) {
-        const v = values[f.key];
-        if (f.type === "multiref" && Array.isArray(v)) {
-          const filtered = v.filter((x) => !toRemove.has(x as ID));
-          if (filtered.length !== v.length) { values = { ...values, [f.key]: filtered }; dirty = true; }
-        } else if (f.type === "ref" && typeof v === "string" && toRemove.has(v)) {
-          if (f.required) { toRemove.add(r.id); changed = true; break; }
-          values = { ...values, [f.key]: null }; dirty = true;
-        }
-      }
-      if (toRemove.has(r.id)) { changed = true; continue; }
-      next.push(dirty ? { ...r, values, updatedAt: ts } : r);
-    }
-    entities = next;
-  }
-  const removed = [...toRemove].map((id) => before.get(id)!).filter(Boolean);
-  const touched = entities
-    .filter((r) => before.get(r.id) && before.get(r.id) !== r)
-    .map((r) => ({ before: before.get(r.id)!, after: r }));
+  const { entities, removed, touched } = deleteChange(tax, study, removeId, ts);
   return { study: { ...study, entities }, removed, touched };
 }
 
@@ -295,6 +263,10 @@ export interface StoreState {
 
   addEntity: (type: string, values: Record<string, FieldValue>, source?: string, comment?: string) => ID;
   updateEntity: (id: ID, values: Record<string, FieldValue>, comment?: string) => void;
+  /** Put a set of records in or out of scope in ONE action - the record asked about and
+   *  everything scope.ts says goes with it. One entry per record, all in the same instant,
+   *  so the log reads as the single decision it was rather than as five separate edits. */
+  setScope: (ids: ID[], inPlay: boolean, comment?: string) => void;
   deleteEntity: (id: ID, comment?: string) => void;
   setNodePos: (id: ID, x: number, y: number) => void;
   setLayout: (layout: Record<ID, { x: number; y: number }>) => void;
@@ -463,6 +435,26 @@ export const useStore = create<StoreState>((set, get) => ({
         entities: study.entities.map((e) => (e.id === id ? next : e)),
         log: appendLog(study.log, { ...stamp(tax, next, ts), kind: "update", changes, comment, state: hashValues(values) }),
       };
+    });
+  },
+  setScope: (ids, inPlay, comment) => {
+    const tax = get().taxonomy;
+    mutateActive(get, set, (study) => {
+      const ts = nowISO();
+      const want = new Set(ids);
+      const entries: LogInput[] = [];
+      const entities = study.entities.map((e) => {
+        if (!want.has(e.id)) return e;
+        const sv = scopeValue(tax, e, inPlay);
+        if (!sv || String(e.values[sv.key] ?? "") === sv.value) return e;   // already there
+        const values = { ...e.values, [sv.key]: sv.value };
+        const next = { ...e, values, updatedAt: ts };
+        entries.push({ ...stamp(tax, next, ts), kind: "update",
+          changes: diffValues(e.values, values), comment, state: hashValues(values) });
+        return next;
+      });
+      if (!entries.length) return study;
+      return { ...study, entities, log: appendAll(study.log, entries) };
     });
   },
   deleteEntity: (id, comment) => {

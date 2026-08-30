@@ -180,3 +180,38 @@ export function verdictText(v: LogVerdict): string {
   if (v.untracked.length) parts.push(`${v.untracked.length} record${v.untracked.length === 1 ? "" : "s"} missing from the log`);
   return parts.join(", ");
 }
+
+// ── What a record lost to a deletion ───────────────────────────────────────
+/** References this record used to hold that point at records which no longer exist.
+ *
+ *  Read out of the log rather than kept in the data: a deletion clears the reference, so
+ *  by the time anyone looks there is nothing left in the record to mark. The log knows
+ *  both halves - a `delete` entry carries the title as of that moment, and the `update`
+ *  entry written for the surviving record carries the value before and after - so the two
+ *  can be put back together without the data model having to carry tombstones, and without
+ *  export, import or the state fingerprints changing at all.
+ *
+ *  Keyed by field, because that is where a reader will look: the field that is now empty. */
+export function deletedRefs(log: ChangeEntry[] | undefined, recordId: string): Map<string, { id: string; title: string }[]> {
+  const out = new Map<string, { id: string; title: string }[]>();
+  if (!log?.length) return out;
+  const gone = new Map<string, string>();
+  for (const e of log) if (e.kind === "delete") gone.set(e.entity, e.title);
+  if (!gone.size) return out;
+  const idsOf = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string")
+      : typeof v === "string" && v ? [v] : [];
+  for (const e of log) {
+    if (e.entity !== recordId || e.kind !== "update" || !e.changes) continue;
+    for (const c of e.changes) {
+      const after = new Set(idsOf(c.to));
+      for (const id of idsOf(c.from)) {
+        if (after.has(id) || !gone.has(id)) continue;
+        const list = out.get(c.field) ?? [];
+        if (!list.some((x) => x.id === id)) list.push({ id, title: gone.get(id)! });
+        out.set(c.field, list);
+      }
+    }
+  }
+  return out;
+}

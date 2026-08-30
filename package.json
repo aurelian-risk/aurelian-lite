@@ -1,6 +1,6 @@
 {
   "name": "aurelian-lite",
-  "version": "0.6.3",
+  "version": "0.6.6",
   "description": "Aurelian Lite - structured, offline cyber risk analysis (EBIOS RM) in a single portable HTML file",
   "type": "module",
   "license": "MPL-2.0",
@@ -44,6 +44,8 @@
     "test:modelling": "esbuild src/domain/modelling.ts --bundle --format=esm --outfile=node_modules/.cache/modelling.mjs --log-level=error && MOD_M=node_modules/.cache/modelling.mjs node scripts/modelling-test.mjs",
     "test:viewstate": "esbuild src/domain/viewstate.ts --bundle --format=esm --outfile=node_modules/.cache/viewstate.mjs --log-level=error && MOD_V=node_modules/.cache/viewstate.mjs node scripts/viewstate-test.mjs",
     "test:report": "rm -rf node_modules/.cache/report && esbuild src/domain/clipboard.ts src/profile/index.ts src/profile/ebios/sample.ts --bundle --format=esm --outdir=node_modules/.cache/report --out-extension:.js=.mjs --log-level=error && MOD_R=node_modules/.cache/report/domain/clipboard.mjs MOD_P=node_modules/.cache/report/profile/index.mjs MOD_S=node_modules/.cache/report/profile/ebios/sample.mjs node scripts/report-test.mjs",
+    "test:scope": "rm -rf node_modules/.cache/scope && esbuild src/domain/scope.ts src/profile/index.ts src/profile/ebios/sample.ts --bundle --format=esm --outdir=node_modules/.cache/scope --out-extension:.js=.mjs --log-level=error && MOD_SC=node_modules/.cache/scope/domain/scope.mjs MOD_P=node_modules/.cache/scope/profile/index.mjs MOD_S=node_modules/.cache/scope/profile/ebios/sample.mjs node scripts/scope-test.mjs",
+    "test:contrast": "node scripts/contrast-test.mjs",
     "test:graph": "esbuild src/domain/graph.ts --bundle --format=esm --outfile=node_modules/.cache/graph.mjs --log-level=error && MOD_G=node_modules/.cache/graph.mjs node scripts/graph-test.mjs",
     "test:hooks": "node scripts/hooks-test.mjs"
   },

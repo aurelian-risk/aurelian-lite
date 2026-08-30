@@ -32,6 +32,17 @@ a { color: var(--primary); }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
+/* GLASS ONLY WHERE IT IS TRANSIENT. `backdrop-filter` was on thirteen surfaces, eight of
+   them always on screen - sidebar, topbar, every card and panel, the tab strip. It is paid
+   for on every paint of the area behind it, and it dominated everything else: measured on
+   the sample study, switching workshop tabs ran at a MEDIAN frame of 44ms (35 of 41 frames
+   over 32ms) and scrolling a table dropped 5 frames of 32. With the property left only on
+   dialogs, menus and the overlay: 16.7ms median, 0 dropped while scrolling. Removing
+   box-shadow, the background gradients or the animations instead changed nothing, and a
+   smaller blur radius did not help either - the cost is the area and the count, not the
+   radius. So the glass stays where a surface is small and short-lived, and the surfaces
+   that are always there are plain. */
+
 /* ── Layout ───────────────────────────────────────────────────────── */
 .app { display: grid; grid-template-columns: 264px 1fr; height: 100%; }
 
@@ -39,7 +50,7 @@ a { color: var(--primary); }
   position: relative; display: flex; flex-direction: column; gap: 3px;
   padding: 18px 14px; overflow-y: auto;
   background: var(--bg-raised);
-  backdrop-filter: blur(20px) saturate(1.3);
+
   border-right: 1px solid var(--border);
 }
 .brand { display: flex; align-items: center; gap: 12px; padding: 6px 8px 20px; }
@@ -81,7 +92,7 @@ a { color: var(--primary); }
 .topbar {
   position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 14px;
   padding: 15px 28px; border-bottom: 1px solid var(--border);
-  background: var(--bg-raised); backdrop-filter: blur(20px) saturate(1.3);
+  background: var(--bg-raised);
   flex-wrap: wrap; row-gap: 8px;
 }
 .topbar .btn { flex: none; }
@@ -108,6 +119,9 @@ a { color: var(--primary); }
 .btn.ghost { background: transparent; border-color: transparent; box-shadow: none; color: var(--fg-muted); }
 .btn.ghost:hover { background: var(--bg-hover); color: var(--fg); }
 .btn.danger:hover { color: var(--color-state-error); border-color: color-mix(in oklch, var(--color-state-error) 50%, transparent); background: color-mix(in oklch, var(--color-state-error) 10%, transparent); }
+/* Same make as .danger - raised, bordered, tinted on hover - in the colour of something
+   set aside rather than destroyed. */
+.btn.warn:hover { color: var(--fg); border-color: color-mix(in oklch, var(--color-state-warning) 50%, transparent); background: color-mix(in oklch, var(--color-state-warning) 10%, transparent); }
 .btn.sm { padding: 6px 10px; font-size: 12px; border-radius: 8px; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 
@@ -116,7 +130,7 @@ a { color: var(--primary); }
 .card {
   position: relative; background: var(--bg-panel); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 18px; overflow: hidden;
-  backdrop-filter: blur(16px) saturate(1.2); box-shadow: var(--shadow-md), var(--edge-top);
+ box-shadow: var(--shadow-md), var(--edge-top);
   animation: rise 0.4s var(--ease) both;
 }
 .card::before {
@@ -133,7 +147,7 @@ a { color: var(--primary); }
 /* ── Panels ───────────────────────────────────────────────────────── */
 .panel {
   background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius);
-  overflow: hidden; backdrop-filter: blur(16px) saturate(1.2);
+  overflow: hidden;
   box-shadow: var(--shadow-md), var(--edge-top); animation: rise 0.4s var(--ease) both;
 }
 .panel-head { display: flex; align-items: center; gap: 11px; padding: 15px 18px;
@@ -455,6 +469,15 @@ select { cursor: pointer; }
 .tbl .chip { background: transparent; border-color: var(--border); color: var(--fg-muted); padding: 2px 8px; font-size: 11.5px;
   max-width: 15ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
 .tbl .chip.link:hover { background: color-mix(in oklch, var(--primary) 14%, transparent); color: var(--fg); border-color: color-mix(in oklch, var(--primary) 38%, var(--border)); }
+/* A reference that pointed at something now deleted: the old name, struck through, on a
+   light red ground. The name is kept because "deleted" alone does not say WHAT is gone.
+   Both selectors, and AFTER `.tbl .chip` - that rule has the same specificity and would
+   otherwise win on order alone, which is how this first shipped grey. */
+.chip.gone, .tbl .chip.gone {
+  color: var(--color-state-error);
+  background: color-mix(in oklch, var(--color-state-error) 16%, transparent);
+  border-color: color-mix(in oklch, var(--color-state-error) 45%, transparent);
+  text-decoration: line-through; text-decoration-thickness: 1px; }
 .chip.more { background: transparent; color: var(--fg-subtle); border: 1px dashed var(--border); padding: 2px 8px; font-size: 11.5px; border-radius: 8px; font-variant-numeric: tabular-nums; }
 
 /* ── Hints / empty states ─────────────────────────────────────────── */
@@ -463,7 +486,7 @@ select { cursor: pointer; }
 .guide { position: relative; border-radius: 12px; padding: 13px 15px 13px 16px; margin-bottom: 18px;
   font-size: 13px; color: var(--fg); background: color-mix(in oklch, var(--color-state-info) 10%, var(--bg-panel));
   border: 1px solid color-mix(in oklch, var(--color-state-info) 26%, transparent);
-  backdrop-filter: blur(10px); }
+ }
 .guide.warn { background: color-mix(in oklch, var(--color-state-warning) 12%, var(--bg-panel));
   border-color: color-mix(in oklch, var(--color-state-warning) 32%, transparent); }
 .guide strong { color: var(--fg); font-weight: 650; }
@@ -491,7 +514,7 @@ select { cursor: pointer; }
 .graph-info { position: absolute; top: 14px; right: 14px; width: 300px; max-height: calc(100% - 28px);
   overflow-y: auto; z-index: 3; padding: 14px; border-radius: 14px;
   background: var(--bg-raised); border: 1px solid var(--border-strong);
-  box-shadow: var(--shadow-lg), var(--edge-top); backdrop-filter: blur(24px) saturate(1.3);
+  box-shadow: var(--shadow-lg), var(--edge-top);
   animation: rise 0.16s var(--ease); }
 .gi-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .gi-title { font-size: 15px; letter-spacing: -0.01em; margin-bottom: 12px; }
@@ -539,7 +562,7 @@ select { cursor: pointer; }
   flex-wrap: wrap; row-gap: 6px;
   background: linear-gradient(180deg, color-mix(in oklch, var(--bg-raised) 50%, var(--bg-panel)), var(--bg-panel));
   border: 1px solid var(--border); border-radius: 13px;
-  box-shadow: var(--shadow-sm); backdrop-filter: blur(12px); }
+  box-shadow: var(--shadow-sm); }
 .ws-tab { display: flex; align-items: center; gap: 9px; padding: 7px 12px 7px 8px; border-radius: 11px;
   border: 1px solid transparent; background: transparent; color: var(--fg-muted);
   cursor: pointer; white-space: nowrap; flex: none; transition: all 0.15s var(--ease); }
@@ -661,7 +684,10 @@ select { cursor: pointer; }
 .flow-layout { display: flex; gap: 16px; align-items: flex-start; }
 .graph-main, .flow-main { flex: 1; min-width: 0; }
 .flow-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.flow-scroll { overflow: auto; max-height: calc(100vh - 210px); }
+.flow-scroll { overflow: auto; max-height: calc(100vh - 210px); cursor: grab; overscroll-behavior: contain; }
+.flow-scroll.panning { cursor: grabbing; user-select: none; }
+/* A card keeps the pointer it is meant to receive; only the ground is draggable. */
+.flow-scroll [data-nk], .flow-scroll .lane-header { cursor: default; }
 .flow-lanes { position: relative; display: flex; gap: 10px; padding-bottom: 16px; min-height: 460px; }
 .ribbons { position: absolute; inset: 0; z-index: 10; pointer-events: none; overflow: visible; width: 100%; height: 100%; }
 .flow-side { flex: none; width: 330px; position: sticky; top: 84px; align-self: flex-start; }
@@ -692,7 +718,14 @@ select { cursor: pointer; }
 .lane-add:hover { background: var(--bg-hover); color: var(--fg); }
 /* No overflow/height cap: cards must be able to fly out of their column during
  * the FLIP flight without being clipped or hidden behind neighbouring lanes. */
-.lane-body { display: flex; flex-direction: column; gap: 6px; padding: 8px 3px 4px; }
+/* The first row starts BELOW the mask, not behind it. `.flow-topmask` is opaque to 44px and
+   fades to 60; the body used to start at 34, so the first card of every lane sat inside the
+   opaque part before anything had been scrolled or selected - twelve cards in the sample
+   study, at rest. Reserved in the layout rather than corrected afterwards, which is the same
+   rule the flown tree follows: a transform does not move the scrollable area, and neither
+   does a correction move what a reader is looking at before they touch anything. Scrolling
+   still carries rows under the headings, which is what a sticky heading is for. */
+.lane-body { display: flex; flex-direction: column; gap: 6px; padding: 34px 3px 4px; }
 .lane-empty { color: var(--fg-subtle); font-size: 11px; text-align: center; padding: 12px 0; }
 
 .flow-node { position: relative; display: block; width: 100%; text-align: left; border: 1.5px solid var(--border);
@@ -700,8 +733,18 @@ select { cursor: pointer; }
 .flow-node.z0 { z-index: 0; }
 .flow-node.z30 { z-index: 30; }
 /* ── ef-* copied 1:1 from the parent app's globals.css ──────────────── */
-.ef-card { transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s ease, filter 0.4s ease,
+/* THE FLIGHT ONLY RUNS AT 1:1. The cards are moved with `transform` inside a container
+   scaled by CSS `zoom`, and away from 100% the two do not agree: the cards were carried far
+   past their place and snapped back when the move ended - threefold at 0.35, and exactly
+   right at 1.0, which is how it was reported. The ribbons looked correct throughout because
+   they are drawn from getBoundingClientRect, which reports where the card BELONGS rather
+   than where it is being shown; measuring that value is why this took so long to find.
+   Zoomed, the cards simply take their place. The animation is worth having, but not at the
+   price of the arrangement appearing to be thrown about. */
+.ef-card { transition: opacity 0.4s ease, filter 0.4s ease,
   box-shadow 0.4s ease, border-color 0.4s ease, background 0.4s ease; will-change: transform, translate, box-shadow; }
+.flow-lanes.ef-fly .ef-card { transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s ease,
+  filter 0.4s ease, box-shadow 0.4s ease, border-color 0.4s ease, background 0.4s ease; }
 .ef-orphan { opacity: 0.22; filter: grayscale(0.85); }
 .ef-dimmed { opacity: 0.12; filter: grayscale(0.6); }
 .ef-pop { box-shadow: 0 16px 34px -8px rgba(0, 0, 0, 0.62), 0 5px 12px rgba(0, 0, 0, 0.42); }
@@ -716,7 +759,7 @@ select { cursor: pointer; }
 
 /* Right info panel */
 .info-panel { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 15px 16px; box-shadow: var(--shadow-md), var(--edge-top); backdrop-filter: blur(16px) saturate(1.2);
+  padding: 15px 16px; box-shadow: var(--shadow-md), var(--edge-top);
   max-height: calc(100vh - 120px); overflow-y: auto; animation: rise 0.2s var(--ease); }
 .ip-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .ip-title { font-size: 15px; letter-spacing: -0.01em; margin-bottom: 12px; }
@@ -1474,6 +1517,31 @@ select.btn { display: inline-block; width: auto; flex: none; line-height: 1.4; }
 .bx-v { flex: none; }
 .bx-line.bx-sum { border-bottom: none; color: var(--fg); font-weight: 600; }
 .bx-none { margin: 0; font-size: 12.5px; color: var(--color-state-warning); }
+
+/* ── Disabling a record: three lists, no prose ─────────────────────────────
+   Each dependency is a small card rather than a line of text: what it is, what type it
+   is, and the field it hangs on, at a glance. Tinted by what it means - refusing, coming
+   along, or merely losing a reason - so the answer is legible before it is read. */
+/* This dialog is as tall as what it has to say. `.modal-lg` is sized for a form that
+   fills a page; a list of three dependencies in that frame is mostly empty room. */
+.scope-dlg { height: auto; max-height: 88vh; }
+.scope-dlg .modal-lg-body { padding-top: 14px; flex: 0 1 auto; }
+.scope-name { font-weight: 700; color: var(--fg); }
+.scope-lead { margin: 0 0 14px; font-size: 13.5px; color: var(--fg-muted); }
+.scope-lead.warn { color: var(--color-state-warning); font-weight: 600; }
+.scope-h { margin: 16px 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--fg-subtle); font-weight: 600; }
+.dep-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.dep { display: flex; flex-direction: column; gap: 2px; padding: 8px 11px; border-radius: 9px;
+  border: 1px solid var(--border); background: var(--bg-hover); }
+.dep b { font-size: 12.5px; font-weight: 600; color: var(--fg); line-height: 1.35; }
+.dep span { font-size: 11px; color: var(--fg-muted); }
+.dep.block { border-color: color-mix(in oklch, var(--color-state-warning) 55%, var(--border));
+  background: color-mix(in oklch, var(--color-state-warning) 12%, transparent); }
+.dep.carry { border-color: color-mix(in oklch, var(--primary) 45%, var(--border));
+  background: color-mix(in oklch, var(--primary) 10%, transparent); }
+.dep.weak { border-style: dashed; }
+.dep.more { align-items: center; justify-content: center; color: var(--fg-subtle); font-size: 12px; }
 /* A line whose value is that it does nothing: said in the colour of a warning, because a
    sector the calibration cannot match looks like an input and behaves like none. */
 .bx-line.bx-warn .bx-k b, .sect-note.warn { color: var(--color-state-warning); }

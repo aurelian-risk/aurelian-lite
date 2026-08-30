@@ -16,7 +16,7 @@ import { pathToFileURL } from "node:url";
 
 const MOD = process.env.MOD;
 if (!MOD) { console.error("set MOD=<bundled taxonomy.mjs>"); process.exit(2); }
-const { DEFAULT_TAXONOMY, TAXONOMY_SCHEMA_VERSION, isSetBack, reconcileTaxonomy } = await import(pathToFileURL(MOD).href);
+const { DEFAULT_TAXONOMY, TAXONOMY_SCHEMA_VERSION, isSetBack, reconcileTaxonomy, toggleStates, emptyValues } = await import(pathToFileURL(MOD).href);
 
 let pass = 0, fail = 0;
 const ok = (name, cond) => { cond ? (pass++, console.log("✓", name)) : (fail++, console.log("✗", name)); };
@@ -126,6 +126,29 @@ ok("the default is left as this check found it", defField.vocabulary === hadVoca
     ok("a record recorded on the first option is set back", isSetBack(DEFAULT_TAXONOMY, r({ [f.key]: f.options[0] })) === true);
     ok("...and one on the second is in play", isSetBack(DEFAULT_TAXONOMY, r({ [f.key]: f.options[1] })) === false);
   }
+}
+
+// ── a new record starts inside the perimeter ────────────────────────────────
+// The switch reads its FIRST option as "taken out", and emptyValues gave every enum its
+// first option - so a record was created outside the analysis, seen by no count and
+// announced by nothing. The check is written against the taxonomy's own switch rather than
+// the literal string, so it holds for a profile that words the two states differently.
+{
+  const withSwitch = DEFAULT_TAXONOMY.entityTypes.filter((t) => toggleStates(t));
+  ok("the sample taxonomy has types with a scope switch", withSwitch.length > 0, `${withSwitch.length} of ${DEFAULT_TAXONOMY.entityTypes.length}`);
+  const wrong = withSwitch.filter((t) => {
+    const st = toggleStates(t);
+    return emptyValues(t)[st.field.key] !== st.on;
+  });
+  ok("a new record starts in the perimeter, not out of it",
+    wrong.length === 0, wrong.map((t) => `${t.key}: ${emptyValues(t)[toggleStates(t).field.key]}`).join(", "));
+  // ...and the check would notice: an ordinary enum still takes its first option.
+  const plain = DEFAULT_TAXONOMY.entityTypes.flatMap((t) => (t.fields || [])
+    .filter((f) => f.type === "enum" && !f.toggle && f.options?.length)
+    .map((f) => [t, f]));
+  ok("...while an ordinary enum keeps its first option",
+    plain.length > 0 && plain.every(([t, f]) => emptyValues(t)[f.key] === f.options[0]),
+    `${plain.length} plain enum field(s)`);
 }
 
 console.log(`\n${pass}/${pass + fail} taxonomy-migration assertions passed · ${fail} failed`);
