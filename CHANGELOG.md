@@ -5,6 +5,24 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.6.7] — 2026-08-30
+
+### Added
+- **Excel workbooks import directly.** `.xlsx` is read where it is dropped — no library, no
+  saving it as CSV first. A workbook usually holds several sheets, and the published control
+  catalogues put the controls behind a cover page, so the dialog asks which sheet is meant
+  instead of taking the first one.
+
+### Changed
+- **Columns are mapped on evidence, not on the first heading that matches.** What a column
+  CONTAINS now weighs as much as what it is called — an identifier is short and unique, a
+  category repeats, a description is long. Against seven catalogues as their publishers ship
+  them, 26 of 28 fields land correctly where 14 did. A column that is blank throughout can no
+  longer feed a field, and a column that repeats every twenty rows is not taken as a title.
+- **The "Suggest with AI" button is gone.** Over those same seven catalogues and both bundled
+  embedding models it improved no mapping and spoilt two, and it was wrong on exactly the
+  columns the rest of the mapping already gets wrong.
+
 ## [0.6.6] — 2026-08-29
 
 ### Changed

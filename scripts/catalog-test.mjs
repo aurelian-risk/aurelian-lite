@@ -28,7 +28,7 @@ const norm = (items) => items.map((it) => {
 });
 
 // Convenience: full pipeline with heuristic mapping.
-const run = (text, delim) => { const t = parseTable(text, delim); return { t, items: norm(tableToItems(t, guessMapping(t.headers))) }; };
+const run = (text, delim) => { const t = parseTable(text, delim); return { t, items: norm(tableToItems(t, guessMapping(t.headers, { rows: t.rows }))) }; };
 
 // ── Fixture corpus ────────────────────────────────────────────────────────
 const G = (ref_id, title, category, description) => {
@@ -88,7 +88,7 @@ const G = (ref_id, title, category, description) => {
 // 9) header aliases → mapping
 {
   const t = parseTable("Control ID,Requirement,Domain,Guidance\nAC-2,Account Management,Access,Manage accounts");
-  const m = guessMapping(t.headers);
+  const m = guessMapping(t.headers, { rows: t.rows });
   ok("alias ref_id", m.ref_id === 0, m.ref_id, 0);
   ok("alias title", m.title === 1, m.title, 1);
   ok("alias category", m.category === 2, m.category, 2);
@@ -98,7 +98,7 @@ const G = (ref_id, title, category, description) => {
 // 10) extra unmapped columns are ignored
 {
   const t = parseTable("id,name,owner,priority,notes\nX1,Encrypt data,alice,high,at rest & transit");
-  const m = guessMapping(t.headers);
+  const m = guessMapping(t.headers, { rows: t.rows });
   const items = norm(tableToItems(t, m));
   ok("extra-cols title", items[0].title === "Encrypt data", items[0].title);
   ok("extra-cols ref_id", items[0].ref_id === "X1", items[0].ref_id);
@@ -142,7 +142,7 @@ const G = (ref_id, title, category, description) => {
 // 17) only a ref_id column → title falls back to ref_id
 {
   const t = parseTable("control\nAC-1\nAC-2");
-  const m = guessMapping(t.headers);
+  const m = guessMapping(t.headers, { rows: t.rows });
   const items = norm(tableToItems(t, m));
   ok("single-col fallback", eq(items, [G("AC-1", "AC-1"), G("AC-2", "AC-2")]), items);
 }
@@ -155,7 +155,7 @@ const G = (ref_id, title, category, description) => {
 {
   const t = parseTable("col_a,col_b\nZ1,Some control text");
   const scorer = (field, header) => (field === "title" && header === "col_b") ? 0.9 : (field === "ref_id" && header === "col_a") ? 0.9 : 0.1;
-  const m = guessMapping(t.headers, scorer);
+  const m = guessMapping(t.headers, { rows: t.rows, score: scorer });
   ok("embed-assist ref_id", m.ref_id === 0, m.ref_id, 0);
   ok("embed-assist title", m.title === 1, m.title, 1);
   ok("embed-assist items", eq(norm(tableToItems(t, m)), [G("Z1", "Some control text")]), norm(tableToItems(t, m)));
@@ -179,7 +179,7 @@ const G = (ref_id, title, category, description) => {
     + 'AC-1,Policy and Procedures,"a. Develop, document, and disseminate:\n\n1. access control policy;\nb. Review and update the policy.",Discussion here,PM-9,\n'
     + 'AC-2(1),Account Management | Automated System Account Management,"Support account management using [Assignment: mechanisms].",Automated mechanisms include.,AC-2,';
   const t = parseTable(csv);
-  const m = guessMapping(t.headers);
+  const m = guessMapping(t.headers, { rows: t.rows });
   ok("nist snake_case header map", m.ref_id === 0 && m.title === 1 && m.description === 2, m, { ref_id: 0, title: 1, description: 2 });
   const items = norm(tableToItems(t, m));
   ok("nist rows==2 (no bleed from multi-line cell)", items.length === 2, items.length, 2);
@@ -231,7 +231,7 @@ const SAMPLES = [
 for (const s of SAMPLES) {
   if (!existsSync(s.f)) { console.log("· sample skipped (absent):", s.f); continue; }
   const t = parseTable(readFileSync(s.f, "utf8"));
-  const map = s.map ? { ref_id: t.headers.indexOf(s.map.ref), title: t.headers.indexOf(s.map.title) } : guessMapping(t.headers);
+  const map = s.map ? { ref_id: t.headers.indexOf(s.map.ref), title: t.headers.indexOf(s.map.title) } : guessMapping(t.headers, { rows: t.rows });
   const items = norm(tableToItems(t, map));
   ok(`sample ${s.f}: ≥${s.min} records`, items.length >= s.min, items.length, s.min);
   if (s.id) {
@@ -276,6 +276,90 @@ for (const s of SAMPLES) {
     tableToItems(t, { ref_id: 0, title: 2, description: [1, 2] })[0].description === "only this");
   ok("selecting nothing leaves the field unset",
     tableToItems(t, { ref_id: 0, title: 2, description: [] })[0].description === undefined);
+}
+
+// ── 24) the column a header NAMES is not always the column it IS ─────────────
+// Each of these was mapped wrongly by the first-match-wins pass this replaced, on the
+// publishers' own files. The shapes are reproduced here; the files are read for real by
+// harness/embed-import.mjs.
+{
+  // OWASP ASVS: "chapter_id" comes first and matches the reference aliases, but it
+  // repeats down the table - "req_id" is the one that identifies a row.
+  const t = parseTable("chapter_id,chapter_name,section_id,section_name,req_id,req_description\n"
+    + "V1,Architecture,V1.1,Section 1,V1.1.1,Verify requirement 1 of the standard in full.\n"
+    + "V1,Architecture,V1.1,Section 1,V1.1.2,Verify requirement 2 of the standard in full.\n"
+    + "V1,Architecture,V1.2,Section 2,V1.2.1,Verify requirement 3 of the standard in full.\n"
+    + "V1,Architecture,V1.2,Section 2,V1.2.2,Verify requirement 4 of the standard in full.\n"
+    + "V1,Architecture,V1.3,Section 3,V1.3.1,Verify requirement 5 of the standard in full.\n"
+    + "V1,Architecture,V1.3,Section 3,V1.3.2,Verify requirement 6 of the standard in full.\n"
+    + "V2,Authentication,V2.1,Section 1,V2.1.1,Verify requirement 7 of the standard in full.\n"
+    + "V2,Authentication,V2.1,Section 1,V2.1.2,Verify requirement 8 of the standard in full.\n"
+    + "V2,Authentication,V2.2,Section 2,V2.2.1,Verify requirement 9 of the standard in full.\n"
+    + "V2,Authentication,V2.2,Section 2,V2.2.2,Verify requirement 10 of the standard in full.\n"
+    + "V2,Authentication,V2.3,Section 3,V2.3.1,Verify requirement 11 of the standard in full.\n"
+    + "V2,Authentication,V2.3,Section 3,V2.3.2,Verify requirement 12 of the standard in full.\n"
+    + "V3,Session Management,V3.1,Section 1,V3.1.1,Verify requirement 13 of the standard in full.\n"
+    + "V3,Session Management,V3.1,Section 1,V3.1.2,Verify requirement 14 of the standard in full.\n"
+    + "V3,Session Management,V3.2,Section 2,V3.2.1,Verify requirement 15 of the standard in full.\n"
+    + "V3,Session Management,V3.2,Section 2,V3.2.2,Verify requirement 16 of the standard in full.\n"
+    + "V3,Session Management,V3.3,Section 3,V3.3.1,Verify requirement 17 of the standard in full.\n"
+    + "V3,Session Management,V3.3,Section 3,V3.3.2,Verify requirement 18 of the standard in full.\n"
+    + "V4,Access Control,V4.1,Section 1,V4.1.1,Verify requirement 19 of the standard in full.\n"
+    + "V4,Access Control,V4.1,Section 1,V4.1.2,Verify requirement 20 of the standard in full.\n"
+    + "V4,Access Control,V4.2,Section 2,V4.2.1,Verify requirement 21 of the standard in full.\n"
+    + "V4,Access Control,V4.2,Section 2,V4.2.2,Verify requirement 22 of the standard in full.\n"
+    + "V4,Access Control,V4.3,Section 3,V4.3.1,Verify requirement 23 of the standard in full.\n"
+    + "V4,Access Control,V4.3,Section 3,V4.3.2,Verify requirement 24 of the standard in full.");
+  const m = guessMapping(t.headers, { rows: t.rows });
+  ok("asvs ref_id is req_id, not chapter_id", m.ref_id === 4, m.ref_id, 4);
+  ok("asvs category is a repeating column", m.category === 1 || m.category === 3, m.category, "1 or 3");
+  ok("asvs ref_id is not the chapter", m.ref_id !== 0 && m.ref_id !== 2, m.ref_id, "not 0/2");
+}
+{
+  // SCF: "SCF Control" holds the control's NAME. The word "control" used to make it the
+  // reference; its values are sentences and "SCF #" holds the short unique codes.
+  const t = parseTable("SCF Domain,SCF Control,SCF #,Secure Controls Framework (SCF) Control Description\n"
+    + "Security & Risk Management,Steering Committee,GOV-01.1,\"Mechanisms exist to align cybersecurity and data protection with the organization's overall strategy.\"\n"
+    + "Security & Risk Management,Publishing Policies,GOV-02,\"Mechanisms exist to establish, maintain and disseminate cybersecurity policies and standards.\"\n"
+    + "Asset Management,Asset Governance,AST-01,\"Mechanisms exist to facilitate an IT asset management programme across the enterprise.\"\n"
+    + "Asset Management,Asset Inventories,AST-02,\"Mechanisms exist to perform inventories of technology assets that are updated regularly.\"");
+  const m = guessMapping(t.headers, { rows: t.rows });
+  ok("scf ref_id is the code column", m.ref_id === 2, m.ref_id, 2);
+  ok("scf title is the control name", m.title === 1, m.title, 1);
+  ok("scf category is the domain", m.category === 0, m.category, 0);
+  ok("scf description is the long text", m.description === 3, m.description, 3);
+}
+{
+  // A sheet's own row counter is not a reference, however much it looks like one.
+  const t = parseTable("#,ERL #,Area of Focus,Documentation Artifact,Artifact Description\n"
+    + "1,E-GOV-01,Governance,Charter - Cybersecurity Programme,\"Documented evidence of a charter that establishes the programme and its authority.\"\n"
+    + "2,E-GOV-02,Governance,Charter - Data Privacy Programme,\"Documented evidence of a charter for the data privacy programme and its scope.\"\n"
+    + "3,E-AST-01,Asset Management,Asset Inventory,\"Documented evidence of an inventory of technology assets kept up to date.\"\n"
+    + "4,E-AST-02,Asset Management,Asset Disposal Records,\"Documented evidence that assets are disposed of according to the stated procedure.\"");
+  const m = guessMapping(t.headers, { rows: t.rows });
+  ok("row counter is not taken as the reference", m.ref_id === 1, m.ref_id, 1);
+  ok("erl title is the artifact name", m.title === 3, m.title, 3);
+  ok("erl category is the area", m.category === 2, m.category, 2);
+}
+// ── 25) the model's opinion is weighed on its own scale, not an absolute one ──
+{
+  // The same ranking at two different scales must give the same answer. A fixed cosine
+  // cut-off cannot do this: 0.34 silences the first scorer and passes the second
+  // everywhere - which is what the two shipped embedding models actually do.
+  const t = parseTable("col_a,col_b,col_c\nZ1,Some control text,x\nZ2,Another control text,y");
+  const narrow = (f, h) => (f === "title" && h === "col_b" ? 0.77 : f === "ref_id" && h === "col_a" ? 0.73 : 0.51);
+  const wide = (f, h) => (f === "title" && h === "col_b" ? 0.90 : f === "ref_id" && h === "col_a" ? 0.85 : 0.10);
+  const a = guessMapping(t.headers, { rows: t.rows, score: narrow });
+  const b = guessMapping(t.headers, { rows: t.rows, score: wide });
+  ok("a narrow-range scorer is still heard", a.title === 1, a.title, 1);
+  ok("a wide-range scorer agrees with it", b.title === 1, b.title, 1);
+  ok("both scales give the same mapping", eq(a, b), a, b);
+}
+// ── 26) with no rows to inspect, the wording alone still has to work ──────────
+{
+  const m = guessMapping(["Control Identifier", "Control Name", "Family", "Discussion"]);
+  ok("headers alone still map", m.ref_id === 0 && m.title === 1 && m.category === 2 && m.description === 3,
+    m, { ref_id: 0, title: 1, category: 2, description: 3 });
 }
 
 console.log(`\n${pass}/${pass + fail} catalog-import assertions passed · ${fail} failed`);

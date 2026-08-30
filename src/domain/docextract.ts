@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
-// Offline plain-text extraction from Word (.docx) and PDF, so a text corpus can be
+// Offline plain-text extraction from Word (.docx), Excel (.xlsx) and PDF, so a text corpus can be
 // imported without any external service or CDN. Uses the built-in DecompressionStream
 // (deflate) - no libraries. .docx is exact; PDF is best-effort (works for most
 // digitally-generated PDFs; scanned or heavily-subset-font PDFs may not extract).
@@ -118,12 +118,15 @@ async function extractPdf(buf: ArrayBuffer): Promise<string> {
   return extractPdfBasic(buf);
 }
 
+import { isSpreadsheet, readWorkbook, sheetToCsv } from "./xlsx";
+
 const ext = (name: string) => (name.match(/\.([a-z0-9]+)$/i)?.[1] ?? "").toLowerCase();
 
-/** True for the binary formats we can extract text from (Word / PDF). */
+/** True for the binary formats we can extract text from (Word / Excel / PDF). */
 export function isExtractable(name: string, mime: string): boolean {
   const e = ext(name);
-  return e === "docx" || e === "pdf" || mime === "application/pdf" || mime.includes("wordprocessingml");
+  return e === "docx" || e === "pdf" || mime === "application/pdf" || mime.includes("wordprocessingml")
+    || isSpreadsheet(name, mime);
 }
 
 /** Extract plain text from a Word/PDF file; "" if nothing could be read. */
@@ -133,6 +136,15 @@ export async function extractFileText(file: File): Promise<string> {
   try {
     if (e === "pdf" || file.type === "application/pdf") return await extractPdf(buf);
     if (e === "docx" || file.type.includes("wordprocessingml")) return await extractDocx(buf);
+    // A workbook has no prose to extract, so each sheet is handed over as the table it
+    // is, named. The catalogue import reads sheets itself (and asks which one is meant);
+    // this path is for a corpus, where every sheet is text like any other.
+    if (isSpreadsheet(file.name, file.type)) {
+      return (await readWorkbook(buf))
+        .filter((sh) => sh.rows.length)
+        .map((sh) => `## ${sh.name}\n${sheetToCsv(sh.rows)}`)
+        .join("\n\n");
+    }
   } catch { /* fall through */ }
   return "";
 }
