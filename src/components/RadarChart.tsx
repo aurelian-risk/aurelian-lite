@@ -5,6 +5,7 @@
 //    legend) - e.g. threat actors compared across rating scores.
 // Falls back to bars when a radar would not read well (<3 or >8 axes).
 import { polar } from "../domain/viz";
+import { t as tr } from "../domain/i18n";
 
 export interface RadarAxis { label: string; sub?: string; value: number }
 export interface RadarSeries { label: string; color: string; values: number[]; sub?: string }
@@ -15,7 +16,7 @@ export function RadarChart({ axes, axisLabels, series, accent = "var(--teal-brig
   const multi = !!(series && axisLabels);
   const labels = multi ? axisLabels! : (axes ?? []).map((a) => a.label);
   const n = labels.length;
-  if (n === 0) return <div className="empty" style={{ padding: "16px 0" }}>Not enough data yet.</div>;
+  if (n === 0) return <div className="empty" style={{ padding: "16px 0" }}>{tr('ui.radarchart.not-enough-data-yet', 'Not enough data yet.')}</div>;
 
   // ── Bar fallback (radar unreadable) ──────────────────────────────────
   if (n < 3 || n > 8) {

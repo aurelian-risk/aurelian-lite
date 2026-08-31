@@ -6,6 +6,7 @@
 import type { EntityRecord, Study, Taxonomy } from "./types";
 import { declaredClass, effectClassOf, hasEffectField } from "./controls";
 import { isSetBack } from "./taxonomy";
+import { t as tr } from "./i18n";
 
 export type Severity = "high" | "medium" | "low";
 
@@ -36,8 +37,12 @@ export function lintStudy(tax: Taxonomy, study: Study): LintCheck[] {
     return out;
   };
   const checks: LintCheck[] = [];
+  // Every check already carries an id, so the words it shows are looked up here rather
+  // than at twenty-one call sites - a product gives them its own wording without this
+  // file being touched. See docs/i18n.md.
   const add = (id: string, title: string, severity: Severity, hint: string, type: string, affected: EntityRecord[]) =>
-    checks.push({ id, title, severity, hint, affected, total: ents(type).length });
+    checks.push({ id, title: tr(`check.${id}.title`, title), severity,
+      hint: tr(`check.${id}.hint`, hint), affected, total: ents(type).length });
 
   // Kill-chain steps not covered by any measure — the biggest exposure.
   if (has("kill_chain_step") && has("security_measure")) {

@@ -84,6 +84,16 @@ a { color: var(--primary); }
   box-shadow: 0 0 12px var(--primary-glow);
 }
 .nav-item .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+/* The two buttons at the foot of the sidebar carry marks of different sizes - a dot and a
+   globe - and a mark of a different size moves the label beside it. They share this column
+   instead, so the two labels start on the same pixel. */
+/* Numbered steps inside a guide box: a procedure reads as a list, not as one sentence
+   with arrows in it - which is what it was, and what made its translation unreadable. */
+.guide-steps { margin: 0; padding-left: 1.35em; display: grid; gap: 3px; }
+.guide-steps li { padding-left: 2px; }
+
+.nav-item .nav-mark { width: 15px; height: 15px; flex: none; display: grid; place-items: center; }
+.nav-item .nav-mark .inline-icon { width: 15px; height: 15px; }
 .nav-item .num { width: 26px; height: 26px; border-radius: 8px; flex: none;
   display: grid; place-items: center; font-size: 12px; font-weight: 700;
   background: var(--bg-hover); color: var(--fg-muted); }
@@ -432,7 +442,12 @@ select { cursor: pointer; }
 .tl-item:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 
 /* ── Badges / Chips ───────────────────────────────────────────────── */
-.badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: var(--radius-pill);
+/* A badge sits in a table cell, and the cell breaks anywhere so a long identifier cannot
+   push the column out. Inherited into a flex badge that rule shrinks the word itself:
+   "kritisch" became "kriti sch" beside the scale bars. English hid it — "high" is too short
+   to break. Found in the fork, on its German build. */
+.badge { overflow-wrap: break-word;
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: var(--radius-pill);
   font-size: 11.5px; font-weight: 600; background: var(--bg-hover); color: var(--fg-muted);
   border: 1px solid var(--hairline); white-space: nowrap; }
 .badge .dot { width: 7px; height: 7px; border-radius: 50%; }

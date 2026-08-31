@@ -5,6 +5,7 @@
 // apply to the attack rate of every scenario. Shown with the exceptions it actually
 // triggers, so the choice reads as consequential rather than administrative.
 import type { Study } from "../domain/types";
+import { t as tr } from "../domain/i18n";
 import { useStore } from "../domain/store";
 import { DEFAULT_CALIBRATION, knownSector, SECTORS, SECTOR_NOTES } from "../domain/calibration";
 
@@ -22,12 +23,12 @@ export function SectorSection({ study, color }: { study: Study; color: string })
   return (
     <div className="panel ws-accent" style={{ ["--ws-color" as string]: color, marginBottom: 20 }}>
       <div className="panel-head">
-        <h3>Sector</h3>
+        <h3>{tr('ui.sectorsection.sector', 'Sector')}</h3>
         <span className="spacer" />
-        <span className="hint">selects the attack-rate exceptions applied to this study</span>
+        <span className="hint">{tr("ui.sector.selects-the-exceptions", "selects the attack-rate exceptions applied to this study")}</span>
         <select className="btn sm" value={sector}
           onChange={(e) => updateStudy(study.id, { sector: e.target.value || undefined })}>
-          <option value="">Not set</option>
+          <option value="">{tr('ui.sectorsection.not-set', 'Not set')}</option>
           {!known && <option value={sector}>{sector} — not in this calibration</option>}
           {SECTORS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
@@ -42,7 +43,7 @@ export function SectorSection({ study, color }: { study: Study; color: string })
                   + "Pick one from the list, or add the exception in Calibration."}
             </p>
             <p className="sect-eff">
-              <span className="sect-eff-k">Applied to the attack rate:</span>{" "}
+              <span className="sect-eff-k">{tr('ui.sectorsection.applied-to-the-attack', 'Applied to the attack rate:')}</span>{" "}
               {rows.length
                 ? rows.map((r) => `${r.actor} ×${r.factor}`).join(" · ")
                 : "none"}
@@ -50,8 +51,7 @@ export function SectorSection({ study, color }: { study: Study; color: string })
           </>
         ) : (
           <p className="sect-note muted">
-            Without a sector the quantification uses the published base rates unchanged.
-            Choosing one only changes the attack rate where a documented exception exists.
+            {tr('ui.sectorsection.without-a-sector-the', 'Without a sector the quantification uses the published base rates unchanged.\n            Choosing one only changes the attack rate where a documented exception exists.')}
           </p>
         )}
       </div>

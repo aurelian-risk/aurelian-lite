@@ -8,6 +8,7 @@ export const PRODUCT: Product = {
   tagline: "Structured cyber risk analysis",
   mark: "Aurelian",
   source: "github.com/aurelian-risk/aurelian-lite",
+  language: "en",
 };
 
 export type { Product };

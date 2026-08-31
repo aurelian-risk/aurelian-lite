@@ -12,6 +12,7 @@
 // simulation to within a few tenths of a point, without noise and cheaply enough to
 // redraw while a dial is being dragged.
 import type { Band, EffectCalibration } from "../domain/calibration";
+import { t as tr } from "../domain/i18n";
 
 const W = 430, H = 182, PL = 34, PR = 12, PT = 16, PB = 40;
 const GRID = 256;
@@ -80,7 +81,7 @@ export function DepthCurve({ effect, capability, spread, levels, level, onLevel,
   return (
     <div className="depth">
       <div className="depth-switch">
-        <span>Implementation</span>
+        <span>{tr('ui.caldepth.implementation', 'Implementation')}</span>
         {levels.map((l, i) => (
           <button key={l} type="button" className={"cal-seg-b" + (i === level ? " on" : "")}
             onClick={() => onLevel(i)}>{l}</button>

@@ -11,9 +11,10 @@
 // The state and the filtering live in useTableFilter, so a view that is not a plain
 // entity table (the coverage matrix, say) gets the same behaviour by calling one hook.
 import { useMemo, useRef, useState, useEffect, type RefObject } from "react";
+import { t as tr } from "../domain/i18n";
 import { getGroupKey, setGroupKey as storeGroupKey } from "../domain/viewstate";
 import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue } from "../domain/types";
-import { scaleLabel } from "../domain/taxonomy";
+import { fieldLabel, scaleLabel, typeLabelPlural } from "../domain/taxonomy";
 import { facetsOf, countFacets, filterItems, groupItems, activeCount, type Selection } from "../domain/tablefilter";
 import { Icon, useDismissOnEscape } from "./ui";
 
@@ -108,7 +109,7 @@ function ColumnsMenu({ columns }: { columns: ColumnChoice }) {
     <div className="facet-menu" ref={box}>
       <button type="button" className={"facet-btn" + (columns.hidden.size ? " on" : "")}
         aria-expanded={open} onClick={() => setOpen((o) => !o)}
-        title="Which columns this table shows">
+        title={tr('ui.tabletools.which-columns-this-table', 'Which columns this table shows')}>
         Columns
         {columns.hidden.size > 0 && <span className="facet-n">{shown}/{columns.fields.length}</span>}
         <span className="facet-caret"><Icon.chevron /></span>
@@ -149,7 +150,7 @@ function FacetMenu({ facet, chosen, onToggle }:
     <div className="facet-menu" ref={box}>
       <button type="button" className={"facet-btn" + (chosen.length ? " on" : "")}
         aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        {facet.field.label}
+        {fieldLabel(facet.field)}
         {chosen.length > 0 && <span className="facet-n">{chosen.length}</span>}
         <span className="facet-caret"><Icon.chevron /></span>
       </button>
@@ -186,8 +187,8 @@ export function TableTools({ type, f, groupable = true, columns }:
     <div className="tbl-tools">
       <label className="tbl-search">
         <Icon.search />
-        <input type="search" value={f.query} placeholder={`Search ${type.labelPlural.toLowerCase()}…`}
-          onChange={(e) => f.setQuery(e.target.value)} aria-label={`Search ${type.labelPlural}`} />
+        <input type="search" value={f.query} placeholder={`Search ${typeLabelPlural(type).toLowerCase()}…`}
+          onChange={(e) => f.setQuery(e.target.value)} aria-label={`Search ${typeLabelPlural(type)}`} />
       </label>
       {f.facets.map((facet) => (
         <FacetMenu key={facet.field.key} facet={facet} chosen={f.sel[facet.field.key] ?? []}
@@ -195,16 +196,16 @@ export function TableTools({ type, f, groupable = true, columns }:
       ))}
       {groupable && f.facets.length > 0 && (
         <select className="tbl-group" value={f.groupKey} onChange={(e) => f.setGroupKey(e.target.value)}
-          aria-label="Group by" title="Group the rows by a column">
+          aria-label={tr('ui.tabletools.group-by', 'Group by')} title={tr('ui.tabletools.group-the-rows-by', 'Group the rows by a column')}>
           <option value="">no grouping</option>
-          {f.facets.map((facet) => <option key={facet.field.key} value={facet.field.key}>by {facet.field.label.toLowerCase()}</option>)}
+          {f.facets.map((facet) => <option key={facet.field.key} value={facet.field.key}>by {fieldLabel(facet.field).toLowerCase()}</option>)}
         </select>
       )}
       {columns && columns.fields.length > 1 && <ColumnsMenu columns={columns} />}
       <span className="tbl-count">
         {f.filtered ? `${f.shown.length} of ${f.total}` : `${f.total}`}
       </span>
-      {f.filtered && <button className="tbl-clear" onClick={f.clearAll} title="Clear every filter"><Icon.close /></button>}
+      {f.filtered && <button className="tbl-clear" onClick={f.clearAll} title={tr('ui.tabletools.clear-every-filter', 'Clear every filter')}><Icon.close /></button>}
     </div>
   );
 }

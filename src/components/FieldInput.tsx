@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Renders a single taxonomy field as the appropriate input control.
-import type { FieldDef, FieldValue } from "../domain/types";
-import { optionLabel, scaleLabel, scaleMax } from "../domain/taxonomy";
+import type { FieldDef, FieldValue, EntityTypeDef } from "../domain/types";
+import { fieldHelp, optionLabel, scaleLabel, scaleMax } from "../domain/taxonomy";
 import { suggestTechniques, techniqueLabel } from "../domain/mitre";
 import { MultiSelect, ScaleInput } from "./ui";
 
 export interface RefOption { id: string; label: string; group?: string }
 
 export function FieldInput({
-  field, value, onChange, refOptions, siblings, suggested, multirefOptions,
+  field, type, value, onChange, refOptions, siblings, suggested, multirefOptions,
 }: {
   field: FieldDef;
+  /** The type this field belongs to, so a product may word one type's field its own way. */
+  type?: EntityTypeDef;
   value: FieldValue;
   onChange: (v: FieldValue) => void;
   refOptions: (typeKey: string) => RefOption[];
@@ -36,7 +38,7 @@ export function FieldInput({
       return (
         <select value={shown} onChange={(e) => onChange(e.target.value)}>
           {!field.required && !two && <option value="">—</option>}
-          {(field.options ?? []).map((o) => <option key={o} value={o}>{optionLabel(field, o)}</option>)}
+          {(field.options ?? []).map((o) => <option key={o} value={o}>{optionLabel(field, o, type)}</option>)}
         </select>
       );
     }
@@ -44,7 +46,7 @@ export function FieldInput({
     case "scale": {
       const max = scaleMax(field);
       const v = typeof value === "number" ? value : 1;
-      return <ScaleInput value={v} max={max} onChange={onChange} label={scaleLabel(field, v)} />;
+      return <ScaleInput value={v} max={max} onChange={onChange} label={scaleLabel(field, v, type)} />;
     }
 
     case "number":
@@ -108,6 +110,6 @@ export function FieldInput({
           </div>
         );
       }
-      return <input value={String(value ?? "")} placeholder={field.help} onChange={(e) => onChange(e.target.value)} />;
+      return <input value={String(value ?? "")} placeholder={fieldHelp(field, type)} onChange={(e) => onChange(e.target.value)} />;
   }
 }

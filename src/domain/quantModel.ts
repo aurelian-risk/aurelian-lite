@@ -5,6 +5,7 @@
 // Only the loss magnitudes stay as user-estimated distributions. Each factor
 // carries its provenance so the tree can show where it comes from.
 import type { EntityRecord, Study, Taxonomy } from "./types";
+import { tn } from "./i18n";
 import { getType, isSetBack, scaleLabel, scaleMax } from "./taxonomy";
 import { stepFields } from "./killchain";
 import { effectClassOf, type EffectClass } from "./controls";
@@ -447,9 +448,9 @@ export function deriveInputs(study: Study, tax: Taxonomy, op: EntityRecord, with
     put("attemptRate", { cls: "Deterrent", strength: deter, factor: 1 - cal.effect.deterrence * deter,
       what: "the actor who still has it in reach is discouraged" });
     put("controlStrength", { cls: "Preventive", strength: classEff("Preventive"), steps: gated,
-      what: gated ? `${gated} step${gated === 1 ? "" : "s"} an attacker has to get past` : "measures recorded, but none of them blocks a step" });
+      what: gated ? `${tn("quant.gatedSteps", gated, "{0} step", "{0} steps")} an attacker has to get past` : "measures recorded, but none of them blocks a step" });
     put("controlStrength", { cls: "Detective", strength: classEff("Detective"), steps: watched,
-      what: watched ? `${watched} step${watched === 1 ? "" : "s"} where he can be caught and the chain broken` : "measures recorded, but no step is watched" });
+      what: watched ? `${tn("quant.watchedSteps", watched, "{0} step", "{0} steps")} where he can be caught and the chain broken` : "measures recorded, but no step is watched" });
     put("directImpact", { cls: "Corrective", strength: corr, factor: 1 - cal.effect.recoverableShare * corr,
       what: "part of the loss is recovered rather than borne" });
     put("directImpact", { cls: "Detective", strength: termDet, factor: 1 - cal.effect.lateDetection * termDet,

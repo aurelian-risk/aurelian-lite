@@ -1,6 +1,6 @@
 {
   "name": "aurelian-lite",
-  "version": "0.6.7",
+  "version": "0.6.8",
   "description": "Aurelian Lite - structured, offline cyber risk analysis (EBIOS RM) in a single portable HTML file",
   "type": "module",
   "license": "MPL-2.0",
@@ -46,6 +46,8 @@
     "test:viewstate": "esbuild src/domain/viewstate.ts --bundle --format=esm --outfile=node_modules/.cache/viewstate.mjs --log-level=error && MOD_V=node_modules/.cache/viewstate.mjs node scripts/viewstate-test.mjs",
     "test:modelling": "esbuild src/domain/modelling.ts --bundle --format=esm --outfile=node_modules/.cache/modelling.mjs --log-level=error && MOD_M=node_modules/.cache/modelling.mjs node scripts/modelling-test.mjs",
     "test:xlsx": "esbuild src/domain/xlsx.ts --bundle --format=esm --outfile=node_modules/.cache/xlsx.mjs --log-level=error && MOD_X=node_modules/.cache/xlsx.mjs node scripts/xlsx-test.mjs",
+    "test:i18n": "rm -rf node_modules/.cache/i18n && esbuild src/domain/i18n.ts src/domain/taxonomy.ts --bundle --splitting --format=esm --outdir=node_modules/.cache/i18n --out-extension:.js=.mjs --log-level=error && MOD_I=node_modules/.cache/i18n/i18n.mjs MOD_T=node_modules/.cache/i18n/taxonomy.mjs node scripts/i18n-test.mjs",
+    "test:words": "rm -rf node_modules/.cache/words && esbuild src/profile/index.ts src/domain/lint.ts src/profile/ebios/sample.ts src/domain/words.ts --bundle --splitting --format=esm --outdir=node_modules/.cache/words --out-extension:.js=.mjs --define:import.meta.env={\\\"VITE_LLM\\\":\\\"1\\\"} --log-level=error && MOD_P=node_modules/.cache/words/profile/index.mjs MOD_L=node_modules/.cache/words/domain/lint.mjs MOD_S=node_modules/.cache/words/profile/ebios/sample.mjs MOD_W=node_modules/.cache/words/domain/words.mjs node scripts/words-test.mjs",
     "spdx": "node scripts/spdx.mjs",
     "spdx:check": "node scripts/spdx.mjs --check",
     "shots": "node scripts/shots.mjs"

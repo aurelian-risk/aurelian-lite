@@ -3,6 +3,8 @@
 // content is NOT ingested into the browser. Files can be opened transiently in
 // a viewer, but nothing is stored. (LLM extraction will read content on demand.)
 import { useEffect, useState } from "react";
+import { Sentence } from "./Sentence";
+import { t as tr, tn } from "../domain/i18n";
 import { useActiveStudy, useStore } from "../domain/store";
 import { addRef, deleteDoc, listDocs, pickFileForRef, type RefDoc } from "../domain/documents";
 import { ExtractionDialog } from "./ExtractionDialog";
@@ -37,11 +39,11 @@ export function DocumentsView() {
   if (!study) {
     return (
       <div className="content">
-        <div className="page-head"><div style={{ flex: 1 }}><div className="eyebrow">Reference library</div><h1 className="grad-text">Documents</h1></div></div>
+        <div className="page-head"><div style={{ flex: 1 }}><div className="eyebrow">{tr('ui.documents.reference-library', 'Reference library')}</div><h1 className="grad-text">{tr('ui.documents.documents', 'Documents')}</h1></div></div>
         <div className="empty">
-          <h3>Import a document corpus</h3>
-          Add Word, PDF or text files (text is extracted locally, fully offline). The first document starts a new study to hold the corpus.
-          <div style={{ marginTop: 14 }}><button className="btn primary" onClick={addReference}><Icon.plus /> Add document…</button></div>
+          <h3>{tr('ui.documents.import-a-document-corpus', 'Import a document corpus')}</h3>
+          {tr('ui.documents.add-word-pdf-or', 'Add Word, PDF or text files (text is extracted locally, fully offline). The first document starts a new study to hold the corpus.')}
+          <div style={{ marginTop: 14 }}><button className="btn primary" onClick={addReference}><Icon.plus /> {tr('ui.documents.add-document', 'Add document…')}</button></div>
         </div>
       </div>
     );
@@ -57,31 +59,33 @@ export function DocumentsView() {
       <div className="page-head">
         <div style={{ flex: 1 }}>
           <div className="eyebrow">Reference library · {study.name}</div>
-          <h1 className="grad-text">Documents</h1>
-          <div className="meta" style={{ color: "var(--fg-subtle)" }}>{docs.length} reference{docs.length === 1 ? "" : "s"} for this study · Word / PDF / text - extracted &amp; cached locally for extraction</div>
+          <h1 className="grad-text">{tr('ui.documents.documents', 'Documents')}</h1>
+          <div className="meta" style={{ color: "var(--fg-subtle)" }}>{tn("ui.documents.references-for-study", docs.length, "{0} reference for this study · Word / PDF / text - extracted \u0026 cached locally for extraction", "{0} references for this study · Word / PDF / text - extracted \u0026 cached locally for extraction")}</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn primary" onClick={addReference}><Icon.plus /> Add reference</button>
-          <button className="btn" onClick={() => setCatImport(true)} title="Import a requirement/measure framework from a table (CSV/TSV/JSON)"><Icon.upload /> Import framework</button>
-          <button className="btn" onClick={() => setExtract({ name: "" })}><Icon.spark /> Extract</button>
+          <button className="btn primary" onClick={addReference}><Icon.plus /> {tr('ui.documents.add-reference', 'Add reference')}</button>
+          <button className="btn" onClick={() => setCatImport(true)} title={tr('ui.documents.import-a-requirement-measure', 'Import a requirement/measure framework from a table (CSV/TSV/JSON)')}><Icon.upload /> {tr('ui.documents.import-framework', 'Import framework')}</button>
+          <button className="btn" onClick={() => setExtract({ name: "" })}><Icon.spark /> {tr('ui.documents.extract', 'Extract')}</button>
         </div>
       </div>
 
       <div className="guide">
-        References keep each source document's name, type and size. For <strong>text files</strong> the plain
-        text is also cached locally (offline, in your browser) so <em>Extract</em> can read it instantly —
-        nothing is uploaded. Click <em>Extract</em> on a reference to propose entities for the active study.
+        <Sentence k="ui.documents.guide" parts={[
+          <strong>{tr("ui.documents.text-files", "text files")}</strong>,
+          <em>{tr('ui.documents.extract', 'Extract')}</em>,
+          <em>{tr('ui.documents.extract', 'Extract')}</em>,
+        ]} en={"References keep each source document's name, type and size. For {0} the plain text is also cached locally (offline, in your browser) so {1} can read it instantly — nothing is uploaded. Click {2} on a reference to propose entities for the active study."} />
       </div>
 
       {docs.length === 0 ? (
-        <div className="empty"><h3>No references yet</h3>Add a reference to a source document to start your library.</div>
+        <div className="empty"><h3>{tr('ui.documents.no-references-yet', 'No references yet')}</h3>{tr('ui.documents.add-a-reference-to', 'Add a reference to a source document to start your library.')}</div>
       ) : (
         <div className="panel">
-          <div className="panel-head"><h3>References</h3><span className="badge">{docs.length}</span></div>
+          <div className="panel-head"><h3>{tr('ui.documents.references', 'References')}</h3><span className="badge">{docs.length}</span></div>
           <div className="panel-body">
             <table className="tbl">
               <colgroup><col /><col style={{ width: 140 }} /><col style={{ width: 90 }} /><col /><col style={{ width: 80 }} /></colgroup>
-              <thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Added</th><th /></tr></thead>
+              <thead><tr><th>{tr('ui.documents.name', 'Name')}</th><th>{tr('ui.documents.type', 'Type')}</th><th>{tr('ui.documents.size', 'Size')}</th><th>{tr('ui.documents.added', 'Added')}</th><th /></tr></thead>
               <tbody>
                 {docs.map((d) => (
                   <tr key={d.id}>
@@ -91,8 +95,8 @@ export function DocumentsView() {
                     <td><span className="desc">{fmtDate(d.addedAt)}</span></td>
                     <td>
                       <div className="row-actions">
-                        <button className="btn ghost sm" onClick={() => setExtract({ name: d.name, docId: d.id })} title={d.hasText ? "Extract from cached text" : "Extract (open file)"} aria-label="Extract"><Icon.spark /></button>
-                        <button className="btn ghost sm danger" onClick={() => remove(d.id)} aria-label="Remove"><Icon.trash /></button>
+                        <button className="btn ghost sm" onClick={() => setExtract({ name: d.name, docId: d.id })} title={d.hasText ? "Extract from cached text" : "Extract (open file)"} aria-label={tr('ui.documents.extract', 'Extract')}><Icon.spark /></button>
+                        <button className="btn ghost sm danger" onClick={() => remove(d.id)} aria-label={tr('ui.documents.remove', 'Remove')}><Icon.trash /></button>
                       </div>
                     </td>
                   </tr>

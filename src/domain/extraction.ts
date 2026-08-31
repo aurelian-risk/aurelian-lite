@@ -16,6 +16,7 @@
 //     type, but when no heading exists the prior is absent and only the sentence
 //     decides. No structural assumption is load-bearing.
 import type { EntityRecord, EntityTypeDef, FieldValue, Taxonomy } from "./types";
+import { fieldLabel, typeLabel, typeLabelPlural } from "./taxonomy";
 import { cosine, embed } from "./embeddings";
 
 export interface Candidate { name: string; snippet: string; score: number; uncertain?: boolean; typeKey: string; values: Record<string, FieldValue> }
@@ -108,7 +109,7 @@ export async function extractByEmbeddings(tax: Taxonomy, text: string, opts: Ext
   if (!segs.length) return [];
 
   const types = tax.entityTypes;
-  const labelSet = new Set(types.flatMap((t) => [norm(t.label), norm(t.labelPlural)]));
+  const labelSet = new Set(types.flatMap((t) => [norm(typeLabel(t)), norm(typeLabelPlural(t))]));
 
   // (A) Prototype text pool per type: label/plural + up to MAX_PROTO real records.
   const byType = new Map<string, EntityRecord[]>();
@@ -117,7 +118,7 @@ export async function extractByEmbeddings(tax: Taxonomy, text: string, opts: Ext
   const protoSpan: { start: number; count: number }[] = [];
   for (const t of types) {
     const start = protoTexts.length;
-    protoTexts.push(`${t.label}, ${t.labelPlural}`);
+    protoTexts.push(`${typeLabel(t)}, ${typeLabelPlural(t)}`);
     for (const rec of (byType.get(t.key) ?? []).slice(0, MAX_PROTO)) { const txt = recordText(t, rec); if (txt) protoTexts.push(txt); }
     protoSpan.push({ start, count: protoTexts.length - start });
   }
@@ -126,7 +127,7 @@ export async function extractByEmbeddings(tax: Taxonomy, text: string, opts: Ext
   const optTexts: string[] = [];
   const optRef: { key: string; option: string }[] = [];
   for (const t of types) for (const f of t.fields) if (f.type === "enum" && f.options?.length)
-    for (const o of f.options) { optRef.push({ key: t.key + "|" + f.key, option: o }); optTexts.push(`${f.label}: ${o}`); }
+    for (const o of f.options) { optRef.push({ key: t.key + "|" + f.key, option: o }); optTexts.push(`${fieldLabel(f)}: ${o}`); }
 
   const headings = [...new Set(segs.map((s) => s.heading).filter((h): h is string => !!h))];
   const headingIdx = new Map(headings.map((h, i) => [h, i]));
@@ -192,6 +193,6 @@ export async function extractByEmbeddings(tax: Taxonomy, text: string, opts: Ext
   }
 
   return types
-    .map((t) => ({ typeKey: t.key, label: t.labelPlural, candidates: (out.get(t.key) ?? []).sort((a, b) => b.score - a.score).slice(0, 20) }))
+    .map((t) => ({ typeKey: t.key, label: typeLabelPlural(t), candidates: (out.get(t.key) ?? []).sort((a, b) => b.score - a.score).slice(0, 20) }))
     .filter((tc) => tc.candidates.length > 0);
 }

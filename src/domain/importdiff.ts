@@ -3,7 +3,7 @@
 // reviewed (added / changed / removed entities, with per-field changes) before it
 // is applied. Deterministic and offline; matching is by entity id.
 import type { EntityRecord, FieldChange, FieldValue, Study, Taxonomy } from "./types";
-import { getType, recordTitle } from "./taxonomy";
+import { getType, recordTitle, typeNameOf } from "./taxonomy";
 import { appendAll, diffValues, hashValues } from "./audit";
 
 export interface FieldDelta { field: string; label: string; from: FieldValue; to: FieldValue }
@@ -13,7 +13,7 @@ export interface StudyDiff { id: string; name: string; isNew: boolean; added: En
 
 export function diffBundle(tax: Taxonomy, current: Study[], incoming: Study[]): StudyDiff[] {
   const curById = new Map(current.map((s) => [s.id, s]));
-  const typeLabel = (t: string) => getType(tax, t)?.label ?? t;
+  const typeLabel = (t: string) => typeNameOf(tax, t);
   const flabel = (t: string, k: string) => getType(tax, t)?.fields.find((f) => f.key === k)?.label ?? k;
   const elabel = (e: EntityRecord) => { const t = getType(tax, e.type); return t ? recordTitle(t, e) : e.id; };
   // The incoming metadata now lives in the study's own log; fall back to the legacy

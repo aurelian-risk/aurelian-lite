@@ -3,7 +3,8 @@
 // the schema (entity types + fields) followed by the data (entities with
 // relationships resolved to names). Paste into an LLM chat as grounded context.
 import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue, Study, Taxonomy } from "./types";
-import { columnFields, getType, recordTitle, scaleLabel, scaleMax, isSetBack } from "./taxonomy";
+import { tn } from "./i18n";
+import { columnFields, fieldLabel, getType, groupDescription, groupLabel, isSetBack, recordTitle, scaleLabel, scaleMax, typeLabel, typeLabelPlural } from "./taxonomy";
 import { spreadColumn } from "./graph";
 import { PRODUCT } from "../profile";
 import { deriveInputs, meanOf } from "./quantModel";
@@ -56,22 +57,22 @@ export function workshopMarkdown(tax: Taxonomy, study: Study, groupKey: string):
 
   L.push("## Schema (valid taxonomy for this workshop)");
   for (const t of types) {
-    L.push(`### ${t.label} \`${t.key}\``);
-    for (const f of t.fields) L.push(`- ${f.label}: ${fieldSpec(f, tax)}`);
+    L.push(`### ${typeLabel(t)} \`${t.key}\``);
+    for (const f of t.fields) L.push(`- ${fieldLabel(f)}: ${fieldSpec(f, tax)}`);
     L.push("");
   }
 
   L.push("## Data");
   for (const t of types) {
     const items = study.entities.filter((e) => e.type === t.key);
-    L.push(`### ${t.labelPlural} (${items.length})`);
+    L.push(`### ${typeLabelPlural(t)} (${items.length})`);
     if (items.length === 0) L.push("_none_");
     items.forEach((e: EntityRecord, i) => {
       L.push(`${i + 1}. **${recordTitle(t, e)}**`);
       for (const f of t.fields) {
         if (f.key === (t.titleField ?? "name")) continue;
         const val = valueMd(f, e.values[f.key] ?? null, tax, study);
-        if (val !== "—") L.push(`   - ${f.label}: ${val}`);
+        if (val !== "—") L.push(`   - ${fieldLabel(f)}: ${val}`);
       }
     });
     L.push("");
@@ -143,9 +144,9 @@ export function riskMatrixSvg(tax: Taxonomy, study: Study, opts?: { posFn?: (e: 
   }
   for (let x = 1; x <= xMax; x++)
     p.push(`<text x="${L0 + (x - 1) * cw + cw / 2}" y="${innerH - 26}" text-anchor="middle" font-size="11.5" fill="#5a6675">${esc(scaleLabel(xF, x))}</text>`);
-  p.push(`<text x="${L0 + (xMax * cw) / 2}" y="${innerH - 8}" text-anchor="middle" font-size="11.5" font-weight="600" fill="#3a4552">${esc(xF.label)} →</text>`);
+  p.push(`<text x="${L0 + (xMax * cw) / 2}" y="${innerH - 8}" text-anchor="middle" font-size="11.5" font-weight="600" fill="#3a4552">${esc(fieldLabel(xF))} →</text>`);
   const yc = T + (yMax * ch) / 2;
-  p.push(`<text x="4" y="${yc}" text-anchor="middle" font-size="11.5" font-weight="600" fill="#3a4552" transform="rotate(-90 4 ${yc})">${esc(yF.label)} →</text>`);
+  p.push(`<text x="4" y="${yc}" text-anchor="middle" font-size="11.5" font-weight="600" fill="#3a4552" transform="rotate(-90 4 ${yc})">${esc(fieldLabel(yF))} →</text>`);
   p.push("</g></svg>");
   return p.join("");
 }
@@ -170,7 +171,7 @@ function scaleBarsSvg(type: EntityTypeDef, rec: EntityRecord): string | null {
   scales.forEach((f, i) => {
     const v = Number(rec.values[f.key] ?? 1), max = scaleMax(f), c = barColor(v, max, f.polarity === "positive");
     const cy = PAD + i * rowH + rowH / 2;
-    p.push(`<text x="${PAD}" y="${cy + 4}" font-size="11.5" fill="${HEX.muted}">${esc(mm(f.label, 24))}</text>`);
+    p.push(`<text x="${PAD}" y="${cy + 4}" font-size="11.5" fill="${HEX.muted}">${esc(mm(fieldLabel(f), 24))}</text>`);
     p.push(`<rect x="${PAD + labelW}" y="${cy - 4}" width="${barW}" height="8" rx="4" fill="${HEX.track}"/>`);
     p.push(`<rect x="${PAD + labelW}" y="${cy - 4}" width="${Math.max(6, barW * v / max).toFixed(1)}" height="8" rx="4" fill="${c}"/>`);
     p.push(`<text x="${PAD + labelW + barW + 9}" y="${cy + 4}" font-size="11" fill="${HEX.ink}">${esc(mm(scaleLabel(f, v), 16))}</text>`);
@@ -209,7 +210,7 @@ function assetHeatmapSection(tax: Taxonomy, study: Study): string | null {
     const c = barColor(t.v, max, false);
     p.push(`<rect x="${PAD}" y="${y}" width="${W - 2 * PAD}" height="${headH}" rx="8" fill="${c}" fill-opacity="0.16" stroke="${c}" stroke-opacity="0.5"/>`);
     p.push(`<text x="${PAD + 12}" y="${y + 19}" font-size="13" font-weight="600" fill="${HEX.ink}">${esc(mm(recordTitle(biz, t.e), 46))}</text>`);
-    const right = `${scaleLabel(critF, t.v)}${supp ? ` · ${t.sup.length} ${t.sup.length === 1 ? supp.label.toLowerCase() : supp.labelPlural.toLowerCase()}` : ""}`;
+    const right = `${scaleLabel(critF, t.v)}${supp ? ` · ${t.sup.length} ${t.sup.length === 1 ? typeLabel(supp).toLowerCase() : typeLabelPlural(supp).toLowerCase()}` : ""}`;
     p.push(`<text x="${W - PAD - 12}" y="${y + 19}" text-anchor="end" font-size="11" font-weight="600" fill="${c}">${esc(mm(right, 40))}</text>`);
     let sy = y + headH;
     for (const sa of t.sup) {
@@ -302,7 +303,7 @@ function threatRadarSvg(tax: Taxonomy, study: Study): string | null {
     sub: catF ? String(a.values[catF.key] ?? "") : undefined,
     values: scales.map((f) => (Number(a.values[f.key] ?? 1) - 1) / Math.max(1, scaleMax(f) - 1)),
   }));
-  return radarSvg(scales.map((f) => f.label), series);
+  return radarSvg(scales.map((f) => fieldLabel(f)), series);
 }
 
 /** Framework-coverage radar: share of each framework's requirements fulfilled. */
@@ -407,7 +408,7 @@ function attackFlowSvg(tax: Taxonomy, study: Study): string | null {
   p.push(cap(x0, "Risk source") + cap(x1, "Strategic scenario") + cap(x2, "Feared event"));
   if (omitted) {
     p.push(`<text x="${W / 2}" y="${H - 20}" text-anchor="middle" font-size="10.5" fill="${HEX.muted}">`
-      + `${omitted} further scenario${omitted === 1 ? "" : "s"} not drawn - the full list is in the Strategic Scenarios section</text>`);
+      + `${tn("report.furtherScenarios", omitted, "{0} further scenario", "{0} further scenarios")} not drawn - the full list is in the Strategic Scenarios section</text>`);
   }
   p.push("</svg>");
   return p.join("");
@@ -710,7 +711,7 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
   if (log.length) {
     const editors = [...new Set(log.map((e) => e.editor).filter(Boolean))];
     const last = log[log.length - 1];
-    dc.push(`| Change record | ${log.length} entries, ${editors.length} editor${editors.length === 1 ? "" : "s"}, last ${String(last?.ts ?? "").slice(0, 10)} |`);
+    dc.push(`| Change record | ${log.length} entries, ${tn("report.editors", editors.length, "{0} editor", "{0} editors")}, last ${String(last?.ts ?? "").slice(0, 10)} |`);
   }
   L.push(dc.join("\n"));
   L.push("");
@@ -731,7 +732,7 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
   L.push("## Overview\n");
   for (const t of tax.entityTypes) {
     const n = study.entities.filter((e) => e.type === t.key).length;
-    if (n) L.push(`- **${t.labelPlural}:** ${n}`);
+    if (n) L.push(`- **${typeLabelPlural(t)}:** ${n}`);
   }
   L.push("");
 
@@ -792,7 +793,7 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
       const tech = kcTechF ? String(s.values[kcTechF.key] ?? "") : "";
       return `<li><span class="kc-n">${i + 1}</span><span class="kc-body"><span class="kc-name">${esc(recordTitle(kcStepType, s))}</span>${tac ? `<span class="kc-tac">${esc(tac)}</span>` : ""}</span>${tech ? `<span class="kc-tech">${esc(tech)}</span>` : ""}</li>`;
     }).join("");
-    return `<div class="kc-wrap"><div class="kc-h">Kill chain · ${steps.length} step${steps.length === 1 ? "" : "s"}</div><ol class="kc">${rows}</ol></div>`;
+    return `<div class="kc-wrap"><div class="kc-h">Kill chain · ${tn("report.steps", steps.length, "{0} step", "{0} steps")}</div><ol class="kc">${rows}</ol></div>`;
   };
 
   // Where the chain-defence block belongs: with the scenarios whose chains it is about.
@@ -804,15 +805,15 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
     const types = tax.entityTypes.filter((t) => t.group === g.key);
     if (!types.some((t) => study.entities.some((e) => e.type === t.key))) continue;
     L.push("---\n");
-    L.push(`## ${g.label}`);
-    if (g.description) L.push(`_${g.description}._\n`);
+    L.push(`## ${groupLabel(g)}`);
+    if (groupDescription(g)) L.push(`_${groupDescription(g)}._\n`);
     for (const t of types) {
       if (kcStepType && t.key === kcStepType.key) continue;   // nested under its op scenario instead
       const items = study.entities.filter((e) => e.type === t.key);
       if (!items.length) continue;
       const titleKey = t.titleField ?? "name";
       const descF = t.fields.find((f) => f.type === "textarea");
-      L.push(`### ${t.labelPlural} (${items.length})\n`);
+      L.push(`### ${typeLabelPlural(t)} (${items.length})\n`);
       // Past a dozen, a register is read across its rows rather than one card at a time.
       // A catalogue-backed type reaches the hundreds, and a headed block each turns a
       // document about this organisation into a reprint of the framework it works to.
@@ -820,7 +821,7 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
       // kill chain underneath, and a chain does not go in a cell.
       if (items.length > CARD_LIMIT && t.key !== kcOpKey) {
         const cols = columnFields(t).filter((f) => f.key !== titleKey).slice(0, TABLE_COLS);
-        L.push(`| ${t.label} | ${cols.map((f) => f.label).join(" | ")} |`);
+        L.push(`| ${typeLabel(t)} | ${cols.map((f) => fieldLabel(f)).join(" | ")} |`);
         L.push(`|${" --- |".repeat(cols.length + 1)}`);
         for (const e of items) {
           const cells = cols.map((f) => cellText(valueMd(f, e.values[f.key] ?? null, tax, study)));
@@ -843,8 +844,8 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
             // Encode the level so the HTML report can draw a mini level bar: (n/m)
             // for "higher = worse" scales, [n/m] for "higher = better" (positive).
             const br = f.polarity === "positive" ? `[${raw}/${scaleMax(f)}]` : `(${raw}/${scaleMax(f)})`;
-            attrs.push(`**${f.label}:** ${val} ${br}`);
-          } else attrs.push(`**${f.label}:** ${val}`);
+            attrs.push(`**${fieldLabel(f)}:** ${val} ${br}`);
+          } else attrs.push(`**${fieldLabel(f)}:** ${val}`);
         }
         if (attrs.length) L.push(attrs.map((a) => `- ${a}`).join("\n"));
         if (kcStepType && t.key === kcOpKey) { const kc = kcStepsHtml(e); if (kc) L.push(kc); }

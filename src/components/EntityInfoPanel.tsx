@@ -2,7 +2,8 @@
 // Shared right-frame info panel for the graph and the flow canvas: type, all
 // field values, and clickable incoming/outgoing relationships (navigate).
 import type { EntityRecord, FieldDef, FieldValue, Study, Taxonomy } from "../domain/types";
-import { getType, recordTitle, refFields, scaleLabel } from "../domain/taxonomy";
+import { t as tr } from "../domain/i18n";
+import { fieldLabel, fieldRelation, getType, recordTitle, refFields, scaleLabel, typeLabel } from "../domain/taxonomy";
 import { Icon } from "./ui";
 
 function valueText(tax: Taxonomy, study: Study, f: FieldDef, v: FieldValue): string {
@@ -35,7 +36,7 @@ export function EntityInfoPanel({ tax, study, id, onSelect, onEdit, onClose }: {
   for (const f of refFields(type)) {
     const v = rec.values[f.key];
     const ids = f.type === "multiref" ? (Array.isArray(v) ? (v as string[]) : []) : v ? [v as string] : [];
-    ids.forEach((tid) => outgoing.push({ rel: f.relation ?? f.label, id: tid }));
+    ids.forEach((tid) => outgoing.push({ rel: fieldRelation(f), id: tid }));
   }
   const incoming: { rel: string; id: string }[] = [];
   for (const e of study.entities) {
@@ -44,7 +45,7 @@ export function EntityInfoPanel({ tax, study, id, onSelect, onEdit, onClose }: {
     for (const f of refFields(et)) {
       const v = e.values[f.key];
       const ids = f.type === "multiref" ? (Array.isArray(v) ? (v as string[]) : []) : v ? [v as string] : [];
-      if (ids.includes(id)) incoming.push({ rel: f.relation ?? f.label, id: e.id });
+      if (ids.includes(id)) incoming.push({ rel: fieldRelation(f), id: e.id });
     }
   }
   const titleOf = (rid: string) => {
@@ -57,11 +58,11 @@ export function EntityInfoPanel({ tax, study, id, onSelect, onEdit, onClose }: {
     <div className="info-panel">
       <div className="ip-head">
         <span className="badge" style={{ background: `color-mix(in oklch, ${color} 22%, transparent)`, color: "var(--fg)" }}>
-          <span className="dot" style={{ background: color }} />{type.label}
+          <span className="dot" style={{ background: color }} />{typeLabel(type)}
         </span>
         <span style={{ flex: 1 }} />
-        <button className="btn ghost sm" onClick={() => onEdit(id)} title="Edit"><Icon.edit /></button>
-        <button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button>
+        <button className="btn ghost sm" onClick={() => onEdit(id)} title={tr('ui.entityinfo.edit', 'Edit')}><Icon.edit /></button>
+        <button className="btn ghost sm" onClick={onClose} aria-label={tr('ui.entityinfo.close', 'Close')}><Icon.close /></button>
       </div>
       <h3 className="ip-title">{recordTitle(type, rec)}</h3>
 
@@ -69,13 +70,13 @@ export function EntityInfoPanel({ tax, study, id, onSelect, onEdit, onClose }: {
         {type.fields.filter((f) => f.type !== "ref" && f.type !== "multiref").map((f) => {
           const txt = valueText(tax, study, f, rec.values[f.key] ?? null);
           if (f.type === "textarea") return txt === "—" ? null : <p key={f.key} className="ip-desc">{txt}</p>;
-          return <div key={f.key} className="ip-row"><span className="ip-k">{f.label}</span><span className="ip-v">{txt}</span></div>;
+          return <div key={f.key} className="ip-row"><span className="ip-k">{fieldLabel(f)}</span><span className="ip-v">{txt}</span></div>;
         })}
       </div>
 
       {(outgoing.length > 0 || incoming.length > 0) && (
         <div className="ip-rels">
-          <div className="d-sub">Relationships</div>
+          <div className="d-sub">{tr('ui.entityinfo.relationships', 'Relationships')}</div>
           {outgoing.map((r, i) => (
             <button key={"o" + i} className="gi-rel" onClick={() => onSelect(r.id)}>
               <span className="gi-arrow">→</span> <span className="gi-rel-lbl">{r.rel}</span> {titleOf(r.id)}

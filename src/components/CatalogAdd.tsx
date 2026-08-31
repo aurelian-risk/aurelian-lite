@@ -4,6 +4,9 @@
 // library and the free frameworks (NIS2 / NIST CSF / 800-53) — or "Create custom…".
 // FILE / TABLE import lives in the Documents system (semi-deterministic), not here.
 import { useState } from "react";
+import { Sentence } from "./Sentence";
+import { t as tr } from "../domain/i18n";
+import { typeLabel } from "../domain/taxonomy";
 import { createPortal } from "react-dom";
 import type { FieldValue, Study, Taxonomy } from "../domain/types";
 import type { CatalogTarget } from "../domain/catalog";
@@ -50,7 +53,7 @@ export function CatalogAdd({ tax, study, target, preset, onAdded, open, onClose 
     <>
       {controlled ? null : (
         <button className="btn sm primary" onClick={() => { setSel(new Set()); setQ(""); setPick(true); }}>
-          <Icon.plus /> {target.type.label}
+          <Icon.plus /> {typeLabel(target.type)}
         </button>
       )}
 
@@ -60,9 +63,9 @@ export function CatalogAdd({ tax, study, target, preset, onAdded, open, onClose 
             <header className="modal-lg-head">
               <div style={{ flex: 1 }}>
                 <div className="dialog-sub" style={{ margin: 0 }}>Add {target.kind}</div>
-                <h2 style={{ fontSize: 19 }}>Choose from a catalog</h2>
+                <h2 style={{ fontSize: 19 }}>{tr('ui.catalogadd.choose-from-a-catalog', 'Choose from a catalog')}</h2>
               </div>
-              <button className="btn ghost sm" onClick={() => setPick(false)} aria-label="Close"><Icon.close /></button>
+              <button className="btn ghost sm" onClick={() => setPick(false)} aria-label={tr('ui.catalogadd.close', 'Close')}><Icon.close /></button>
             </header>
             <div className="modal-lg-body">
               <input placeholder={`Search ${target.kind === "measure" ? "measures" : "requirements"}…`} value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 12 }} />
@@ -92,8 +95,8 @@ export function CatalogAdd({ tax, study, target, preset, onAdded, open, onClose 
               })}
             </div>
             <footer className="modal-lg-foot">
-              <button className="btn ghost" onClick={() => { setPick(false); setCustom(true); }}><Icon.plus /> Create custom…</button>
-              <span className="hint" style={{ flex: 1, alignSelf: "center" }}>Import a framework file in <b>Documents</b>.</span>
+              <button className="btn ghost" onClick={() => { setPick(false); setCustom(true); }}><Icon.plus /> {tr('ui.catalogadd.create-custom', 'Create custom…')}</button>
+              <span className="hint" style={{ flex: 1, alignSelf: "center" }}><Sentence k="ui.catalogadd.import-elsewhere" parts={[<b>{tr('ui.catalogadd.documents', 'Documents')}</b>]} en={"Import a framework file in {0}."} /></span>
               <button className="btn primary" disabled={sel.size === 0} onClick={addSelected}>Add {sel.size ? sel.size + " " : ""}selected</button>
             </footer>
           </div>

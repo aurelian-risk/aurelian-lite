@@ -3,12 +3,16 @@
 // (failing checks first) with the affected entities as click-through chips and a
 // fix hint; passing checks collapse into a compact green list.
 import { useState } from "react";
+import { t as tr } from "../domain/i18n";
 import type { EntityRecord, Study, Taxonomy } from "../domain/types";
 import { getType, recordTitle } from "../domain/taxonomy";
 import { lintStudy, sortChecks, type Severity } from "../domain/lint";
 import { EntityModal } from "./EntityModal";
 
-const SEV_LABEL: Record<Severity, string> = { high: "High", medium: "Medium", low: "Low" };
+// Read through the lookup at CALL time, not built once at import: a table built when the
+// module loads holds whatever language was current then, and never changes again.
+const sevLabel = (s: Severity): string =>
+  ({ high: tr("ui.checks.sev-high", "High"), medium: tr("ui.checks.sev-medium", "Medium"), low: tr("ui.checks.sev-low", "Low") })[s];
 
 export function CompletenessView({ tax, study }: { tax: Taxonomy; study: Study }) {
   const [rec, setRec] = useState<EntityRecord | null>(null);
@@ -22,8 +26,8 @@ export function CompletenessView({ tax, study }: { tax: Taxonomy; study: Study }
   return (
     <div className="lint">
       <div className="lint-head">
-        <h2>Quality checks</h2>
-        <p className="hint">Completeness gaps in the analysis, with the affected items and how to close them. Everything here is derived from the study - fixing the data clears the check.</p>
+        <h2>{tr('ui.completeness.quality-checks', 'Quality checks')}</h2>
+        <p className="hint">{tr('ui.completeness.completeness-gaps-in-the', 'Completeness gaps in the analysis, with the affected items and how to close them. Everything here is derived from the study - fixing the data clears the check.')}</p>
         <div className="lint-summary">
           <span className={"lint-pill " + (totalIssues ? "warn" : "ok")}>{totalIssues ? `${totalIssues} open items` : "No gaps found"}</span>
           {counts.high > 0 && <span className="lint-pill sev-high">{counts.high} high</span>}
@@ -36,7 +40,7 @@ export function CompletenessView({ tax, study }: { tax: Taxonomy; study: Study }
         {failing.map((c) => (
           <div key={c.id} className={"lint-card sev-" + c.severity}>
             <div className="lint-card-h">
-              <span className={"lint-sev sev-" + c.severity}>{SEV_LABEL[c.severity]}</span>
+              <span className={"lint-sev sev-" + c.severity}>{sevLabel(c.severity)}</span>
               <span className="lint-title">{c.title}</span>
               <span className="lint-count mono">{c.affected.length} / {c.total}</span>
             </div>

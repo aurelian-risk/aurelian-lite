@@ -4,9 +4,10 @@
 // entities grouped by the taxonomy. This view never downloads or loads models —
 // if none is loaded there is nothing to run.
 import { useEffect, useState } from "react";
+import { t as tr } from "../domain/i18n";
 import { createPortal } from "react-dom";
 import { useActiveStudy, useStore } from "../domain/store";
-import { getType } from "../domain/taxonomy";
+import { fieldLabel, getType, typeLabel, typeNameOf } from "../domain/taxonomy";
 import { getDocText, viewTextTransient } from "../domain/documents";
 import { extractByEmbeddings, type TypeCandidates, type Candidate } from "../domain/extraction";
 import { LLM, gen, genNow } from "../domain/gen";
@@ -124,7 +125,7 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
     const order = [...new Set([...groups.map((g) => g.typeKey), ...Object.values(moved)])];
     for (const key of order) {
       const mine = rows.filter((r) => (moved[r.id] ?? r.from) === key);
-      if (mine.length) panels.push({ typeKey: key, label: getType(tax, key)?.labelPlural ?? key, rows: mine });
+      if (mine.length) panels.push({ typeKey: key, label: typeNameOf(tax, key, true), rows: mine });
     }
   }
 
@@ -146,24 +147,24 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
         <header className="modal-lg-head">
           <div style={{ flex: 1 }}>
             <div className="dialog-sub" style={{ margin: 0 }}>Extract into {active ? `“${active.name}”` : "— no active study —"}</div>
-            <h2 style={{ fontSize: 19 }}>Extract entities</h2>
+            <h2 style={{ fontSize: 19 }}>{tr('ui.extraction.extract-entities', 'Extract entities')}</h2>
           </div>
-          <button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button>
+          <button className="btn ghost sm" onClick={onClose} aria-label={tr('ui.extraction.close', 'Close')}><Icon.close /></button>
         </header>
 
         <div className="modal-lg-body">
           <div className="row" style={{ marginBottom: 12 }}>
-            <div className="field" style={{ marginBottom: 0 }}><label>Document name</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="optional" /></div>
+            <div className="field" style={{ marginBottom: 0 }}><label>{tr('ui.extraction.document-name', 'Document name')}</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("ui.extraction.optional", "optional")} /></div>
             <div style={{ display: "flex", alignItems: "flex-end", gap: 8, flex: "none" }}>
-              <button className={"btn" + (!text.trim() ? " primary" : "")} onClick={openFile}><Icon.upload /> Open file</button>
+              <button className={"btn" + (!text.trim() ? " primary" : "")} onClick={openFile}><Icon.upload /> {tr('ui.extraction.open-file', 'Open file')}</button>
             </div>
           </div>
-          <div className="field"><label>Text</label>
-            <textarea style={{ minHeight: 130 }} value={text} onChange={(e) => { setText(e.target.value); setGroups(null); }} placeholder="Paste document text, or use “Open file” (content is read transiently, not stored)…" /></div>
+          <div className="field"><label>{tr('ui.extraction.text', 'Text')}</label>
+            <textarea style={{ minHeight: 130 }} value={text} onChange={(e) => { setText(e.target.value); setGroups(null); }} placeholder={tr('ui.extraction.paste-document-text-or', 'Paste document text, or use “Open file” (content is read transiently, not stored)…')} /></div>
 
           <div className="field" style={{ marginBottom: 8 }}>
-            <label>Engine</label>
+            <label>{tr('ui.extraction.engine', 'Engine')}</label>
             <div className="seg" style={{ padding: 0 }}>
               <button className={"seg-btn" + (engine === "fast" ? " on" : "")} disabled={!embLoaded}
                 title={embLoaded ? "Embeddings — best for structured text" : "Load the embedding model in the Model section"}
@@ -179,18 +180,18 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
           <div className="guide" style={{ marginTop: 4 }}>
             {engineReady
               ? (engine === "fast" || !LLM
-                ? <span><strong>Fast engine.</strong> Embeddings classify sentences into the taxonomy — best for structured / list-like documents.</span>
+                ? <span><strong>{tr('ui.extraction.fast-engine', 'Fast engine.')}</strong> {tr('ui.extraction.embeddings-classify-sentences-into', 'Embeddings classify sentences into the taxonomy — best for structured / list-like documents.')}</span>
                 // Behind the flag rather than behind `engine`: a runtime condition keeps its
                 // branch in the bundle, so the released file carried the sentence describing
                 // a model it cannot run. See domain/gen.ts.
-                : <span><strong>Smart engine ({G!.genModelById(genLoaded!).label}).</strong> A local language model reads narrative prose and emits structured entities.</span>)
-              : <span><strong>No extraction model is loaded.</strong> Models are managed in the <strong>Model</strong> section (sidebar): open it, download &amp; load the fast embedding model{LLM ? " and/or a smart language model" : ""}, then come back here to extract.</span>}
+                : <span><strong>Smart engine ({G!.genModelById(genLoaded!).label}).</strong> {tr('ui.extraction.a-local-language-model', 'A local language model reads narrative prose and emits structured entities.')}</span>)
+              : <span><strong>{tr('ui.extraction.no-extraction-model-is', 'No extraction model is loaded.')}</strong> {tr('ui.extraction.models-are-managed-in', 'Models are managed in the')} <strong>{tr('ui.extraction.model', 'Model')}</strong> section (sidebar): open it, download &amp; load the fast embedding model{LLM ? " and/or a smart language model" : ""}, then come back here to extract.</span>}
 
             <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
               <button className="btn primary" disabled={busy || !engineReady} onClick={run}>
                 <Icon.spark /> {busy ? "Working…" : "Extract"}
               </button>
-              {busy && engine === "smart" && <button className="btn ghost danger" onClick={cancel}>Stop</button>}
+              {busy && engine === "smart" && <button className="btn ghost danger" onClick={cancel}>{tr('ui.extraction.stop', 'Stop')}</button>}
               {busy && <span className="spinner" aria-hidden />}
             </div>
 
@@ -216,7 +217,7 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
           </div>
 
           {groups && (groups.length === 0
-            ? <div className="empty" style={{ padding: "24px 0" }}>No candidates found.</div>
+            ? <div className="empty" style={{ padding: "24px 0" }}>{tr('ui.extraction.no-candidates-found', 'No candidates found.')}</div>
             : panels.map((p) => {
               const enumFields = (getType(tax, p.typeKey)?.fields ?? []).filter((f) => f.type === "enum");
               return (
@@ -236,7 +237,7 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
                               {c.snippet.trim() !== c.name.trim() && <span className="ex-cand-snip">{c.snippet}</span>}
                               {enumFields.length > 0 && (
                                 <span className="ex-cand-fields">
-                                  {enumFields.map((f) => c.values[f.key] ? <span key={f.key} className="badge">{f.label}: {String(c.values[f.key])}</span> : null)}
+                                  {enumFields.map((f) => c.values[f.key] ? <span key={f.key} className="badge">{fieldLabel(f)}: {String(c.values[f.key])}</span> : null)}
                                 </span>
                               )}
                             </span>
@@ -245,18 +246,18 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
                                   it, without losing the candidate or having to type it in again. */}
                               <select className="chip ex-cand-type" value={moved[id] ?? from}
                                 aria-label={`Type of ${c.name}`}
-                                title={moved[id] && moved[id] !== from ? `Found as ${getType(tax, from)?.label ?? from}` : "Type proposed by the model"}
+                                title={moved[id] && moved[id] !== from ? `Found as ${typeNameOf(tax, from)}` : "Type proposed by the model"}
                                 onChange={(e) => setMoved((m) => {
                                   const next = { ...m };
                                   if (e.target.value === from) delete next[id]; else next[id] = e.target.value;
                                   return next;
                                 })}>
-                                {tax.entityTypes.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+                                {tax.entityTypes.map((t) => <option key={t.key} value={t.key}>{typeLabel(t)}</option>)}
                               </select>
                               {moved[id] && moved[id] !== from && (
-                                <span className="badge" title={`Found as ${getType(tax, from)?.label ?? from}`}>re-classified</span>
+                                <span className="badge" title={`Found as ${typeNameOf(tax, from)}`}>re-classified</span>
                               )}
-                              {c.uncertain && <span className="badge" title="Best and second-best type were close — please review" style={{ color: "var(--color-state-warning, var(--fg-muted))" }}>uncertain</span>}
+                              {c.uncertain && <span className="badge" title={tr('ui.extraction.best-and-second-best', 'Best and second-best type were close — please review')} style={{ color: "var(--color-state-warning, var(--fg-muted))" }}>uncertain</span>}
                               <span className="badge">{Math.round(c.score * 100)}%</span>
                               <button type="button" className="btn ghost sm" aria-expanded={isOpen}
                                 title={isOpen ? "Hide the passage it came from" : "Show the passage it came from"}
@@ -273,7 +274,7 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
                                     <mark>{ctx.hit}</mark>
                                     <span className="ex-ctx-side">{ctx.after}…</span>
                                   </p>
-                                : <p className="hint" style={{ margin: 0 }}>The passage could not be located in the current text — it may have been edited since the extraction ran.</p>}
+                                : <p className="hint" style={{ margin: 0 }}>{tr('ui.extraction.the-passage-could-not', 'The passage could not be located in the current text — it may have been edited since the extraction ran.')}</p>}
                             </div>
                           )}
                         </div>
@@ -288,7 +289,7 @@ export function ExtractionDialog({ onClose, initialName, docId }: { onClose: () 
         <footer className="modal-lg-foot">
           <span className="hint">{sel.size} selected</span>
           <span style={{ flex: 1 }} />
-          <button className="btn ghost" onClick={onClose}>Cancel</button>
+          <button className="btn ghost" onClick={onClose}>{tr('ui.extraction.cancel', 'Cancel')}</button>
           <button className="btn primary" disabled={!active || sel.size === 0} onClick={addSelected}>Add {sel.size} to study</button>
         </footer>
       </div>

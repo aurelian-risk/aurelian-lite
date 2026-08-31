@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 import { Fragment, useState } from "react";
+import { t as tr } from "../domain/i18n";
+import { groupDescription, groupLabel } from "../domain/taxonomy";
 import type { Study, Taxonomy } from "../domain/types";
 import { useActiveStudy, useStore } from "../domain/store";
 import { workshopMarkdown, reportMarkdown, reportHtml, openReportHtml, downloadText, copyText } from "../domain/clipboard";
@@ -35,21 +37,21 @@ function ReportMenu({ tax, study }: { tax: Taxonomy; study: Study }) {
   const slug = reportSlug(study.name);
   return (
     <div style={{ position: "relative" }}>
-      <button className="btn sm" title="Generate a report of this study" onClick={() => setOpen((o) => !o)}>
-        <Icon.doc /> Report
+      <button className="btn sm" title={tr('ui.study.generate-a-report-of', 'Generate a report of this study')} onClick={() => setOpen((o) => !o)}>
+        <Icon.doc /> {tr('ui.study.report', 'Report')}
       </button>
       {open && (
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={() => setOpen(false)} />
           <div className="menu-pop">
-            <div className="menu-label">Report</div>
+            <div className="menu-label">{tr('ui.study.report', 'Report')}</div>
             <button className="menu-item stacked" onClick={() => { setOpen(false); openReportHtml(reportHtml(tax, study), `${slug}-report.html`); }}>
               <Icon.doc />
-              <span className="mi-text"><span>Open in browser (HTML)</span><span className="menu-hint">rendered · print-ready · new tab</span></span>
+              <span className="mi-text"><span>{tr('ui.study.open-in-browser-html', 'Open in browser (HTML)')}</span><span className="menu-hint">rendered · print-ready · new tab</span></span>
             </button>
             <button className="menu-item stacked" onClick={() => { setOpen(false); downloadText(`${slug}-report.md`, reportMarkdown(tax, study)); }}>
               <Icon.download />
-              <span className="mi-text"><span>Download Markdown</span><span className="menu-hint">.md file</span></span>
+              <span className="mi-text"><span>{tr('ui.study.download-markdown', 'Download Markdown')}</span><span className="menu-hint">.md file</span></span>
             </button>
           </div>
         </>
@@ -66,7 +68,7 @@ function CopyButton({ getText }: { getText: () => string }) {
     setTimeout(() => setDone(false), 1800);
   };
   return (
-    <button className="btn sm" onClick={onClick} title="Copy this workshop as LLM-ready context">
+    <button className="btn sm" onClick={onClick} title={tr('ui.study.copy-this-workshop-as', 'Copy this workshop as LLM-ready context')}>
       {done ? <><Icon.check /> Copied</> : <><Icon.copy /> Copy for LLM</>}
     </button>
   );
@@ -103,29 +105,29 @@ export function StudyView({ onBack }: { onBack: () => void }) {
         </div>
         <span className="spacer" />
         <ReportMenu tax={tax} study={study} />
-        <DataMenu studyScope={study} label="Export / Import" />
+        <DataMenu studyScope={study} label={tr("ui.study.export-import", "Export / Import")} />
       </div>
 
       <div className="ws-tabs">
         {tax.groups.map((g, i) => (
           <button key={g.key} className={"ws-tab" + (tab === g.key ? " active" : "")}
-            style={{ ["--ws" as string]: g.color }} onClick={() => setTab(g.key)} title={g.description || g.label}>
+            style={{ ["--ws" as string]: g.color }} onClick={() => setTab(g.key)} title={groupDescription(g) || groupLabel(g)}>
             <span className="num">{i + 1}</span>
-            <span className="t-title">{g.label}</span>
+            <span className="t-title">{groupLabel(g)}</span>
           </button>
         ))}
         <span className="ws-sep" aria-hidden />
-        <button className={"ws-tab plain" + (tab === "canvas" ? " active" : "")} onClick={() => setTab("canvas")} title="Event chains">
+        <button className={"ws-tab plain" + (tab === "canvas" ? " active" : "")} onClick={() => setTab("canvas")} title={tr('ui.study.event-chains', 'Event chains')}>
           <span className="num"><Icon.canvas /></span>
-          <span className="t-title">Flow</span>
+          <span className="t-title">{tr('ui.study.flow', 'Flow')}</span>
         </button>
-        <button className={"ws-tab plain" + (tab === "graph" ? " active" : "")} onClick={() => setTab("graph")} title="Relationships">
+        <button className={"ws-tab plain" + (tab === "graph" ? " active" : "")} onClick={() => setTab("graph")} title={tr('ui.study.relationships', 'Relationships')}>
           <span className="num"><Icon.graph /></span>
-          <span className="t-title">Graph</span>
+          <span className="t-title">{tr('ui.study.graph', 'Graph')}</span>
         </button>
-        <button className={"ws-tab plain" + (tab === "checks" ? " active" : "")} onClick={() => setTab("checks")} title="Analysis completeness checks">
+        <button className={"ws-tab plain" + (tab === "checks" ? " active" : "")} onClick={() => setTab("checks")} title={tr('ui.study.analysis-completeness-checks', 'Analysis completeness checks')}>
           <span className="num"><Icon.check /></span>
-          <span className="t-title">Checks</span>
+          <span className="t-title">{tr('ui.study.checks', 'Checks')}</span>
         </button>
       </div>
 
@@ -139,9 +141,9 @@ export function StudyView({ onBack }: { onBack: () => void }) {
         ) : activeGroup ? (
           <>
             <div className="group-toolbar">
-              {activeGroup.description && (
+              {groupDescription(activeGroup) && (
                 <div className="guide" style={{ flex: 1, marginBottom: 0 }}>
-                  <strong>{activeGroup.label}.</strong> {activeGroup.description}.
+                  <strong>{groupLabel(activeGroup)}.</strong> {groupDescription(activeGroup)}.
                 </div>
               )}
               <CopyButton getText={() => workshopMarkdown(tax, study, activeGroup.key)} />

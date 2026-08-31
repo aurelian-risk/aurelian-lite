@@ -4,6 +4,8 @@
 // (CSV/TSV/JSON, or pasted) is parsed VERBATIM; the embedding model only *assists*
 // header→field mapping. Imports as requirements OR security measures (user choice).
 import { useMemo, useRef, useState } from "react";
+import { t as tr, tn } from "../domain/i18n";
+import { typeLabel } from "../domain/taxonomy";
 import { createPortal } from "react-dom";
 import type { Study, Taxonomy } from "../domain/types";
 import { catalogTargets } from "../domain/catalog";
@@ -21,7 +23,12 @@ import { useStore } from "../domain/store";
 import { downloadText } from "../domain/clipboard";
 import { Icon, Overlay } from "./ui";
 
-const FIELD_LABEL: Record<FieldKey, string> = { ref_id: "Reference ID", title: "Title", category: "Category", description: "Description" };
+/** Read at call time, not built at import: a table built when the module loads keeps
+ *  whatever language was current then. */
+const fieldLabelOf = (k: FieldKey): string => ({
+  ref_id: tr("ui.catalogimport.f-ref-id", "Reference ID"), title: tr("ui.catalogimport.f-title", "Title"),
+  category: tr("ui.catalogimport.f-category", "Category"), description: tr("ui.catalogimport.f-description", "Description"),
+}[k]);
 /** A field's columns as a list, whichever form the mapping holds. */
 const multiOf = (m: number | number[] | undefined): number[] =>
   m == null ? [] : Array.isArray(m) ? m.filter((i) => i >= 0) : m >= 0 ? [m] : [];
@@ -62,7 +69,7 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
   /** Build the table from a list reading, leaving out the sections that were dropped. */
   const applyList = (r: ListRead, drop: Set<string>) => {
     const kept = r.items.filter((it) => !drop.has(it.section ?? ""));
-    const headers = ["Reference ID", "Title", ...(r.markers.length ? ["Level"] : []), "Description", "Section"];
+    const headers = [tr("ui.catalogimport.f-ref-id", "Reference ID"), tr("ui.catalogimport.f-title", "Title"), ...(r.markers.length ? ["Level"] : []), "Description", "Section"];
     const rows = kept.map((it) => [it.ref_id, it.title, ...(r.markers.length ? [it.marker ?? ""] : []), it.description ?? "", it.section ?? ""]);
     setTable({ headers, rows, delimiter: "\t" });
     setMap(guessMapping(headers, { rows }));
@@ -210,7 +217,7 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
   const doImport = () => {
     if (!target || chosen.length === 0) return;
     for (const it of chosen) addEntity(target.type.key, target.toValues(fw, it));
-    setMsg(`Added ${chosen.length} ${kind}${chosen.length === 1 ? "" : "s"} to the study — the rest stay unselected.`);
+    setMsg(`${tn("ui.catalogimport.added", chosen.length, "Added {0} " + kind, "Added {0} " + kind + "s")} to the study — the rest stay unselected.`);
     // keep the list visible: added items now re-render as "in study".
   };
 
@@ -219,38 +226,35 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
       <div className="modal-lg" style={{ maxWidth: 720 }} onMouseDown={(e) => e.stopPropagation()}>
         <header className="modal-lg-head">
           <div style={{ flex: 1 }}>
-            <div className="dialog-sub" style={{ margin: 0 }}>Documents · semi-deterministic import</div>
-            <h2 style={{ fontSize: 19 }}>Import a framework / catalog</h2>
+            <div className="dialog-sub" style={{ margin: 0 }}>{tr('ui.catalogimport.documents-semi-deterministic-import', 'Documents · semi-deterministic import')}</div>
+            <h2 style={{ fontSize: 19 }}>{tr('ui.catalogimport.import-a-framework-catalog', 'Import a framework / catalog')}</h2>
           </div>
-          <button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button>
+          <button className="btn ghost sm" onClick={onClose} aria-label={tr('ui.catalogimport.close', 'Close')}><Icon.close /></button>
         </header>
 
         <div className="modal-lg-body">
           {targets.length > 1 && (
             <div className="field" style={{ marginBottom: 12 }}>
-              <label>Import as</label>
+              <label>{tr('ui.catalogimport.import-as', 'Import as')}</label>
               <div className="seg">
                 {targets.map((t) => (
-                  <button key={t.kind} className={"seg-btn" + (kind === t.kind ? " on" : "")} onClick={() => setKind(t.kind)}>{t.type.label}</button>
+                  <button key={t.kind} className={"seg-btn" + (kind === t.kind ? " on" : "")} onClick={() => setKind(t.kind)}>{typeLabel(t.type)}</button>
                 ))}
               </div>
             </div>
           )}
 
           <div className="guide" style={{ marginBottom: 12 }}>
-            Paste a table (CSV/TSV) or JSON, or choose a file — CSV, JSON, text, or a PDF or Word
-            document, whose text is extracted first. Values are read <b>verbatim</b>; for a table
+            {tr('ui.catalogimport.paste-a-table-csv', 'Paste a table (CSV/TSV) or JSON, or choose a file — CSV, JSON, text, or a PDF or Word\n            document, whose text is extracted first. Values are read')} <b>verbatim</b>; for a table
             you map columns to fields below. A document that is not a table is read as a list, one
             entry per identifier. JSON format:
             <code style={{ display: "block", marginTop: 6, whiteSpace: "pre-wrap" }}>{`{ "name": "…", "items": [ { "ref_id", "title", "category", "description" } ] }`}</code>
-            <button className="btn ghost sm" style={{ marginTop: 8 }} onClick={() => downloadText("catalog-template.json", TEMPLATE)}><Icon.download /> Download template</button>
+            <button className="btn ghost sm" style={{ marginTop: 8 }} onClick={() => downloadText("catalog-template.json", TEMPLATE)}><Icon.download /> {tr('ui.catalogimport.download-template', 'Download template')}</button>
           </div>
 
           {PUBLISHED_CATALOGS.length > 0 && (
             <div className="guide" style={{ marginBottom: 12 }}>
-              <b>From the publisher.</b> The catalogue is fetched when you press this and not
-              otherwise — the application asks for nothing on its own, and works without ever
-              asking. On a machine with no network, import the published file from disk below.
+              <b>{tr('ui.catalogimport.from-the-publisher', 'From the publisher.')}</b> {tr('ui.catalogimport.the-catalogue-is-fetched', 'The catalogue is fetched when you press this and not\n              otherwise — the application asks for nothing on its own, and works without ever\n              asking. On a machine with no network, import the published file from disk below.')}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
                 {PUBLISHED_CATALOGS.map((pc) => (
                   <button key={pc.key} className="btn sm pub-cat" disabled={!!fetching} onClick={() => download(pc)}>
@@ -265,12 +269,12 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
           )}
 
           <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-            <button className="btn sm" onClick={() => fileRef.current?.click()}><Icon.upload /> Choose file…</button>
-            <input placeholder="Framework name (optional)" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1 }} />
+            <button className="btn sm" onClick={() => fileRef.current?.click()}><Icon.upload /> {tr('ui.catalogimport.choose-file', 'Choose file…')}</button>
+            <input placeholder={tr('ui.catalogimport.framework-name-optional', 'Framework name (optional)')} value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1 }} />
           </div>
           <textarea placeholder="…or paste CSV / TSV / JSON here" value={text} rows={6}
             onChange={(e) => setText(e.target.value)} onBlur={() => parse(text, name)} style={{ width: "100%", fontFamily: "var(--font-mono)", fontSize: 12 }} />
-          <div style={{ marginTop: 6 }}><button className="btn sm" disabled={!text.trim()} onClick={() => parse(text, name)}>Parse</button></div>
+          <div style={{ marginTop: 6 }}><button className="btn sm" disabled={!text.trim()} onClick={() => parse(text, name)}>{tr('ui.catalogimport.parse', 'Parse')}</button></div>
 
           {/* Sections of the document. A standard numbers its front matter like its
               clauses, so an introduction arrives looking like a requirement; dropping the
@@ -284,7 +288,7 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
             const kept = listRead.items.filter((it) => !dropped.has(it.section ?? "")).length;
             return (
               <div className="panel" style={{ marginTop: 14 }}>
-                <div className="panel-head"><h3>Sections found</h3><span className="badge">{counts.size}</span>
+                <div className="panel-head"><h3>{tr('ui.catalogimport.sections-found', 'Sections found')}</h3><span className="badge">{counts.size}</span>
                   <span className="spacer" /><span className="hint">{kept} of {listRead.items.length} entries</span></div>
                 <div className="panel-body" style={{ padding: "10px 14px 12px", display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {[...counts].map(([sec, n]) => {
@@ -309,7 +313,7 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
 
           {book && book.sheets.length > 1 && (
             <div className="panel" style={{ marginTop: 14 }}>
-              <div className="panel-head"><h3>Sheet</h3><span className="badge">{book.sheets.length} in this workbook</span></div>
+              <div className="panel-head"><h3>{tr('ui.catalogimport.sheet', 'Sheet')}</h3><span className="badge">{book.sheets.length} in this workbook</span></div>
               <div className="panel-body" style={{ padding: "8px 14px 12px", display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {book.sheets.map((sh, i) => (
                   <button key={sh.name + i} className={"btn sm " + (i === sheetIdx ? "primary" : "ghost")}
@@ -323,7 +327,7 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
 
           {table && (
             <div className="panel" style={{ marginTop: 14 }}>
-              <div className="panel-head"><h3>Map columns</h3><span className="badge">{table.rows.length} rows</span><span className="spacer" />
+              <div className="panel-head"><h3>{tr('ui.catalogimport.map-columns', 'Map columns')}</h3><span className="badge">{table.rows.length} rows</span><span className="spacer" />
               </div>
               <div className="panel-body" style={{ padding: "8px 14px 12px", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10 }}>
                 {FIELD_KEYS.map((f) => {
@@ -334,7 +338,7 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
                     const sel = multiOf(map[f]);
                     return (
                       <div key={f} className="field map-multi" style={{ margin: 0 }}>
-                        <span className="hint">{FIELD_LABEL[f]}{sel.length > 1 ? ` · ${sel.length} columns` : ""}</span>
+                        <span className="hint">{fieldLabelOf(f)}{sel.length > 1 ? ` · ${sel.length} columns` : ""}</span>
                         <div className="map-cols">
                           {table.headers.map((h, i) => {
                             const on = sel.includes(i);
@@ -352,7 +356,7 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
                           })}
                         </div>
                         {sel.length > 1 && (
-                          <span className="hint">Joined in column order. A part that only repeats one already taken is left out.</span>
+                          <span className="hint">{tr('ui.catalogimport.joined-in-column-order', 'Joined in column order. A part that only repeats one already taken is left out.')}</span>
                         )}
                       </div>
                     );
@@ -360,7 +364,7 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
                   const one = typeof map[f] === "number" ? (map[f] as number) : -1;
                   return (
                     <label key={f} className="field" style={{ margin: 0 }}>
-                      <span className="hint">{FIELD_LABEL[f]}{f === "title" ? " *" : ""}</span>
+                      <span className="hint">{fieldLabelOf(f)}{f === "title" ? " *" : ""}</span>
                       <select value={one} onChange={(e) => setMap((m) => ({ ...m, [f]: Number(e.target.value) }))}>
                         <option value={-1}>— none —</option>
                         {table.headers.map((h, i) => <option key={i} value={i}>{h || `Column ${i + 1}`}</option>)}
@@ -380,25 +384,24 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
               from a check that never ran. */}
           {items.length > 0 && vocabShown.length === 0 && vocabDefined && (
             <div className="guide vocab-current" style={{ marginTop: 14 }}>
-              The vocabularies this catalogue defines are already the ones this build offers —
-              nothing to bring up to date.
+              {tr('ui.catalogimport.the-vocabularies-this-catalogue', 'The vocabularies this catalogue defines are already the ones this build offers —\n              nothing to bring up to date.')}
             </div>
           )}
           {vocabShown.length > 0 && (
             <div className="panel vocab-panel" style={{ marginTop: 14 }}>
-              <div className="panel-head"><h3>Vocabularies this catalogue defines</h3>
+              <div className="panel-head"><h3>{tr('ui.catalogimport.vocabularies-this-catalogue-defines', 'Vocabularies this catalogue defines')}</h3>
                 <span className="badge">{vocabShown.length}</span><span className="spacer" />
                 <span className="hint">the option lists of fields that name a source</span></div>
               <div className="panel-body" style={{ padding: "6px 14px 12px" }}>
                 <div className="guide" style={{ marginBottom: 8 }}>
-                  <b>Extend</b> adds what this catalogue has and keeps the rest. <b>Replace</b> takes
+                  <b>{tr('ui.catalogimport.extend', 'Extend')}</b> adds what this catalogue has and keeps the rest. <b>{tr('ui.catalogimport.replace', 'Replace')}</b> takes
                   its list as the whole truth and drops what it does not name — right for the ruleset
                   the field belongs to, wrong for any other, because an unrelated catalogue lists none
                   of these terms without that meaning they were retired. Either way a value a record
                   still holds is kept, and records are not otherwise touched.
                   <div className="seg" style={{ marginTop: 8, width: "fit-content" }}>
-                    <button className={"seg-btn" + (vocabMode === "add" ? " on" : "")} onClick={() => setVocabMode("add")}>Extend</button>
-                    <button className={"seg-btn" + (vocabMode === "replace" ? " on" : "")} onClick={() => setVocabMode("replace")}>Replace</button>
+                    <button className={"seg-btn" + (vocabMode === "add" ? " on" : "")} onClick={() => setVocabMode("add")}>{tr('ui.catalogimport.extend', 'Extend')}</button>
+                    <button className={"seg-btn" + (vocabMode === "replace" ? " on" : "")} onClick={() => setVocabMode("replace")}>{tr('ui.catalogimport.replace', 'Replace')}</button>
                   </div>
                 </div>
                 {vocabShown.map((c) => {
@@ -431,7 +434,7 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
 
           {items.length > 0 && (
             <div className="panel" style={{ marginTop: 12 }}>
-              <div className="panel-head"><h3>Select what to add</h3><span className="badge">{chosen.length}/{items.length}</span>
+              <div className="panel-head"><h3>{tr('ui.catalogimport.select-what-to-add', 'Select what to add')}</h3><span className="badge">{chosen.length}/{items.length}</span>
                 <span className="spacer" /><span className="hint">only checked items go into the table</span></div>
               <div className="panel-body" style={{ padding: "2px 12px 8px", maxHeight: 300, overflow: "auto" }}>
                 {items.slice(0, 250).map((it, i) => {
@@ -456,7 +459,7 @@ export function CatalogImport({ tax, study, onClose }: { tax: Taxonomy; study: S
 
         <footer className="modal-lg-foot">
           <span style={{ flex: 1 }} />
-          <button className="btn ghost" onClick={onClose}>Close</button>
+          <button className="btn ghost" onClick={onClose}>{tr('ui.catalogimport.close', 'Close')}</button>
           <button className="btn primary" disabled={!target || chosen.length === 0} onClick={doImport}>Add {chosen.length || ""} selected</button>
         </footer>
         <input ref={fileRef} type="file" accept=".csv,.tsv,.xlsx,.json,.txt,.md,.pdf,.docx,.xml" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />

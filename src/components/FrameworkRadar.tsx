@@ -4,6 +4,7 @@
 // actually in play: a control recorded from a publisher's library but never adopted fulfils
 // nothing, however many requirements it names.
 import { useMemo } from "react";
+import { t as tr } from "../domain/i18n";
 import type { EntityTypeDef, Study, Taxonomy } from "../domain/types";
 import { isSetBack } from "../domain/taxonomy";
 import { RadarChart, type RadarAxis } from "./RadarChart";
@@ -32,9 +33,9 @@ export function FrameworkRadar({ tax, study, reqType, color }: { tax: Taxonomy; 
   return (
     <div className="panel ws-accent" style={{ ["--ws-color" as string]: color, marginBottom: 20 }}>
       <div className="panel-head">
-        <h3>Framework coverage</h3>
+        <h3>{tr('ui.frameworkradar.framework-coverage', 'Framework coverage')}</h3>
         <span className="spacer" />
-        <span className="hint">requirements fulfilled per framework</span>
+        <span className="hint">{tr("ui.frameworkradar.requirements-per-framework", "requirements fulfilled per framework")}</span>
       </div>
       <div className="panel-body chart-center">
         <RadarChart axes={axes} accent={color} />
