@@ -5,8 +5,9 @@
 // or from tile to tile) drop onto tiles → assigns this scenario + tactic +
 // order. Each tile's "+" creates a step pre-filled for that tactic.
 import { useState } from "react";
+import { t as tr } from "../domain/i18n";
 import type { EntityRecord, FieldValue, Study, Taxonomy } from "../domain/types";
-import { getType, recordTitle, refFields } from "../domain/taxonomy";
+import { fieldRelation, getType, recordTitle, refFields } from "../domain/taxonomy";
 import { useStore } from "../domain/store";
 import { EntityModal } from "./EntityModal";
 import { Icon } from "./ui";
@@ -15,7 +16,7 @@ function StepCard({ step, label, tech, onOpen }: { step: EntityRecord; label: st
   return (
     <div className="kc-step" draggable
       onDragStart={(e) => { e.dataTransfer.setData("text/plain", step.id); e.dataTransfer.effectAllowed = "move"; }}
-      onClick={onOpen} title="Drag to a tactic tile · click to edit">
+      onClick={onOpen} title={tr('ui.killchainlane.drag-to-a-tactic', 'Drag to a tactic tile · click to edit')}>
       <div className="kc-step-name">{label}</div>
       {tech && <div className="kc-step-tech mono">{tech}</div>}
     </div>
@@ -44,7 +45,7 @@ export function KillChainLane({ tax, study, op, color }: { tax: Taxonomy; study:
   const ss = upF ? ent(op.values[upF.key]) : undefined;
   const ssType = ss && getType(tax, ss.type);
   const context = ss && ssType
-    ? refFields(ssType).map((f) => { const v = ss.values[f.key]; const id = Array.isArray(v) ? v[0] : v; return { rel: f.relation ?? f.label, name: nameOf(id) }; }).filter((c) => c.name)
+    ? refFields(ssType).map((f) => { const v = ss.values[f.key]; const id = Array.isArray(v) ? v[0] : v; return { rel: fieldRelation(f), name: nameOf(id) }; }).filter((c) => c.name)
     : [];
   const steps = study.entities.filter((e) => e.type === stepType.key && e.values[parentF.key] === op.id);
   const inTactic = (t: string) => steps.filter((s) => s.values[tacticF.key] === t).sort((a, b) => Number(a.values[orderF.key] || 0) - Number(b.values[orderF.key] || 0));
@@ -75,10 +76,10 @@ export function KillChainLane({ tax, study, op, color }: { tax: Taxonomy; study:
 
       <div className={"kc-pool" + (over === "_" ? " over" : "")}
         onDragOver={(e) => { e.preventDefault(); setOver("_"); }} onDragLeave={() => setOver(null)} onDrop={onDrop("", 0)}>
-        <span className="kc-pool-label">Unassigned</span>
+        <span className="kc-pool-label">{tr('ui.killchainlane.unassigned', 'Unassigned')}</span>
         {unassigned.map((s) => <StepCard key={s.id} step={s} label={label(s)} tech={tech(s)} onOpen={() => setModal({ record: s })} />)}
-        <button className="btn ghost sm" onClick={() => setModal({ record: null, initial: { [parentF.key]: op.id } })}><Icon.plus /> Step</button>
-        <span className="hint" style={{ marginLeft: "auto" }}>drag steps from the table or between tiles →</span>
+        <button className="btn ghost sm" onClick={() => setModal({ record: null, initial: { [parentF.key]: op.id } })}><Icon.plus /> {tr('ui.killchainlane.step', 'Step')}</button>
+        <span className="hint" style={{ marginLeft: "auto" }}>{tr("ui.killchainlane.drag-steps", "drag steps from the table or between tiles →")}</span>
       </div>
 
       <div className="kc-tiles">

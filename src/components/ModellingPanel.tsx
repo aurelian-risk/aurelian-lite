@@ -8,6 +8,7 @@
 // catalogue leaves undecided. Adding writes the requirements into the study's own table,
 // each carrying the rule that put it there.
 import { useMemo, useState } from "react";
+import { t as tr } from "../domain/i18n";
 import type { Study, Taxonomy } from "../domain/types";
 import { requirementPackage } from "../domain/modelling";
 import { catalogTargets } from "../domain/catalog";
@@ -50,7 +51,7 @@ export function ModellingPanel({ tax, study, color }: { tax: Taxonomy; study: St
   return (
     <div className="panel ws-accent modelling" style={{ ["--ws-color" as string]: color, marginBottom: 20 }}>
       <div className="panel-head">
-        <h3>Derived from the catalogue</h3>
+        <h3>{tr('ui.modelling.derived-from-the-catalogue', 'Derived from the catalogue')}</h3>
         <span className="badge">{pkg.items.length}</span>
         <span className="spacer" />
         {BUNDLED_FRAMEWORKS.length > 1 && (
@@ -80,7 +81,7 @@ export function ModellingPanel({ tax, study, color }: { tax: Taxonomy; study: St
 
         <table className="tbl">
           <thead><tr>
-            <th>{objectType?.label ?? "Object"}</th><th>Class</th><th>Inherited</th><th>Requirements</th>
+            <th>{objectType?.label ?? "Object"}</th><th>{tr('ui.modelling.class', 'Class')}</th><th>{tr('ui.modelling.inherited', 'Inherited')}</th><th>{tr('ui.modelling.requirements', 'Requirements')}</th>
           </tr></thead>
           <tbody>
             {pkg.objects.map((o) => (

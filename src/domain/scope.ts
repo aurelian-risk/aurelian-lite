@@ -25,7 +25,7 @@
 //
 // Everything here is a QUESTION. Nothing is written; the caller shows the answer and asks.
 import type { EntityRecord, Study, Taxonomy } from "./types";
-import { getType, isSetBack, refFields, toggleStates } from "./taxonomy";
+import { fieldLabel, getType, isSetBack, refFields, toggleStates } from "./taxonomy";
 
 export interface ScopeChange {
   /** The record asked about, plus everything that cannot stand without it. */
@@ -118,8 +118,8 @@ export function scopeChange(tax: Taxonomy, study: Study, id: string): ScopeChang
       const targets = idsOf(e.values[f.key]);
       const hit = targets.filter((r) => carried.has(r));
       if (!hit.length) continue;
-      if (f.type === "ref") blocked.push({ record: e, field: f.label });
-      else weakened.push({ record: e, field: f.label, left: targets.length - hit.length });
+      if (f.type === "ref") blocked.push({ record: e, field: fieldLabel(f) });
+      else weakened.push({ record: e, field: fieldLabel(f), left: targets.length - hit.length });
     }
   }
 
@@ -228,9 +228,9 @@ export function deleteChange(tax: Taxonomy, study: Study, id: string, ts?: strin
     const t = getType(tax, r.type); if (!t) continue;
     for (const f of refFields(t)) {
       const a = was.values[f.key], b = r.values[f.key];
-      if (f.type === "ref" && typeof a === "string" && b == null) cleared.push({ record: was, field: f.label });
+      if (f.type === "ref" && typeof a === "string" && b == null) cleared.push({ record: was, field: fieldLabel(f) });
       else if (f.type === "multiref" && Array.isArray(a) && Array.isArray(b) && b.length < a.length)
-        shortened.push({ record: was, field: f.label, left: b.length });
+        shortened.push({ record: was, field: fieldLabel(f), left: b.length });
     }
   }
   return {

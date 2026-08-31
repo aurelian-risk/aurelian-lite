@@ -4,10 +4,11 @@
 // kill-chain steps as an ordered lane (like WS4), with a dropdown on each step to
 // assign the security measures that mitigate it (writes the measures' `covers`).
 import { Fragment, useState } from "react";
+import { t as tr } from "../domain/i18n";
 import type { EntityRecord, Study, Taxonomy } from "../domain/types";
 import { getType, toggleStates, recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
 import { useStore } from "../domain/store";
-import { effectClassOf, EFFECT_CHANNEL } from "../domain/controls";
+import { effectClassOf, effectChannel } from "../domain/controls";
 import { statusColor } from "../domain/viz";
 import { EntityModal } from "./EntityModal";
 import { MultiSelect, Icon } from "./ui";
@@ -76,7 +77,7 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
     return (
       <>
         {cls && <span className={"dd-cls" + (m && defends(m) ? "" : " off")}
-          title={`${cls}: ${EFFECT_CHANNEL[cls]}`}>{cls.slice(0, 4).toLowerCase()}</span>}
+          title={`${cls}: ${effectChannel(cls)}`}>{cls.slice(0, 4).toLowerCase()}</span>}
         {s && <span className="status-dot" title={`Status: ${s}`} style={{ background: statusColor(s) }} />}
         {implBar(id)}
       </>
@@ -113,18 +114,18 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
     )}
     <div className="panel ws-accent" style={{ ["--ws-color" as string]: color, marginBottom: 20 }}>
       <div className="panel-head">
-        <h3>Kill-chain mitigation</h3>
+        <h3>{tr('ui.killchainmitigation.kill-chain-mitigation', 'Kill-chain mitigation')}</h3>
         <span className="badge">{ops.length}</span>
         <span className="spacer" />
-        <span className="hint">expand a scenario to assign measures to each step</span>
+        <span className="hint">{tr("ui.killchainmitigation.expand-a-scenario", "expand a scenario to assign measures to each step")}</span>
       </div>
       <div className="panel-body">
         {ops.length === 0
-          ? <div className="empty" style={{ padding: "28px 16px" }}>No operational scenarios yet.</div>
+          ? <div className="empty" style={{ padding: "28px 16px" }}>{tr('ui.killchainmitigation.no-operational-scenarios-yet', 'No operational scenarios yet.')}</div>
           : (
             <table className="tbl">
               <colgroup><col style={{ width: 260 }} /><col /></colgroup>
-              <thead><tr><th>Operational scenario</th><th>Mitigation</th></tr></thead>
+              <thead><tr><th>{tr('ui.killchainmitigation.operational-scenario', 'Operational scenario')}</th><th>{tr('ui.killchainmitigation.mitigation', 'Mitigation')}</th></tr></thead>
               <tbody>
                 {ops.map((op) => {
                   const steps = stepsOf(op.id);
@@ -149,7 +150,7 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
                         <tr className="detail-row">
                           <td colSpan={2}>
                             {steps.length === 0
-                              ? <div className="empty" style={{ padding: "12px 0" }}>No kill-chain steps in this scenario yet — add them in Operational Scenarios.</div>
+                              ? <div className="empty" style={{ padding: "12px 0" }}>{tr('ui.killchainmitigation.no-kill-chain-steps', 'No kill-chain steps in this scenario yet — add them in Operational Scenarios.')}</div>
                               : (
                                 <div className="kcc-lane">
                                   {steps.map((s, i) => {

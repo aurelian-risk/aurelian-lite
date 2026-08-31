@@ -786,7 +786,27 @@ try {
   ok("non-scenario node shows ribbons", await page.locator(".ribbons path").evaluateAll((ps) => ps.some((p) => (p.getAttribute("d") || "").length > 5)));
   await page.locator(".flow-node").filter({ hasText: "Nursing staff" }).first().click({ force: true });
   await page.waitForTimeout(200);
-  ok("free multi-select works", await page.locator(".flow-node.selected").count() >= 2);
+  // Waited for by its EFFECT, not by a stopwatch. A fixed 200 ms made this check depend on
+  // how fast the tree happens to render: measured at the node, the click lands and the
+  // selection follows, just not always inside the window - so the check failed while
+  // nothing was wrong, and would have gone on failing for whoever touched a render next.
+  // A selection that never arrives still fails here, which is what it is for.
+  await page.waitForFunction(() => document.querySelectorAll(".flow-node.selected").length >= 2, null, { timeout: 4000 })
+    .catch(() => {});
+  {
+    const sel = await page.evaluate(() => [...document.querySelectorAll(".flow-node.selected")].map((x) => x.textContent.trim().slice(0, 24)));
+    const target = await page.evaluate(() => {
+      const n = [...document.querySelectorAll(".flow-node")].find((x) => x.textContent.includes("Nursing staff"));
+      if (!n) return "absent";
+      const r = n.getBoundingClientRect();
+      const hit = document.elementFromPoint(Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2));
+      return `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)} hit=${hit?.closest(".flow-node") ? "node" : hit?.className || "nothing"}`;
+    });
+    // Printed every run, not only on failure: when this check goes red the question is
+    // always the same - was the node there, was it clickable, and what was selected.
+    console.log(`   selected: ${JSON.stringify(sel)} · Nursing staff: ${target}`);
+    ok("free multi-select works", sel.length >= 2);
+  }
   await page.screenshot({ path: `${shots}/FlowOrphan.png` });
 
   // Import dialog: additive/destructive + paste source
@@ -1419,6 +1439,20 @@ try {
     const dlg = page.locator(".modal-lg").last();
     const txt = await dlg.innerText();
     ok("the switch asks when something hangs on the record", (await page.locator(".scope-dlg").count()) === 1);
+    // WHERE it asks, not only that it asks. `position: fixed` is relative to the nearest
+    // ancestor carrying a transform, and `.panel` animates in with one - so this dialog was
+    // laid out against the panel it was raised from: measured 958x1080 at (293,309) in a
+    // 1280x900 window, with the dialog ending 185px below the fold. It reads as a popup cut
+    // off at the bottom. The overlay portals to <body>; this is what proves it still does.
+    ok("...in the middle of the window, masking all of it", await page.evaluate(() => {
+      const o = document.querySelector(".overlay"), d = document.querySelector(".scope-dlg");
+      if (!o || !d) return false;
+      const ob = o.getBoundingClientRect(), db = d.getBoundingClientRect();
+      const covers = ob.left === 0 && ob.top === 0
+        && Math.round(ob.width) === innerWidth && Math.round(ob.height) === innerHeight;
+      const whole = db.top >= 0 && db.bottom <= innerHeight && db.left >= 0 && db.right <= innerWidth;
+      return covers && whole && o.parentElement === document.body;
+    }));
     ok("...and lists what goes with it", /Disabled with it/i.test(txt) && /Operational Scenario/.test(txt), txt.slice(0, 140));
     ok("...and what else is affected", /Also affected/i.test(txt) && /Security Measure/.test(txt));
     await dlg.locator(".modal-lg-foot .btn.danger").click();
@@ -1852,6 +1886,131 @@ try {
   }
 
   await page.screenshot({ path: `${shots}/Model.png` });
+
+  // ── which language a reader is shown ────────────────────────────────────────
+  // Three answers to one question - what the reader chose, what the browser asked, what
+  // the product is written in - and the order between them only exists once, in the built
+  // file. Each case needs its OWN context: a language is remembered per origin, so one
+  // shared profile would let the first case decide the second.
+  {
+    const fresh = async (locale) => {
+      const ctx = await browser.newContext({ locale, viewport: { width: 1280, height: 900 } });
+      const p = await ctx.newPage();
+      p.on("console", (m) => { if (m.type() === "error" && !benign(m.text())) errors.push(m.text()); });
+      p.on("pageerror", (e) => errors.push("pageerror: " + e.message));
+      await p.goto(file);
+      await p.waitForSelector("#root .app", { timeout: 10000 });
+      return { ctx, p };
+    };
+    const shows = (p, word) => p.locator(".sidebar .nav-item", { hasText: word }).count();
+
+    const en = await fresh("en-GB");
+    ok("an English browser opens in English", (await shows(en.p, "Studies")) === 1);
+    // The switch names its TARGET in the target's own language: the reader who needs it is
+    // the one who cannot read the language currently on screen.
+    ok("...and offers German, named in German", (await shows(en.p, "Deutsch")) === 1);
+    await en.p.locator(".sidebar .nav-item", { hasText: "Deutsch" }).click();
+    await en.p.waitForTimeout(300);
+    ok("...clicking it switches the interface", (await shows(en.p, "Studien")) === 1);
+    ok("...and the document says which language it is in",
+      (await en.p.evaluate(() => document.documentElement.lang)) === "de");
+    await en.p.screenshot({ path: `${shots}/German.png` });
+    await en.p.reload();
+    await en.p.waitForSelector("#root .app", { timeout: 10000 });
+    ok("...and the choice outlives the visit", (await shows(en.p, "Studien")) === 1);
+    await en.ctx.close();
+
+    const de = await fresh("de-DE");
+    ok("a German browser opens in German", (await shows(de.p, "Studien")) === 1);
+    await de.p.locator(".sidebar .nav-item", { hasText: "English" }).click();
+    await de.p.waitForTimeout(300);
+    await de.p.reload();
+    await de.p.waitForSelector("#root .app", { timeout: 10000 });
+    // The point of having a switch at all: a browser cannot say "this product in English,
+    // the rest of my machine in German". What the reader said beats what the browser asked.
+    ok("a German reader who asks for English keeps it", (await shows(de.p, "Studies")) === 1);
+    await de.ctx.close();
+
+    // Switching is a render, not a reload and not a remount. What that buys the reader is
+    // this: the study stays open AND the workshop they were reading stays open. Measured
+    // rather than asserted - a remount passes the first half of this check and fails the
+    // second, which is how the difference was found.
+    const words = (pg) => pg.evaluate(() => [
+      ...[...document.querySelectorAll(".sidebar .nav-item")].map((x) => x.textContent.trim()),
+      ...[...document.querySelectorAll(".ws-tab")].map((x) => x.textContent.trim()),
+      ...[...document.querySelectorAll(".main h3")].map((x) => x.textContent.trim()),
+    ].join(" | "));
+    const openThird = async (pg) => {
+      await pg.getByText(/Load sample study|Beispielstudie laden/).click();
+      await pg.waitForSelector(".ws-tabs", { timeout: 10000 });
+      await pg.locator(".ws-tab").nth(2).click();
+      await pg.waitForTimeout(400);
+    };
+
+    const keep = await fresh("en-GB");
+    await openThird(keep.p);
+    const tabBefore = await keep.p.locator(".ws-tab.active").getAttribute("class");
+    const nthBefore = await keep.p.evaluate(() =>
+      [...document.querySelectorAll(".ws-tab")].findIndex((x) => x.classList.contains("active")));
+    const titleBefore = await keep.p.locator(".topbar .title").first().textContent();
+    await keep.p.locator(".sidebar .nav-item", { hasText: "Deutsch" }).click();
+    await keep.p.waitForTimeout(400);
+    // Not the same TITLE: the sample study is re-seeded in the new language, so its name is
+    // expected to change. What must not change is that a study is open at all, and which
+    // one - a reader who switches language should not land back on the dashboard.
+    ok("switching language keeps the open study open",
+      (await keep.p.locator(".ws-tabs").count()) === 1
+      && ((await keep.p.locator(".topbar .title").first().textContent()) ?? "").trim().length > 0
+      && titleBefore !== null);
+    ok("...and the workshop the reader was in", (await keep.p.evaluate(() =>
+      [...document.querySelectorAll(".ws-tab")].findIndex((x) => x.classList.contains("active")))) === nthBefore
+      && nthBefore === 2 && !!tabBefore);
+    const switched = await words(keep.p);
+    await keep.ctx.close();
+
+    // The sample study is demonstration material, so switching language re-seeds it in the
+    // new language - a German reader who loaded it in English should not be left with the
+    // English one. It is replaced, not edited, so its hash chain stays whole.
+    const seed = await fresh("en-GB");
+    await seed.p.getByText(/Load sample study/).click();
+    await seed.p.waitForSelector(".ws-tabs", { timeout: 10000 });
+    const firstName = () => seed.p.locator("table.tbl tbody .name").first().textContent();
+    ok("the sample study loads in the browser's language", /Patient records/.test(await firstName() ?? ""));
+    await seed.p.locator(".sidebar .nav-item", { hasText: "Deutsch" }).click();
+    await seed.p.waitForTimeout(800);
+    ok("...and follows the reader to the other one", /Patientenakten/.test(await firstName() ?? ""));
+
+    // But ONLY while it is untouched. Once a record is gone it is somebody's study, and
+    // re-seeding it would throw their work away - the failure this check exists to catch.
+    const rows = () => seed.p.locator("table.tbl tbody tr:not(.detail-row):not(.group-row)").count();
+    const before = await rows();
+    await seed.p.locator("table.tbl tbody tr").first().click();
+    await seed.p.waitForTimeout(300);
+    await seed.p.getByRole("button", { name: /Löschen|Delete/ }).first().click();
+    await seed.p.waitForTimeout(400);
+    await seed.p.locator(".scope-dlg .modal-lg-foot .danger").click();
+    await seed.p.waitForTimeout(700);
+    // Deleting cascades, so how MANY went is not the point and not asserted - only that
+    // something did, and that the switch afterwards leaves the study exactly as it was.
+    const worked = await rows();
+    const workedName = await firstName();
+    await seed.p.locator(".sidebar .nav-item", { hasText: "English" }).click();
+    await seed.p.waitForTimeout(900);
+    console.log(`   ${before} rows → ${worked} after the delete → ${await rows()} after switching back`);
+    ok("a sample somebody has worked in is left alone",
+      worked < before && (await rows()) === worked && (await firstName()) === workedName);
+    await seed.ctx.close();
+
+    // And the language a reader switched INTO has to be the same one they would have got
+    // by opening the file with that browser. This is the check that catches a string
+    // computed once and cached under the old language: it would survive the switch and
+    // differ here, while every assertion above still passed.
+    const cold = await fresh("de-DE");
+    await openThird(cold.p);
+    ok("switching into a language shows what opening in it would have shown",
+      (await words(cold.p)) === switched);
+    await cold.ctx.close();
+  }
 } catch (e) {
   errors.push("exception: " + (e?.message ?? String(e)));
 } finally {

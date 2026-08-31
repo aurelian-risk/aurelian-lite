@@ -12,6 +12,17 @@ export interface ModelOption { id: string; label: string; size: string; note: st
 export const MODELS: ModelOption[] = [
   { id: "Xenova/all-MiniLM-L6-v2", label: "all-MiniLM-L6-v2", size: "~25 MB", note: "fast · general purpose" },
   { id: "Xenova/bge-small-en-v1.5", label: "bge-small-en-v1.5", size: "~34 MB", note: "stronger · English" },
+  // Both of the above are English - one says so in its name. Extraction compares a
+  // document against the taxonomy's own labels, so a study whose sources are German is
+  // matched across a language barrier by a model that was never shown one. Measured on
+  // six reference documents (harness/embed-extract.mjs): a German audit report went from
+  // 2 of 17 expected entities under the right type to 8, and the whole corpus from 28 of
+  // 62 to 35 - so it is not only the German half that gains.
+  //
+  // Offered, never imposed: five times the size of the first, and about twice as slow
+  // (24 s per 1,000 words against 10), which is worth it where the sources are not
+  // English and wasted where they are. Nothing downloads until it is chosen.
+  { id: "Xenova/paraphrase-multilingual-MiniLM-L12-v2", label: "paraphrase-multilingual-MiniLM-L12", size: "~120 MB", note: "50 languages · for sources that are not English" },
 ];
 
 /** Built-in embedding models + user-added ones from the registry. */

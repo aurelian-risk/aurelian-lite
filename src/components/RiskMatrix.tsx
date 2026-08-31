@@ -4,8 +4,10 @@
 // residual likelihood/gravity, an inherent↔residual toggle shows where the
 // controls move each risk. Chips open the entity editor.
 import { Fragment, useState } from "react";
+import { Sentence } from "./Sentence";
+import { t as tr } from "../domain/i18n";
 import type { EntityRecord, EntityTypeDef, Study, Taxonomy } from "../domain/types";
-import { recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
+import { fieldLabel, recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
 import { residualPos } from "../domain/treatment";
 import { DEFAULT_CALIBRATION } from "../domain/calibration";
 import { EntityModal } from "./EntityModal";
@@ -64,16 +66,16 @@ export function RiskMatrix({ tax, study, type, color }: { tax: Taxonomy; study: 
   return (
     <div className="panel ws-accent" style={{ ["--ws-color" as string]: color, marginBottom: 20, padding: 16 }}>
       <div className="panel-head" style={{ padding: "0 0 12px", border: "none" }}>
-        <h3>Risk matrix</h3>
+        <h3>{tr('ui.riskmatrix.risk-matrix', 'Risk matrix')}</h3>
         <span className="badge">{items.length}</span>
         {hasResidual && (
           <div className="qt-toggle" style={{ marginLeft: 12 }}>
-            <button className={"seg-btn" + (mode === "inherent" ? " on" : "")} onClick={() => setMode("inherent")}>Inherent</button>
-            <button className={"seg-btn" + (mode === "residual" ? " on" : "")} onClick={() => setMode("residual")}>Residual</button>
+            <button className={"seg-btn" + (mode === "inherent" ? " on" : "")} onClick={() => setMode("inherent")}>{tr('ui.riskmatrix.inherent', 'Inherent')}</button>
+            <button className={"seg-btn" + (mode === "residual" ? " on" : "")} onClick={() => setMode("residual")}>{tr('ui.riskmatrix.residual', 'Residual')}</button>
           </div>
         )}
         <span className="spacer" />
-        <span className="hint">{yF.label} ↑ × {xF.label} →</span>
+        <span className="hint">{fieldLabel(yF)} ↑ × {fieldLabel(xF)} →</span>
       </div>
       <div className="risk-matrix" style={{ ["--xn" as string]: xMax }}>
         {ys.map((y) => (
@@ -100,7 +102,13 @@ export function RiskMatrix({ tax, study, type, color }: { tax: Taxonomy; study: 
         {xs.map((x) => <div key={x} className="rm-xlabel">{scaleLabel(xF, x)}</div>)}
       </div>
       {mode === "residual" && (
-        <div className="hint" style={{ marginTop: 8 }}>Residual = position after treatment, <b>derived</b> from the decision + how well the risk's kill chain is mitigated: <b>Reduce</b> lowers likelihood (by that coverage), <b>Share</b> lowers gravity, <b>Accept</b> keeps it, <b>Avoid</b> removes it. Untreated risks stay at inherent. Hover a chip for the shift.</div>
+        <div className="hint" style={{ marginTop: 8 }}><Sentence k="ui.riskmatrix.residual-explained" parts={[
+          <b>derived</b>,
+          <b>{tr('ui.riskmatrix.reduce', 'Reduce')}</b>,
+          <b>{tr('ui.riskmatrix.share', 'Share')}</b>,
+          <b>{tr('ui.riskmatrix.accept', 'Accept')}</b>,
+          <b>{tr('ui.riskmatrix.avoid', 'Avoid')}</b>,
+        ]} en={"Residual = position after treatment, {0} from the decision + how well the risk's kill chain is mitigated: {1} lowers likelihood (by that coverage), {2} lowers gravity, {3} keeps it, {4} removes it. Untreated risks stay at inherent."} /> {tr("ui.riskmatrix.hover-a-chip", "Hover a chip for the shift.")}</div>
       )}
       {rec && <EntityModal type={type} tax={tax} study={study} record={rec} onClose={() => setRec(null)} />}
     </div>

@@ -4,6 +4,7 @@
 // peak handle up/down to make the distribution more peaked or flatter (lambda).
 // Optional qualitative presets fill a calibrated range as a quick start. Emits a Range.
 import { useRef } from "react";
+import { t as tr } from "../domain/i18n";
 import { PERT_LAMBDA, type Range } from "../domain/montecarlo";
 
 const LAM_MAX = 12, LAM_MIN = 0.2;
@@ -136,7 +137,7 @@ export function DistInput({ label, sub, value, onChange, unit, lo, hi, log = fal
           <svg className="di-density" viewBox={`0 0 100 ${H}`} preserveAspectRatio="none" aria-hidden>
             <polygon points={poly} fill={accent} fillOpacity={0.18} stroke={accent} strokeWidth={0.6} vectorEffect="non-scaling-stroke" />
           </svg>
-          <span className="di-range" style={{ left: `${fMin}%`, width: `${Math.max(0, fMax - fMin)}%`, background: `color-mix(in oklch, ${accent} 30%, transparent)` }} onPointerDown={startPan} title="Drag to slide the whole distribution" />
+          <span className="di-range" style={{ left: `${fMin}%`, width: `${Math.max(0, fMax - fMin)}%`, background: `color-mix(in oklch, ${accent} 30%, transparent)` }} onPointerDown={startPan} title={tr('ui.distinput.drag-to-slide-the', 'Drag to slide the whole distribution')} />
           <button type="button" className="di-h di-h-min" style={{ left: `${fMin}%`, borderColor: accent }} onPointerDown={startDrag("min")} aria-label="minimum" />
           <button type="button" className="di-h di-h-mode" style={{ left: `${fMode}%`, background: accent }} onPointerDown={startDrag("mode")} aria-label="most likely" />
           <button type="button" className="di-h di-h-max" style={{ left: `${fMax}%`, borderColor: accent }} onPointerDown={startDrag("max")} aria-label="maximum" />

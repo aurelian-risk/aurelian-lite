@@ -12,6 +12,7 @@ import { DEFAULT_TAXONOMY, getType, recordTitle, reconcileTaxonomy } from "./tax
 import { reconcileCalibration, type Calibration } from "./calibration";
 import { scopeValue, deleteChange } from "./scope";
 import { loadRaw, saveState } from "./persistence";
+import { isPristineSample, makeSampleStudy } from "../profile";
 import { appendAll, appendLog, diffValues, entryKey, getEditor, hashValues, sealLog, STUDY_SCOPE, verdictText, verifyLog, type LogInput } from "./audit";
 
 function uid(): ID {
@@ -256,6 +257,8 @@ export interface StoreState {
   createStudy: (name: string, organization?: string, scope?: string) => ID;
   updateStudy: (id: ID, patch: Partial<Pick<Study, "name" | "organization" | "scope" | "sector">>) => void;
   deleteStudy: (id: ID) => void;
+  /** Re-seed any untouched sample study in the language now being read. */
+  reseedSample: () => number;
   /** Sign the head of the active study's log. Resolves to the fingerprint used, or null
    *  when there is no key or nothing to seal. */
   sealActive: (by: string) => Promise<string | null>;
@@ -378,6 +381,23 @@ export const useStore = create<StoreState>((set, get) => ({
       }) };
     }) });
     schedulePersist(get);
+  },
+  reseedSample: () => {
+    // Replaced, not edited. Rewriting the values in place would leave every entry in the
+    // hash-chained log describing text that is no longer there, and the study would read
+    // as "changed outside the app" — which is exactly what the chain is for. A fresh
+    // sample brings its own chain.
+    const fresh: Study[] = [];
+    let n = 0, active = get().activeStudyId;
+    for (const s of get().studies) {
+      if (!isPristineSample(s)) { fresh.push(s); continue; }
+      const seed = makeSampleStudy();
+      if (active === s.id) active = seed.id;
+      forgetStudy(s.id);                 // its folds describe records that no longer exist
+      fresh.push(seed); n++;
+    }
+    if (n) { set({ studies: fresh, activeStudyId: active }); schedulePersist(get); }
+    return n;
   },
   deleteStudy: (id) => {
     set({

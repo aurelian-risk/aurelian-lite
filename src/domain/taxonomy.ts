@@ -3,8 +3,9 @@
 // taxonomy - independent of WHICH taxonomy. The taxonomy itself is a product
 // decision and lives in src/profile.
 import type {
-  EntityRecord, EntityTypeDef, FieldDef, FieldValue, Study, Taxonomy,
+  EntityRecord, EntityTypeDef, FieldDef, FieldValue, GroupDef, Study, Taxonomy,
 } from "./types";
+import { t as tr, tList as trList, tn } from "./i18n";
 import { DEFAULT_TAXONOMY, TAXONOMY_SCHEMA_VERSION } from "../profile";
 
 export { DEFAULT_TAXONOMY, TAXONOMY_SCHEMA_VERSION };
@@ -69,23 +70,74 @@ export function validateRecord(t: EntityTypeDef, values: Record<string, FieldVal
     const v = values[f.key];
     const empty =
       v == null || v === "" || (Array.isArray(v) && v.length === 0);
-    if (empty) return `"${f.label}" is required.`;
+    if (empty) return `"${fieldLabel(f)}" is required.`;
   }
   return null;
 }
 
-/** What to show for an enum value: the field's label for it, or the value itself. */
-export function optionLabel(f: FieldDef, value: string): string {
+// ── What a reader is shown ───────────────────────────────────────────────────
+// Every string the taxonomy carries is looked up before it is shown, so a product can
+// give it its own wording without the taxonomy being touched: Grundschutz++ says
+// "Zielobjekt" where this says "Supporting Asset", and the stored key, the export and
+// the seal do not notice. The contract, and the key scheme, are in docs/i18n.md.
+//
+// Reading a label directly is what these replace. It still works and still compiles,
+// which is why they are named after what they return rather than after the lookup: a
+// call site that says `fieldLabel(f)` reads the same as `fieldLabel(f)` did.
+
+/** A field's key alone is not unique - "name" and "description" occur in most types - so
+ *  a caller that has the type in hand gets a key that can be answered per type, and one
+ *  that does not falls back to the wording shared across types. */
+const fieldKey = (f: FieldDef, t: EntityTypeDef | undefined, part: string): string =>
+  t ? `field.${t.key}.${f.key}.${part}` : `field.${f.key}.${part}`;
+const fieldLookup = (f: FieldDef, t: EntityTypeDef | undefined, part: string, authored: string): string => {
+  const scoped = t ? tr(fieldKey(f, t, part), "") : "";
+  return scoped || tr(`field.${f.key}.${part}`, authored);
+};
+
+export const typeLabel = (t: EntityTypeDef): string => tr(`type.${t.key}.label`, t.label);
+/** The shown name of a type named only by its key — the shape six call sites wrote out by
+ *  hand as `getType(tax, k)?.label ?? k`, each of them reading past the lookup. Falls back
+ *  to the key, which is what a caller wants when the taxonomy no longer has the type. */
+export const typeNameOf = (tax: Taxonomy, key: string, plural = false): string => {
+  const t = getType(tax, key);
+  return t ? (plural ? typeLabelPlural(t) : typeLabel(t)) : key;
+};
+
+export const typeLabelPlural = (t: EntityTypeDef): string => tr(`type.${t.key}.plural`, t.labelPlural);
+export const groupLabel = (g: GroupDef): string => tr(`group.${g.key}.label`, g.label);
+export const groupDescription = (g: GroupDef): string | undefined =>
+  g.description == null ? undefined : tr(`group.${g.key}.description`, g.description);
+export const fieldLabel = (f: FieldDef, t?: EntityTypeDef): string => fieldLookup(f, t, "label", f.label);
+export const fieldHelp = (f: FieldDef, t?: EntityTypeDef): string | undefined =>
+  f.help == null ? undefined : fieldLookup(f, t, "help", f.help);
+/** How a reference reads in a sentence — "affects", "covers". Falls back to the field's
+ *  own label, which is what every call site did by hand. */
+export const fieldRelation = (f: FieldDef, t?: EntityTypeDef): string =>
+  f.relation ? fieldLookup(f, t, "relation", f.relation) : fieldLabel(f, t);
+
+/** What to show for an enum value: this language's reading, the one the taxonomy carries,
+ *  or the value itself.
+ *
+ *  `optionLabels` is itself a translation into ONE language, fixed when the file was
+ *  written, so a product with two languages moves it into the table for the language it
+ *  was written in. It stays here as the authored fallback. */
+export function optionLabel(f: FieldDef, value: string, t?: EntityTypeDef): string {
   const i = f.options?.indexOf(value) ?? -1;
-  return (i >= 0 ? f.optionLabels?.[i] : undefined) ?? value;
+  if (i < 0) return value;
+  const list = trList(t ? [fieldKey(f, t, "options"), `field.${f.key}.options`] : `field.${f.key}.options`,
+    f.optionLabels);
+  return list?.[i] ?? f.optionLabels?.[i] ?? value;
 }
 
 export function scaleMax(f: FieldDef): number {
   return f.scaleLabels?.length ?? 4;
 }
 
-export function scaleLabel(f: FieldDef, value: number): string {
-  return f.scaleLabels?.[value - 1] ?? String(value);
+export function scaleLabel(f: FieldDef, value: number, t?: EntityTypeDef): string {
+  const list = trList(t ? [fieldKey(f, t, "scale"), `field.${f.key}.scale`] : `field.${f.key}.scale`,
+    f.scaleLabels);
+  return list?.[value - 1] ?? f.scaleLabels?.[value - 1] ?? String(value);
 }
 
 /** Additively bring a stored taxonomy in line with the default one: enum fields whose
@@ -195,9 +247,10 @@ export function setBackBlocked(tax: Taxonomy, study: Study, r: EntityRecord): st
       : held;
     const rest = Math.max(0, named.length - 2);
     const what = named.length
-      ? `${named.slice(0, 2).join(", ")}${rest > 0 ? ` and ${rest} more` : ""}`
+      ? `${named.slice(0, 2).join(", ")}${rest > 0 ? ` ${tn("ui.taxonomy.and-n-more", rest, "and {0} more", "and {0} more")}` : ""}`
       : String(held.length);
-    return `In use: ${(fld?.relation ?? fld?.label ?? key).toLowerCase()} ${what}. Take it off there first.`;
+    return tr("ui.taxonomy.in-use-here", "In use: {0} {1}. Take it off there first.")
+      .replace("{0}", (fieldRelation(fld!, undefined) ?? key).toLowerCase()).replace("{1}", what);
   }
   return null;
 }

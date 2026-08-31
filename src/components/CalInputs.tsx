@@ -10,6 +10,7 @@
 // for values that are really categories, and the app's existing DistInput curve for the
 // three-point bands.
 import { useRef, useState } from "react";
+import { t as tr } from "../domain/i18n";
 
 export type DialKind = "pct" | "mult" | "rate" | "int";
 
@@ -75,7 +76,7 @@ export function Dial({ value, onChange, dflt, lo, hi, step, kind, log = false, n
       </div>
       {typing == null ? (
         <button className={"dial-v mono" + (moved ? " moved" : "")} onClick={() => setTyping(String(value))}
-          title="Type an exact value">{label(value, kind)}</button>
+          title={tr('ui.calinputs.type-an-exact-value', 'Type an exact value')}>{label(value, kind)}</button>
       ) : (
         <input className="dial-v mono editing" autoFocus value={typing}
           onChange={(e) => setTyping(e.target.value)}

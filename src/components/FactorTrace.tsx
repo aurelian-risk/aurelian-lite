@@ -4,11 +4,13 @@
 // derivation, openable in the full modal), and a haptic control to adjust/override
 // it. Opened from a factor chip.
 import { Fragment } from "react";
+import { Sentence } from "./Sentence";
+import { t as tr, tn } from "../domain/i18n";
 import { createPortal } from "react-dom";
 import type { EntityRecord, Taxonomy } from "../domain/types";
-import { getType, recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
+import { fieldLabel, getType, recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
 import type { Derived } from "../domain/quantModel";
-import { effectClassOf, EFFECT_CHANNEL } from "../domain/controls";
+import { effectClassOf, effectChannel } from "../domain/controls";
 import type { QuantInputs, Range } from "../domain/montecarlo";
 import type { FConf } from "./QuantificationView";
 import { DistInput, fmtVal, type Unit } from "./DistInput";
@@ -107,9 +109,7 @@ export function FactorTrace({ fkey, range, vals, derived, tax, unit, conf, accen
       <>
         {openBtn(rs, "Risk source")}
         <p className="ft-calc">
-          How often this scenario is attempted. One number, not two: how often contact
-          happens and how often contact turns into an attempt cannot be told apart from
-          real data, so they are derived together.
+          {tr('ui.factortrace.how-often-this-scenario', 'How often this scenario is attempted. One number, not two: how often contact\n          happens and how often contact turns into an attempt cannot be told apart from\n          real data, so they are derived together.')}
         </p>
         <div className="ft-steps">
           {rows.map((r) => (
@@ -119,12 +119,12 @@ export function FactorTrace({ fkey, range, vals, derived, tax, unit, conf, accen
             </div>
           ))}
           <div className="ft-step">
-            <span className="ft-step-n"><b>Attempts per year</b></span>
+            <span className="ft-step-n"><b>{tr('ui.factortrace.attempts-per-year', 'Attempts per year')}</b></span>
             <span className="ft-step-c"><b className="ok">{fmtVal(f.total, "rate")}</b></span>
           </div>
         </div>
-        {f.capped && <p className="ft-est">Capped: the multipliers together produced a rate no single scenario plausibly sees, which usually means one of the ratings is too high.</p>}
-        {rs && <div className="ft-ratings">{["capability", "resources", "activity", "relevance"].map((k) => { const sc = scaleOf(tax, rs, k); return sc ? <div className="ft-rating" key={k}><span>{sc.field.label}</span><ScaleBars value={sc.value} max={sc.max} label={sc.label} positive={sc.field.polarity === "positive"} /></div> : null; })}</div>}
+        {f.capped && <p className="ft-est">{tr('ui.factortrace.capped-the-multipliers-together', 'Capped: the multipliers together produced a rate no single scenario plausibly sees, which usually means one of the ratings is too high.')}</p>}
+        {rs && <div className="ft-ratings">{["capability", "resources", "activity", "relevance"].map((k) => { const sc = scaleOf(tax, rs, k); return sc ? <div className="ft-rating" key={k}><span>{fieldLabel(sc.field)}</span><ScaleBars value={sc.value} max={sc.max} label={sc.label} positive={sc.field.polarity === "positive"} /></div> : null; })}</div>}
       </>
     );
   } else if (m.kind === "capability") {
@@ -132,8 +132,8 @@ export function FactorTrace({ fkey, range, vals, derived, tax, unit, conf, accen
     source = (
       <>
         {openBtn(rs, "Risk source")}
-        {s && <p className="ft-calc">{s.field.label} = <b>{s.label}</b> ({s.value}/{s.max}) → this actor out-performs about <b>{Math.round(range.mode * 100)}%</b> of all attackers (range {Math.round(range.min * 100)}-{Math.round(range.max * 100)}%). That is what gets compared against the bar below.</p>}
-        {rs && <div className="ft-ratings">{["capability", "resources", "activity", "relevance"].map((k) => { const sc = scaleOf(tax, rs, k); return sc ? <div className="ft-rating" key={k}><span>{sc.field.label}</span><ScaleBars value={sc.value} max={sc.max} label={sc.label} positive={sc.field.polarity === "positive"} /></div> : null; })}</div>}
+        {s && <p className="ft-calc">{fieldLabel(s.field)} = <b>{s.label}</b> ({s.value}/{s.max}) → this actor out-performs about <b>{Math.round(range.mode * 100)}%</b> of all attackers (range {Math.round(range.min * 100)}-{Math.round(range.max * 100)}%). That is what gets compared against the bar below.</p>}
+        {rs && <div className="ft-ratings">{["capability", "resources", "activity", "relevance"].map((k) => { const sc = scaleOf(tax, rs, k); return sc ? <div className="ft-rating" key={k}><span>{fieldLabel(sc.field)}</span><ScaleBars value={sc.value} max={sc.max} label={sc.label} positive={sc.field.polarity === "positive"} /></div> : null; })}</div>}
       </>
     );
   } else if (m.kind === "control") {
@@ -149,42 +149,39 @@ export function FactorTrace({ fkey, range, vals, derived, tax, unit, conf, accen
         {dm ? (
           <>
             <p className="ft-calc">
-              What the attack itself demands, read off the chain below: an attacker has to
-              out-perform about <b>{Math.round(range.mode * 100)}%</b> of the field before any
+              {tr('ui.factortrace.what-the-attack-itself', 'What the attack itself demands, read off the chain below: an attacker has to\n              out-perform about')} <b>{Math.round(range.mode * 100)}%</b> of the field before any
               measure of yours is counted. Each measure then adds to that at the step it sits on.
             </p>
             <div className="ft-steps">
               <div className="ft-step">
-                <span className="ft-step-n">Getting in <em className="ft-step-join">· the entry technique</em></span>
+                <span className="ft-step-n">{tr('ui.factortrace.getting-in', 'Getting in')} <em className="ft-step-join">· the entry technique</em></span>
                 <span className="ft-step-c"><b className="ok">{Math.round(dm.entry * 100)}%</b></span>
               </div>
               <div className="ft-step">
-                <span className="ft-step-n">Tooling <em className="ft-step-join">· {dm.tooling >= 1 ? "has to be built for the job" : dm.tooling > 0 ? "takes a practitioner" : "downloadable tools are enough"}</em></span>
+                <span className="ft-step-n">{tr('ui.factortrace.tooling', 'Tooling')} <em className="ft-step-join">· {dm.tooling >= 1 ? "has to be built for the job" : dm.tooling > 0 ? "takes a practitioner" : "downloadable tools are enough"}</em></span>
                 <span className="ft-step-c"><b className="ok">+{Math.round(dm.adds.tooling * 100)}%</b></span>
               </div>
               <div className="ft-step">
-                <span className="ft-step-n">Breadth <em className="ft-step-join">· spans {dm.tactics} distinct {dm.tactics === 1 ? "tactic" : "tactics"}</em></span>
+                <span className="ft-step-n">{tr('ui.factortrace.breadth', 'Breadth')} <em className="ft-step-join">· spans {dm.tactics} distinct {dm.tactics === 1 ? "tactic" : "tactics"}</em></span>
                 <span className="ft-step-c"><b className="ok">+{Math.round(dm.adds.depth * 100)}%</b></span>
               </div>
               <div className="ft-step">
-                <span className="ft-step-n">Staying in <em className="ft-step-join">· {dm.dwell > 0 ? "needs persistence, evasion or lateral movement" : "one pass, no need to stay"}</em></span>
+                <span className="ft-step-n">{tr('ui.factortrace.staying-in', 'Staying in')} <em className="ft-step-join">· {dm.dwell > 0 ? "needs persistence, evasion or lateral movement" : "one pass, no need to stay"}</em></span>
                 <span className="ft-step-c"><b className="ok">+{Math.round(dm.adds.dwell * 100)}%</b></span>
               </div>
               <div className="ft-step">
-                <span className="ft-step-n"><b>What the attack demands</b></span>
+                <span className="ft-step-n"><b>{tr('ui.factortrace.what-the-attack-demands', 'What the attack demands')}</b></span>
                 <span className="ft-step-c"><b className="ok">{Math.round(dm.total * 100)}%</b></span>
               </div>
             </div>
             <p className="ft-calc">
-              A step is only a further hurdle if something blocks or detects him there. Steps
-              with nothing on them cost him nothing - so splitting the chain into more steps
-              never makes it look safer.
+              {tr('ui.factortrace.a-step-is-only', 'A step is only a further hurdle if something blocks or detects him there. Steps\n              with nothing on them cost him nothing - so splitting the chain into more steps\n              never makes it look safer.')}
             </p>
           </>
         ) : (
           <p className="ft-calc">
             No kill-chain steps here, so there is nothing to read the demand off.
-            {diff && <> The difficulty rating stands in: <b>{diff.label}</b> ({diff.value}/{diff.max}) → </>}
+            {diff && <> {tr('ui.factortrace.the-difficulty-rating-stands', 'The difficulty rating stands in:')} <b>{diff.label}</b> ({diff.value}/{diff.max}) → </>}
             an attacker has to out-perform about <b>{Math.round(range.mode * 100)}%</b> of the field.
             Model the chain and this becomes derived instead of rated.
           </p>
@@ -205,7 +202,7 @@ export function FactorTrace({ fkey, range, vals, derived, tax, unit, conf, accen
                     <span className="bad">{cs.terminal && sc?.detection ? "detected only once the damage is done" : "nothing here - the attacker walks through"}</span>
                   )}
                   {sc?.measures.map((mm) => (
-                    <span className="ft-step-m" key={mm.id} title={`${effectClassOf(mm)}: ${EFFECT_CHANNEL[effectClassOf(mm)]}`}>
+                    <span className="ft-step-m" key={mm.id} title={`${effectClassOf(mm)}: ${effectChannel(effectClassOf(mm))}`}>
                       {recordTitle(getType(tax, mm.type)!, mm)}
                       <i className="ft-cls">{effectClassOf(mm)}</i>
                     </span>
@@ -219,7 +216,7 @@ export function FactorTrace({ fkey, range, vals, derived, tax, unit, conf, accen
     );
   } else {
     const s = scaleOf(tax, fe, "severity");
-    source = (<><p className="ft-est">You estimate this. {s && <>Seeded from the feared event severity <b>{s.label}</b>.</>}</p>{openBtn(fe, "Feared event")}</>);
+    source = (<><p className="ft-est">You estimate this. {s && <><Sentence k="ui.factortrace.seeded-from" parts={[<b>{s.label}</b>]} en={"Seeded from the feared event severity {0}."} /></>}</p>{openBtn(fe, "Feared event")}</>);
   }
 
   return createPortal(
@@ -227,13 +224,13 @@ export function FactorTrace({ fkey, range, vals, derived, tax, unit, conf, accen
       <div className="ft-card" onMouseDown={(e) => e.stopPropagation()}>
         <header className="ft-head">
           <div>
-            <div className="ft-eyebrow">Factor</div>
+            <div className="ft-eyebrow">{tr('ui.factortrace.factor', 'Factor')}</div>
             <h2>{m.title} <span className="mono ft-val">{fmtVal(selfVal, unit)}</span></h2>
           </div>
-          <button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button>
+          <button className="btn ghost sm" onClick={onClose} aria-label={tr('ui.factortrace.close', 'Close')}><Icon.close /></button>
         </header>
         <div className="ft-body">
-          <div className="ft-sec-t">How it's calculated</div>
+          <div className="ft-sec-t">{tr('ui.factortrace.how-it-s-calculated', "How it's calculated")}</div>
           <div className="ft-calc-path">
             <div className="ft-cstart">
               <span className="ft-cstart-l">{m.title}</span>
@@ -270,28 +267,27 @@ export function FactorTrace({ fkey, range, vals, derived, tax, unit, conf, accen
               three different pieces of work, bought separately. */}
           {(derived.channels[fkey]?.length ?? 0) > 0 && (
             <>
-              <div className="ft-sec-t">What your measures did to it</div>
+              <div className="ft-sec-t">{tr('ui.factortrace.what-your-measures-did', 'What your measures did to it')}</div>
               <div className="ft-chan">
                 {derived.channels[fkey]!.map((t) => (
                   <div className="ft-chan-row" key={t.cls}>
                     <span className={"ft-chan-cls cls-" + t.cls.toLowerCase()}>{t.cls}</span>
                     <span className="ft-chan-what">{t.what}</span>
-                    <span className="ft-chan-eff mono" title={EFFECT_CHANNEL[t.cls]}>
+                    <span className="ft-chan-eff mono" title={effectChannel(t.cls)}>
                       {t.factor != null
                         ? (t.factor < 0.999 ? `−${Math.round((1 - t.factor) * 100)}%` : "no effect")
-                        : `${t.steps} step${t.steps === 1 ? "" : "s"}`}
+                        : `${tn("ui.factortrace.steps", t.steps ?? 0, "{0} step", "{0} steps")}`}
                     </span>
                   </div>
                 ))}
               </div>
               <p className="ft-est">
-                Strength comes from each measure's implementation level and status, so half-done
-                work counts as half. A class with no measures is not shown.
+                {tr('ui.factortrace.strength-comes-from-each', "Strength comes from each measure's implementation level and status, so half-done\n                work counts as half. A class with no measures is not shown.")}
               </p>
             </>
           )}
 
-          <div className="ft-sec-t">Where it comes from</div>
+          <div className="ft-sec-t">{tr('ui.factortrace.where-it-comes-from', 'Where it comes from')}</div>
           {source}
 
           <div className="ft-sec-t">Adjust {overridden && <button className="ft-reset" onClick={onReset}>↺ reset to derived</button>}</div>

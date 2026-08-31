@@ -3,6 +3,18 @@
 // Uses the default EBIOS taxonomy field keys and wires relationships by id.
 import type { EntityRecord, FieldValue, Study } from "../../domain/types";
 import { hashValues, sealLog, type LogInput } from "../../domain/audit";
+import { getLanguage } from "../../domain/i18n";
+import { SAMPLE_DE } from "./sample.de";
+
+/** The free-text fields of a sample record. Named, not guessed: `asset_type` and
+ *  `measure_type` are strings too, and they are stored option values — those read through
+ *  the word table, not through here. */
+const PROSE = ["name", "description", "motivation", "justification", "owner"] as const;
+
+/** This study's own words in the language being read. Falls through to the English it was
+ *  written in, which is what the 14 requirement titles want: they are the published
+ *  wording of NIS2 and NIST CSF, and a translated law is an invented one. */
+const say = (text: string): string => (getLanguage() === "de" ? SAMPLE_DE[text] ?? text : text);
 
 function uid(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
@@ -120,11 +132,19 @@ export function makeSampleStudy(): Study {
   const at = (d: number) => new Date(now - d * day).toISOString();
   type Edit = { id: string; editor: string; ts: string; changes?: { field: string; from: FieldValue; to: FieldValue }[]; comment?: string };
   const edits: Edit[] = [
-    { id: baRecords, editor: "Analyst B", ts: at(4), changes: [{ field: "criticality", from: 3, to: 4 }], comment: "Raised to critical after the DPIA - leakage triggers mandatory breach notification." },
-    { id: roRansom, editor: "Analyst C", ts: at(3), changes: [{ field: "activity", from: 3, to: 4 }], comment: "Threat-intel: active ransomware campaigns targeting hospitals this quarter." },
-    { id: ssRansom, editor: "Analyst B", ts: at(2), changes: [{ field: "gravity", from: 3, to: 4 }], comment: "Gravity raised - encryption of the HIS halts emergency care." },
-    { id: trRansom, editor: "Analyst C", ts: at(1), changes: [{ field: "status", from: "Proposed", to: "In progress" }], comment: "MFA rollout kicked off; treatment now in progress." },
+    { id: baRecords, editor: "Analyst B", ts: at(4), changes: [{ field: "criticality", from: 3, to: 4 }], comment: say("Raised to critical after the DPIA - leakage triggers mandatory breach notification.") },
+    { id: roRansom, editor: "Analyst C", ts: at(3), changes: [{ field: "activity", from: 3, to: 4 }], comment: say("Threat-intel: active ransomware campaigns targeting hospitals this quarter.") },
+    { id: ssRansom, editor: "Analyst B", ts: at(2), changes: [{ field: "gravity", from: 3, to: 4 }], comment: say("Gravity raised - encryption of the HIS halts emergency care.") },
+    { id: trRansom, editor: "Analyst C", ts: at(1), changes: [{ field: "status", from: "Proposed", to: "In progress" }], comment: say("MFA rollout kicked off; treatment now in progress.") },
   ];
+  // Before the log is built, not after: an entry carries the record's title and the
+  // fingerprint of its values, so translating afterwards would leave the log describing a
+  // study that no longer exists — and every hash in the chain would fail to verify.
+  for (const e of entities) for (const k of PROSE) {
+    const v = e.values[k];
+    if (typeof v === "string") e.values[k] = say(v);
+  }
+
   // Creates are spread over the first days in the order the workshops were run.
   const createdBy = (i: number) => (i % 3 === 0 ? "Analyst A" : i % 3 === 1 ? "Analyst B" : "Analyst C");
   const createTs = (i: number) => at(9 - Math.min(8, Math.floor((i / Math.max(1, entities.length)) * 8)));
@@ -134,7 +154,7 @@ export function makeSampleStudy(): Study {
     e.createdAt = ts0; e.updatedAt = ts0;
     pending.push({ _s: ts0 + String(i).padStart(4, "0"), ts: ts0, editor: createdBy(i), kind: "create",
       entity: e.id, entityType: e.type, title: String(e.values.name ?? e.id),
-      ...(e.id === os ? { comment: "Modelled the end-to-end kill chain from the maintenance-access vector." } : {}) });
+      ...(e.id === os ? { comment: say("Modelled the end-to-end kill chain from the maintenance-access vector.") } : {}) });
   });
   for (const ed of edits) {
     const e = entities.find((x) => x.id === ed.id);
@@ -155,14 +175,32 @@ export function makeSampleStudy(): Study {
 
   return {
     id: uid(),
-    name: "Riverside General Hospital - Core Systems (sample)",
-    organization: "Riverside General Hospital Trust",
+    name: say("Riverside General Hospital - Core Systems (sample)"),
+    organization: say("Riverside General Hospital Trust"),
     sector: "Healthcare",
-    scope: "Patient data, emergency care and billing systems within the main hospital site.",
+    scope: say("Patient data, emergency care and billing systems within the main hospital site."),
     createdAt: ts,
     updatedAt: ts,
     entities,
     log,
     quantScenarios: [os, os2],
   };
+}
+
+/** Is this study the sample, exactly as it comes out of the box?
+ *
+ *  Asked when the language changes. The sample is DEMONSTRATION MATERIAL, not an analyst's
+ *  result: a German reader should not be left with the English one just because they
+ *  loaded it before switching. But that is only true while nobody has worked in it — the
+ *  moment a record is renamed, added or removed, it is somebody's study and stays as it is.
+ *
+ *  The test is the set of record names, in either language: identical count, and every
+ *  name one this file put there. Cheap, and it fails closed — an unknown name means keep. */
+export function isPristineSample(study: Study): boolean {
+  const fresh = makeSampleStudy();
+  if (study.entities.length !== fresh.entities.length) return false;
+  const known = new Set<string>();
+  for (const e of fresh.entities) known.add(String(e.values.name ?? ""));
+  for (const [en, de] of Object.entries(SAMPLE_DE)) { known.add(en); known.add(de); }
+  return study.entities.every((e) => known.has(String(e.values.name ?? "")));
 }

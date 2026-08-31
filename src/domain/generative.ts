@@ -11,7 +11,7 @@
 import type { EntityTypeDef, FieldValue, Taxonomy } from "./types";
 import type { TypeCandidates, Candidate } from "./extraction";
 import { getUserModels } from "./modelRegistry";
-import { scaleMax } from "./taxonomy";
+import { scaleMax, typeLabel, typeLabelPlural } from "./taxonomy";
 
 type Progress = { status?: string; text?: string; progress?: number; file?: string; tokens?: number; chunk?: number; chunks?: number };
 export type GenBackend = "webllm" | "transformers" | "endpoint";
@@ -175,7 +175,7 @@ function schemaPrompt(tax: Taxonomy): string {
       .filter((f) => f.type !== "ref" && f.type !== "multiref")
       .map((f) => (f.type === "enum" && f.options?.length ? `${f.key} (one of: ${f.options.join(", ")})` : f.key))
       .join(", ");
-    return `- "${t.key}" (${t.label}): fields ${fields || "name, description"}`;
+    return `- "${t.key}" (${typeLabel(t)}): fields ${fields || "name, description"}`;
   };
   return tax.entityTypes.map(line).join("\n");
 }
@@ -269,7 +269,7 @@ export async function extractByLLM(tax: Taxonomy, text: string, model: GenModel,
 
   // Tolerant matching (type/field KEY or LABEL) + dedupe across chunks by name.
   const byType = new Map<string, typeof tax.entityTypes[number]>();
-  for (const t of tax.entityTypes) { byType.set(nkey(t.key), t); byType.set(nkey(t.label), t); byType.set(nkey(t.labelPlural), t); }
+  for (const t of tax.entityTypes) { byType.set(nkey(t.key), t); byType.set(nkey(typeLabel(t)), t); byType.set(nkey(typeLabelPlural(t)), t); }
   const fieldVal = (values: Record<string, unknown>, f: { key: string; label: string }) => { for (const k of Object.keys(values)) if (nkey(k) === nkey(f.key) || nkey(k) === nkey(f.label)) return values[k]; };
   const pick = (values: Record<string, unknown>, ...names: string[]) => { for (const n of names) for (const k of Object.keys(values)) if (nkey(k) === nkey(n)) return values[k]; };
 
@@ -311,6 +311,6 @@ export async function extractByLLM(tax: Taxonomy, text: string, model: GenModel,
     out.set(t.key, arr);
   }
   return tax.entityTypes
-    .map((t) => ({ typeKey: t.key, label: t.labelPlural, candidates: out.get(t.key) ?? [] }))
+    .map((t) => ({ typeKey: t.key, label: typeLabelPlural(t), candidates: out.get(t.key) ?? [] }))
     .filter((tc) => tc.candidates.length > 0);
 }

@@ -4,6 +4,7 @@
 // quick view; expand a framework to assign measures per requirement (writes their
 // `fulfills`). Requirements themselves are added in the Requirements table above.
 import { Fragment, useState } from "react";
+import { t as tr } from "../domain/i18n";
 import type { EntityRecord, EntityTypeDef, Study, Taxonomy } from "../domain/types";
 import { isSetBack, getType, recordTitle } from "../domain/taxonomy";
 import { useStore } from "../domain/store";
@@ -59,20 +60,20 @@ export function CoverageMatrix({ tax, study, reqType, color }: { tax: Taxonomy; 
   return (
     <div className="panel ws-accent" style={{ ["--ws-color" as string]: color, marginBottom: 20 }}>
       <div className="panel-head">
-        <h3>Coverage &amp; traceability</h3>
+        <h3>{tr('ui.coveragematrix.coverage-amp-traceability', 'Coverage &amp; traceability')}</h3>
         <span className="badge">{visible.length === reqs.length ? reqs.length : `${visible.length} / ${reqs.length}`}</span>
         <span className="spacer" />
         <button className={"facet-btn" + (gapsOnly ? " on" : "")} onClick={() => setGapsOnly((g) => !g)}
-          title="Only the requirements no measure fulfils">Gaps only</button>
+          title={tr('ui.coveragematrix.only-the-requirements-no', 'Only the requirements no measure fulfils')}>{tr('ui.coveragematrix.gaps-only', 'Gaps only')}</button>
       </div>
       <TableTools type={reqType} f={f} groupable={false} />
       <div className="panel-body">
         {reqs.length === 0
-          ? <div className="empty" style={{ padding: "24px 16px" }}>No requirements yet — add them in the Requirements table above (e.g. “+ From framework…”).</div>
+          ? <div className="empty" style={{ padding: "24px 16px" }}>{tr('ui.coveragematrix.no-requirements-yet-add', 'No requirements yet — add them in the Requirements table above (e.g. “+ From framework…”).')}</div>
           : (
             <table className="tbl">
               <colgroup><col style={{ width: 260 }} /><col /></colgroup>
-              <thead><tr><th>Framework</th><th>Coverage</th></tr></thead>
+              <thead><tr><th>{tr('ui.coveragematrix.framework', 'Framework')}</th><th>{tr('ui.coveragematrix.coverage', 'Coverage')}</th></tr></thead>
               <tbody>
                 {[...byFw.entries()].map(([fw, list]) => {
                   const covered = list.filter((r) => measures.some((m) => fulfils(m, r.id))).length;

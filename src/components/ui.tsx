@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Dependency-free UI primitives (icons, dialog, scale, multi-select).
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { t as tr, getLanguage, onLanguageChange } from "../domain/i18n";
 
 const P = (d: string) => (
   <svg className="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -30,6 +32,11 @@ export const Icon = {
       <path d="M10 6.5h4a3 3 0 0 1 3 3V14" /></svg>
   ),
   chevron: () => P("M9 6l6 6-6 6"),
+  globe: () => (
+    <svg className="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18" /></svg>
+  ),
   spark: () => P("M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"),
   doc: () => (
     <svg className="inline-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -73,7 +80,7 @@ export function Dialog({
             <h2>{title}</h2>
             {subtitle && <div className="dialog-sub">{subtitle}</div>}
           </div>
-          <button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button>
+          <button className="btn ghost sm" onClick={onClose} aria-label={tr('ui.ui.close', 'Close')}><Icon.close /></button>
         </div>
         {children}
       </div>
@@ -169,12 +176,38 @@ export function useDismissOnEscape(open: boolean, close: () => void): void {
   }, [open, close]);
 }
 
+/** The language currently being read, as a value React knows how to watch.
+ *
+ *  Two callers, and they want different things from it. The shell calls it so that
+ *  choosing a language redraws the tree at all — nothing here is wrapped in `memo`, so one
+ *  render at the root reaches every string. A component calls it to put the language in a
+ *  `useMemo` dependency list, where it belongs: a value computed FROM words changes when
+ *  the words do, and a cache keyed on the record alone would hold yesterday's language.
+ *
+ *  It lives here rather than beside `t()` because src/domain knows nothing of React, and
+ *  is bundled by tests that would then pull React in behind it.
+ *
+ *  `getLanguage` serves as the server snapshot too: this product has no server, and a
+ *  hook that throws when one is imagined is a hook that fails in the next harness. */
+export function useLanguage(): string {
+  return useSyncExternalStore(onLanguageChange, getLanguage, getLanguage);
+}
+
 /** The backdrop every dialog here shares. It used to take the click and ignore the key:
  *  ten dialogs swallowed Escape, while the three menus beside them closed on it. The
  *  dismissal belongs to the backdrop, not to each dialog's own copy of it. */
 export function Overlay({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   useDismissOnEscape(true, onClose);
-  return <div className="overlay" onMouseDown={onClose}>{children}</div>;
+  // Through a portal, because `fixed` does not mean the window. An ancestor carrying
+  // transform, filter or backdrop-filter becomes the containing block for its fixed
+  // descendants, and this overlay is rendered inside a panel that has one — `.panel`
+  // animates in with `rise`, which is a transform.
+  //
+  // Measured here, deleting a record in the first register: the overlay came out 958x1060
+  // at (293, 309) in a 1280x900 window instead of covering it, and the dialog inside it
+  // ended 185px below the fold. Reported as "the dialog is cut off"; it is not clipped,
+  // it is placed against the panel. The five other modals in this tree already portal.
+  return createPortal(<div className="overlay" onMouseDown={onClose}>{children}</div>, document.body);
 }
 
 export function MultiSelect({
@@ -201,7 +234,7 @@ export function MultiSelect({
       {selected.map((id) => (
         <span className={"chip" + (onClickChip ? " clickable" : "")} key={id}
           role={onClickChip ? "button" : undefined} tabIndex={onClickChip ? 0 : undefined}
-          title={onClickChip ? "Open" : undefined}
+          title={onClickChip ? tr("ui.ui.open", "Open") : undefined}
           onClick={onClickChip ? () => onClickChip(id) : undefined}
           onKeyDown={onClickChip ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClickChip(id); } } : undefined}>
           <span className="chip-lbl">{labelOf(id)}</span>

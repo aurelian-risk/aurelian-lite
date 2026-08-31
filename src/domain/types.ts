@@ -250,6 +250,10 @@ export interface Product {
   mark: string;
   /** Which theme a fresh install opens in. Defaults to dark. */
   scheme?: "light" | "dark";
+  /** The language this product is AUTHORED in, and what a reader gets when the browser
+   *  asks for one no table answers. Defaults to English. The taxonomy stays English
+   *  whatever this says - see docs/i18n.md. */
+  language?: string;
   /** Where the source of THIS build can be obtained. Under a file-level copyleft the
    *  distributed single file has to say this: a recipient who has only the built HTML
    *  must still be able to find the source it came from. */

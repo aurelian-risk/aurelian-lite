@@ -3,6 +3,8 @@
 // see the load + cache state, and clear the cached model. The model powers the
 // document extraction and runs entirely in the browser.
 import { useEffect, useRef, useState } from "react";
+import { Sentence } from "./Sentence";
+import { t as tr } from "../domain/i18n";
 import { embedModelList, getModelId, isLoaded, loadEmbedder, loadedModelId, setModelId } from "../domain/embeddings";
 import { MODEL_FILE, clearModelCache, exportModelPack, importModelPack, isModelCached, tryLoadLocalPack } from "../domain/modelCache";
 import { LLM, gen, genNow, genFiles, genFilesNow } from "../domain/gen";
@@ -18,7 +20,7 @@ function AddModel({ kind, onAdd }: { kind: "embed" | "gen"; onAdd: () => void })
     addUserModel({ kind, backend: kind === "embed" ? "transformers" : backend, id: id.trim(), label: label.trim() || id.trim(), size: size.trim() || undefined, note: note.trim() || undefined });
     setId(""); setLabel(""); setSize(""); setNote(""); setOpen(false); onAdd();
   };
-  if (!open) return <button className="btn ghost sm" style={{ marginTop: 10 }} onClick={() => setOpen(true)}><Icon.plus /> Add model…</button>;
+  if (!open) return <button className="btn ghost sm" style={{ marginTop: 10 }} onClick={() => setOpen(true)}><Icon.plus /> {tr('ui.model.add-model', 'Add model…')}</button>;
   return (
     <div className="add-model">
       {LLM && kind === "gen" && (
@@ -31,15 +33,15 @@ function AddModel({ kind, onAdd }: { kind: "embed" | "gen"; onAdd: () => void })
       <div className="row">
         <div className="field" style={{ marginBottom: 0, flex: 2 }}><label>Model id{LLM && kind === "gen" && backend === "webllm" ? " (MLC model_id)" : " (Hugging Face repo)"}</label>
           <input value={id} onChange={(e) => setId(e.target.value)} placeholder={LLM && kind === "gen" ? (backend === "webllm" ? "e.g. Qwen2.5-1.5B-Instruct-q4f16_1-MLC" : "e.g. onnx-community/Llama-3.2-1B-Instruct") : "e.g. Xenova/multilingual-e5-small"} /></div>
-        <div className="field" style={{ marginBottom: 0, flex: 1 }}><label>Label</label><input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="optional" /></div>
+        <div className="field" style={{ marginBottom: 0, flex: 1 }}><label>{tr('ui.model.label', 'Label')}</label><input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="optional" /></div>
       </div>
       <div className="row" style={{ marginTop: 8 }}>
-        <div className="field" style={{ marginBottom: 0 }}><label>Size</label><input value={size} onChange={(e) => setSize(e.target.value)} placeholder="e.g. ~120 MB" /></div>
-        <div className="field" style={{ marginBottom: 0 }}><label>Note</label><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="optional" /></div>
+        <div className="field" style={{ marginBottom: 0 }}><label>{tr('ui.model.size', 'Size')}</label><input value={size} onChange={(e) => setSize(e.target.value)} placeholder="e.g. ~120 MB" /></div>
+        <div className="field" style={{ marginBottom: 0 }}><label>{tr('ui.model.note', 'Note')}</label><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="optional" /></div>
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <button className="btn primary sm" disabled={!id.trim()} onClick={submit}><Icon.plus /> Add</button>
-        <button className="btn ghost sm" onClick={() => setOpen(false)}>Cancel</button>
+        <button className="btn primary sm" disabled={!id.trim()} onClick={submit}><Icon.plus /> {tr('ui.model.add', 'Add')}</button>
+        <button className="btn ghost sm" onClick={() => setOpen(false)}>{tr('ui.model.cancel', 'Cancel')}</button>
       </div>
     </div>
   );
@@ -219,53 +221,65 @@ export function ModelView() {
     <div className="content">
       <div className="page-head">
         <div style={{ flex: 1 }}>
-          <div className="eyebrow">AI · offline</div>
-          <h1 className="grad-text">Models</h1>
-          <div className="meta" style={{ color: "var(--fg-subtle)" }}>Two independent engines — load either or both. Everything runs locally in your browser.</div>
+          <div className="eyebrow">{tr('ui.model.ai-offline', 'AI · offline')}</div>
+          <h1 className="grad-text">{tr('ui.model.models', 'Models')}</h1>
+          <div className="meta" style={{ color: "var(--fg-subtle)" }}>{tr('ui.model.two-independent-engines-load', 'Two independent engines — load either or both. Everything runs locally in your browser.')}</div>
         </div>
       </div>
 
       {/* ── Fast engine · embeddings ─────────────────────────────────── */}
       <div className="panel" style={{ marginBottom: 16 }}>
-        <div className="panel-head"><h3>Fast engine · Embeddings</h3><Badge s={embState} /></div>
+        <div className="panel-head"><h3>{tr('ui.model.fast-engine-embeddings', 'Fast engine · Embeddings')}</h3><Badge s={embState} /></div>
         <div className="panel-body" style={{ padding: "10px 14px 14px" }}>
           <div className="meta" style={{ color: "var(--fg-subtle)", marginBottom: 10 }}>
-            Classifies sentences into the taxonomy — best for structured / list-like documents. Small (~25–34 MB).
+            {tr('ui.model.classifies-sentences-into-the', 'Classifies sentences into the taxonomy — best for structured / list-like documents. Small (~25–34 MB).')}
           </div>
           {embedModelList().map((m) => (
             <label key={m.id} className={"model-row" + (selected === m.id ? " on" : "")}>
               <input type="radio" name="model" style={{ width: "auto" }} checked={selected === m.id} onChange={() => pick(m.id)} />
               <span><span className="model-name">{m.label}</span><span className="model-note">{m.note} · {m.size}</span></span>
               {loadedModelId() === m.id && <span className="badge" style={{ marginLeft: "auto" }}>loaded</span>}
-              {isUserModel(m.id) && <button className="btn ghost sm danger" style={{ marginLeft: loadedModelId() === m.id ? 6 : "auto" }} title="Remove this model" onClick={(e) => { e.preventDefault(); removeUserModel(m.id); if (selected === m.id) { setModelId(embedModelList()[0].id); setSelected(embedModelList()[0].id); } bump(); }}><Icon.trash /></button>}
+              {isUserModel(m.id) && <button className="btn ghost sm danger" style={{ marginLeft: loadedModelId() === m.id ? 6 : "auto" }} title={tr('ui.model.remove-this-model', 'Remove this model')} onClick={(e) => { e.preventDefault(); removeUserModel(m.id); if (selected === m.id) { setModelId(embedModelList()[0].id); setSelected(embedModelList()[0].id); } bump(); }}><Icon.trash /></button>}
             </label>
           ))}
           <AddModel kind="embed" onAdd={bump} />
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}>
             <button className="btn primary" disabled={busy} onClick={download}><Icon.download /> {busy ? "Working…" : ready ? "Reload" : "Download & load"}</button>
-            <button className="btn" disabled={busy} onClick={() => fileRef.current?.click()} title="Pick an existing aurelian-model.bin — reused with no download (works on file:// too)"><Icon.upload /> Use file…</button>
-            <button className="btn" disabled={busy || !(cached || ready)} onClick={saveFile} title={cached || ready ? "Save as a file next to the app" : "Load the model first"}><Icon.download /> Save file</button>
-            <button className="btn ghost danger" disabled={busy} onClick={clear}><Icon.trash /> Clear</button>
+            <button className="btn" disabled={busy} onClick={() => fileRef.current?.click()} title={tr('ui.model.pick-an-existing-aurelian', 'Pick an existing aurelian-model.bin — reused with no download (works on file:// too)')}><Icon.upload /> {tr('ui.model.use-file', 'Use file…')}</button>
+            <button className="btn" disabled={busy || !(cached || ready)} onClick={saveFile} title={cached || ready ? "Save as a file next to the app" : "Load the model first"}><Icon.download /> {tr('ui.model.save-file', 'Save file')}</button>
+            <button className="btn ghost danger" disabled={busy} onClick={clear}><Icon.trash /> {tr('ui.model.clear', 'Clear')}</button>
             <input ref={fileRef} type="file" accept=".bin" style={{ display: "none" }}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) useFile(f); e.target.value = ""; }} />
             {busy && <span className="spinner sm" aria-hidden />}
             {status && <span className="hint">{status}</span>}
           </div>
           <div className="guide" style={{ marginTop: 12, marginBottom: 0 }}>
-            To avoid re-downloading between <span className="mono">file://</span> sessions the model is kept as a
-            file (<span className="mono">{MODEL_FILE}</span>): after <strong>Download &amp; load</strong> a save
-            dialog opens → keep it next to the HTML, then <strong>Use file…</strong> next time (works on Chrome/Edge
-            <span className="mono"> file://</span> too). On <span className="mono">http://localhost</span>/Firefox it is auto-detected on start.
+            <p style={{ margin: "0 0 7px" }}>
+              <Sentence k="ui.model.file-why"
+                parts={[<span className="mono">{MODEL_FILE}</span>, <span className="mono">file://</span>]}
+                en={"The model is kept as a file ({0}) so that a {1} session does not download it again."} />
+            </p>
+            <ol className="guide-steps">
+              <li><Sentence k="ui.model.file-step-1" parts={[<strong>{tr('ui.model.download-amp-load', 'Download &amp; load')}</strong>]}
+                en={"{0} — a save dialog opens."} /></li>
+              <li>{tr("ui.model.file-step-2", "Save the file beside this HTML file.")}</li>
+              <li><Sentence k="ui.model.file-step-3" parts={[<strong>{tr('ui.model.use-file', 'Use file…')}</strong>]}
+                en={"Next time choose {0} — nothing is downloaded."} /></li>
+            </ol>
+            <p style={{ margin: "7px 0 0" }}>
+              <Sentence k="ui.model.file-auto" parts={[<span className="mono">http://localhost</span>]}
+                en={"Steps 2 and 3 work on Chrome and Edge. On {0}, and in Firefox, the file is found by itself at start."} />
+            </p>
           </div>
         </div>
       </div>
 
       {/* ── Smart engine · language model ────────────────────────────── */}
       {LLM && G && (<div className="panel">
-        <div className="panel-head"><h3>Smart engine · Language model</h3><Badge s={genState} /></div>
+        <div className="panel-head"><h3>{tr('ui.model.smart-engine-language-model', 'Smart engine · Language model')}</h3><Badge s={genState} /></div>
         <div className="panel-body" style={{ padding: "10px 14px 14px" }}>
           <div className="meta" style={{ color: "var(--fg-subtle)", marginBottom: 10 }}>
-            Reads free-form prose and emits structured entities — best for narrative documents. Large (~0.25–2.2 GB); WebGPU recommended; runs in a background worker.
+            {tr('ui.model.reads-free-form-prose', 'Reads free-form prose and emits structured entities — best for narrative documents. Large (~0.25–2.2 GB); WebGPU recommended; runs in a background worker.')}
           </div>
           {/* A model running next to the browser rather than inside it: the only way to
               one larger than a tab can hold, and it stops without taking the browser
@@ -281,11 +295,11 @@ export function ModelView() {
                     ? "No model server answering on this machine. Start one with the launcher script to use a larger model."
                     : "Opened as a file, so a server on this machine cannot be asked. Start the app with the launcher script to use one."}
             </span>
-            <input className="ep-addr mono" value={endpoint} spellCheck={false} aria-label="Server address"
+            <input className="ep-addr mono" value={endpoint} spellCheck={false} aria-label={tr('ui.model.server-address', 'Server address')}
               onChange={(e) => setEndpointField(e.target.value)} />
             <button className="btn ghost sm" disabled={probing}
               onClick={() => { G.setEndpoint(endpoint); setProbing(true); G.probeEndpoint().then(() => { setProbing(false); bump(); }); }}>
-              Look again
+              {tr('ui.model.look-again', 'Look again')}
             </button>
           </div>
           {G.genModelList().map((m) => {
@@ -295,7 +309,7 @@ export function ModelView() {
                 <input type="radio" name="genmodel" style={{ width: "auto" }} checked={genSel === m.id} disabled={disabled} onChange={() => pickGen(m.id)} />
                 <span><span className="model-name">{m.label}</span><span className="model-note">{m.note} · {m.size}{disabled ? " · needs WebGPU" : ""}</span></span>
                 {G.loadedGenId() === m.id && <span className="badge" style={{ marginLeft: "auto" }}>loaded</span>}
-                {isUserModel(m.id) && <button className="btn ghost sm danger" style={{ marginLeft: G.loadedGenId() === m.id ? 6 : "auto" }} title="Remove this model" onClick={(e) => { e.preventDefault(); removeUserModel(m.id); if (genSel === m.id) { const d = G.genModelList()[0].id; G.setGenModelId(d); setGenSel(d); } bump(); }}><Icon.trash /></button>}
+                {isUserModel(m.id) && <button className="btn ghost sm danger" style={{ marginLeft: G.loadedGenId() === m.id ? 6 : "auto" }} title={tr('ui.model.remove-this-model', 'Remove this model')} onClick={(e) => { e.preventDefault(); removeUserModel(m.id); if (genSel === m.id) { const d = G.genModelList()[0].id; G.setGenModelId(d); setGenSel(d); } bump(); }}><Icon.trash /></button>}
               </label>
             );
           })}
@@ -306,11 +320,11 @@ export function ModelView() {
               genBusy ? "Loading…" : genReady ? "Reload"
                 : G.genModelById(genSel).backend === "endpoint" ? "Use this model" : "Download & load"}</button>
             <button className="btn" disabled={genBusy || !genFileCapable} onClick={() => genFileRef.current?.click()}
-              title={genFileCapable ? "Pick a saved aurelian-llm.bin — no download" : "Only the SmolLM2 (Transformers.js) model can be saved to a file"}><Icon.upload /> Use file…</button>
+              title={genFileCapable ? "Pick a saved aurelian-llm.bin — no download" : "Only the SmolLM2 (Transformers.js) model can be saved to a file"}><Icon.upload /> {tr('ui.model.use-file', 'Use file…')}</button>
             <button className="btn" disabled={genBusy || !genFileCapable || !genCached} onClick={saveGenFile}
-              title={!genFileCapable ? "WebLLM manages its own cache — file save not supported" : genCached ? "Save the language model as a file next to the app" : "Download the model first"}><Icon.download /> Save file</button>
-            <button className="btn ghost danger" disabled={genBusy} title="Delete cached language-model files from this browser (fixes a full/corrupted cache)"
-              onClick={async () => { if (confirm("Delete the cached language-model files from this browser?")) { await GF!.clearGenFiles(); setGenCached(false); setGenStatus("Language-model cache cleared."); } }}><Icon.trash /> Clear</button>
+              title={!genFileCapable ? "WebLLM manages its own cache — file save not supported" : genCached ? "Save the language model as a file next to the app" : "Download the model first"}><Icon.download /> {tr('ui.model.save-file', 'Save file')}</button>
+            <button className="btn ghost danger" disabled={genBusy} title={tr('ui.model.delete-cached-language-model', 'Delete cached language-model files from this browser (fixes a full/corrupted cache)')}
+              onClick={async () => { if (confirm("Delete the cached language-model files from this browser?")) { await GF!.clearGenFiles(); setGenCached(false); setGenStatus("Language-model cache cleared."); } }}><Icon.trash /> {tr('ui.model.clear', 'Clear')}</button>
             <input ref={genFileRef} type="file" accept=".bin" style={{ display: "none" }}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) useGenFile(f); e.target.value = ""; }} />
             {genBusy && <span className="spinner sm" aria-hidden />}
@@ -318,9 +332,9 @@ export function ModelView() {
           </div>
           {genBusy && <div className="pbar" style={{ marginTop: 10 }}><span style={{ width: genPct + "%" }} /></div>}
           <div className="guide" style={{ marginTop: 12, marginBottom: 0 }}>
-            The <strong>SmolLM2</strong> model can be kept as a file (<span className="mono">{GF?.GEN_FILE ?? "aurelian-llm.bin"}</span>) just like the
-            embedding model: <strong>Download &amp; load</strong> once, <strong>Save file</strong>, then <strong>Use file…</strong>
-            next time. <strong>Qwen (WebLLM)</strong> manages its own browser cache (persists on
+            {tr('ui.model.the', 'The')} <strong>{tr('ui.model.smollm', 'SmolLM2')}</strong> model can be kept as a file (<span className="mono">{GF?.GEN_FILE ?? "aurelian-llm.bin"}</span>) just like the
+            embedding model: <strong>{tr('ui.model.download-amp-load', 'Download &amp; load')}</strong> once, <strong>{tr('ui.model.save-file', 'Save file')}</strong>, then <strong>{tr('ui.model.use-file', 'Use file…')}</strong>
+            next time. <strong>{tr('ui.model.qwen-webllm', 'Qwen (WebLLM)')}</strong> manages its own browser cache (persists on
             <span className="mono"> http://localhost</span>, not <span className="mono">file://</span>) and can't be saved to a file.
             WebGPU models are much faster; the WASM model works without a GPU but is slow.
           </div>

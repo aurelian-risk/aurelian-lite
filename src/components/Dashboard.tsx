@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 import { useState } from "react";
+import { Sentence } from "./Sentence";
+import { t as tr } from "../domain/i18n";
 import { useStore } from "../domain/store";
 import { makeSampleStudy } from "../profile";
 import { clearStorage } from "../domain/persistence";
@@ -42,22 +44,22 @@ export function Dashboard({ onOpen }: { onOpen: () => void }) {
     <div className="content">
       <div className="page-head">
         <div style={{ flex: 1 }}>
-          <h1 className="grad-text">Risk Studies</h1>
+          <h1 className="grad-text">{tr('ui.dashboard.risk-studies', 'Risk Studies')}</h1>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn ghost danger" onClick={hardReset} title="Clear all locally stored data and reload">Reset</button>
-          <DataMenu label="Data" />
-          <button className="btn primary" onClick={() => setCreating(true)}><Icon.plus /> New study</button>
+          <button className="btn ghost danger" onClick={hardReset} title={tr('ui.dashboard.clear-all-locally-stored', 'Clear all locally stored data and reload')}>{tr('ui.dashboard.reset', 'Reset')}</button>
+          <DataMenu label={tr("ui.datamenu.data", "Data")} />
+          <button className="btn primary" onClick={() => setCreating(true)}><Icon.plus /> {tr('ui.dashboard.new-study', 'New study')}</button>
         </div>
       </div>
 
       {studies.length === 0 ? (
         <div className="empty">
-          <h3>No studies yet</h3>
-          Create your first EBIOS RM-inspired analysis, load the sample, or import a <span className="mono">.json</span> / <span className="mono">.yaml</span> file.
+          <h3>{tr('ui.dashboard.no-studies-yet', 'No studies yet')}</h3>
+          <Sentence k="ui.dashboard.create-your-first" parts={[<span className="mono">.json</span>, <span className="mono">.yaml</span>]} en={"Create your first EBIOS RM-inspired analysis, load the sample, or import a {0} / {1} file."} />
           <div style={{ marginTop: 18, display: "flex", gap: 8, justifyContent: "center" }}>
-            <button className="btn primary" onClick={() => setCreating(true)}><Icon.plus /> New study</button>
-            <button className="btn" onClick={loadSample}><Icon.spark /> Load sample study</button>
+            <button className="btn primary" onClick={() => setCreating(true)}><Icon.plus /> {tr('ui.dashboard.new-study', 'New study')}</button>
+            <button className="btn" onClick={loadSample}><Icon.spark /> {tr('ui.dashboard.load-sample-study', 'Load sample study')}</button>
           </div>
         </div>
       ) : (
@@ -69,7 +71,7 @@ export function Dashboard({ onOpen }: { onOpen: () => void }) {
                   <h3>{s.name}</h3>
                   <div className="meta">{s.organization || "—"}</div>
                 </div>
-                <button className="btn ghost sm danger" title="Delete"
+                <button className="btn ghost sm danger" title={tr('ui.dashboard.delete', 'Delete')}
                   onClick={(e) => { e.stopPropagation(); if (confirm(`Delete study "${s.name}"?`)) { deleteStudy(s.id); void deleteDocsForStudy(s.id); } }}>
                   <Icon.trash />
                 </button>
@@ -85,26 +87,26 @@ export function Dashboard({ onOpen }: { onOpen: () => void }) {
       )}
 
       {creating && (
-        <Dialog title="New study" subtitle="Define the analysis scope and perimeter" onClose={() => setCreating(false)}>
-          <div className="field"><label>Study name</label>
+        <Dialog title={tr('ui.dashboard.new-study', 'New study')} subtitle="Define the analysis scope and perimeter" onClose={() => setCreating(false)}>
+          <div className="field"><label>{tr('ui.dashboard.study-name', 'Study name')}</label>
             <input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="e.g. Riverside General Hospital — Core Systems"
               onKeyDown={(e) => e.key === "Enter" && submit()} /></div>
-          <div className="field"><label>Organization</label>
+          <div className="field"><label>{tr('ui.dashboard.organization', 'Organization')}</label>
             <input value={form.organization} onChange={(e) => setForm({ ...form, organization: e.target.value })}
               placeholder="e.g. Riverside General Hospital Trust" /></div>
-          <div className="field"><label>Sector</label>
+          <div className="field"><label>{tr('ui.dashboard.sector', 'Sector')}</label>
             <select value={form.sector} onChange={(e) => setForm({ ...form, sector: e.target.value })}>
-              <option value="">Not set — no sector adjustment</option>
+              <option value="">{tr('ui.dashboard.not-set-no-sector', 'Not set — no sector adjustment')}</option>
               {SECTORS.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
-            <span className="hint">Some kinds of attacker go after some sectors far more than others. Used by the quantification&apos;s base rates; changeable later in Calibration.</span></div>
-          <div className="field"><label>Analysis perimeter / scope</label>
+            <span className="hint">{tr('ui.dashboard.some-kinds-of-attacker', 'Some kinds of attacker go after some sectors far more than others. Used by the quantification&apos;s base rates; changeable later in Calibration.')}</span></div>
+          <div className="field"><label>{tr('ui.dashboard.analysis-perimeter-scope', 'Analysis perimeter / scope')}</label>
             <textarea value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })}
-              placeholder="What is in scope? Which systems, processes, boundaries?" /></div>
+              placeholder={tr('ui.dashboard.what-is-in-scope', 'What is in scope? Which systems, processes, boundaries?')} /></div>
           <div className="dialog-actions">
-            <button className="btn ghost" onClick={() => setCreating(false)}>Cancel</button>
-            <button className="btn primary" onClick={submit} disabled={!form.name.trim()}>Create</button>
+            <button className="btn ghost" onClick={() => setCreating(false)}>{tr('ui.dashboard.cancel', 'Cancel')}</button>
+            <button className="btn primary" onClick={submit} disabled={!form.name.trim()}>{tr('ui.dashboard.create', 'Create')}</button>
           </div>
         </Dialog>
       )}

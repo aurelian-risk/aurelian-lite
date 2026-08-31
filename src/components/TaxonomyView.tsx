@@ -3,6 +3,7 @@
 // their fields (including enums, scales and relationships). Import/export via
 // the Data menu. This is the extensible taxonomy definition.
 import { useState } from "react";
+import { t as tr } from "../domain/i18n";
 import type { EntityTypeDef, FieldDef, FieldType, Taxonomy } from "../domain/types";
 import { useStore } from "../domain/store";
 import { DataMenu } from "./DataMenu";
@@ -62,12 +63,12 @@ export function TaxonomyView() {
     <div className="content">
       <div className="page-head">
         <div style={{ flex: 1 }}>
-          <div className="eyebrow">Meta-schema</div>
-          <h1 className="grad-text">Taxonomy</h1>
+          <div className="eyebrow">{tr('ui.taxonomy.meta-schema', 'Meta-schema')}</div>
+          <h1 className="grad-text">{tr('ui.taxonomy.taxonomy', 'Taxonomy')}</h1>
           <div className="meta" style={{ color: "var(--fg-subtle)" }}>{tax.name}</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn sm" onClick={() => { if (confirm("Reset taxonomy to the built-in EBIOS RM-inspired default? Your entities are kept but may not match.")) resetTaxonomy(); }}>Reset default</button>
+          <button className="btn sm" onClick={() => { if (confirm("Reset taxonomy to the built-in EBIOS RM-inspired default? Your entities are kept but may not match.")) resetTaxonomy(); }}>{tr('ui.taxonomy.reset-default', 'Reset default')}</button>
           <DataMenu label="Import / Export" />
         </div>
       </div>
@@ -88,39 +89,39 @@ export function TaxonomyView() {
             </div>
           ))}
           <div className="menu-sep" />
-          <button className="nav-item" onClick={() => setAddingType(true)}><Icon.plus /> Entity type</button>
-          <button className="nav-item" onClick={() => setAddingGroup(true)}><Icon.plus /> Group</button>
+          <button className="nav-item" onClick={() => setAddingType(true)}><Icon.plus /> {tr('ui.taxonomy.entity-type', 'Entity type')}</button>
+          <button className="nav-item" onClick={() => setAddingGroup(true)}><Icon.plus /> {tr('ui.taxonomy.group', 'Group')}</button>
         </div>
 
         {/* type editor */}
         {type ? <TypeEditor key={type.key} type={type} tax={tax} updateType={updateType} onDelete={() => deleteType(type.key)} /> : (
-          <div className="empty">Select or create an entity type.</div>
+          <div className="empty">{tr('ui.taxonomy.select-or-create-an', 'Select or create an entity type.')}</div>
         )}
       </div>
 
       {addingType && (
-        <Dialog title="New entity type" onClose={() => setAddingType(false)}>
-          <div className="field"><label>Label</label>
+        <Dialog title={tr('ui.taxonomy.new-entity-type', 'New entity type')} onClose={() => setAddingType(false)}>
+          <div className="field"><label>{tr('ui.taxonomy.label', 'Label')}</label>
             <input autoFocus value={newType.label} onChange={(e) => setNewType({ ...newType, label: e.target.value })} placeholder="e.g. Security Measure" /></div>
-          <div className="field"><label>Group</label>
+          <div className="field"><label>{tr('ui.taxonomy.group', 'Group')}</label>
             <select value={newType.group} onChange={(e) => setNewType({ ...newType, group: e.target.value })}>
               {tax.groups.map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}
             </select></div>
           <div className="dialog-actions">
-            <button className="btn ghost" onClick={() => setAddingType(false)}>Cancel</button>
-            <button className="btn primary" onClick={addType} disabled={!newType.label.trim()}>Create</button>
+            <button className="btn ghost" onClick={() => setAddingType(false)}>{tr('ui.taxonomy.cancel', 'Cancel')}</button>
+            <button className="btn primary" onClick={addType} disabled={!newType.label.trim()}>{tr('ui.taxonomy.create', 'Create')}</button>
           </div>
         </Dialog>
       )}
       {addingGroup && (
-        <Dialog title="New group (tab)" onClose={() => setAddingGroup(false)}>
-          <div className="field"><label>Label</label>
+        <Dialog title={tr('ui.taxonomy.new-group-tab', 'New group (tab)')} onClose={() => setAddingGroup(false)}>
+          <div className="field"><label>{tr('ui.taxonomy.label', 'Label')}</label>
             <input autoFocus value={newGroup.label} onChange={(e) => setNewGroup({ ...newGroup, label: e.target.value })} placeholder="e.g. Operational Scenarios" /></div>
-          <div className="field"><label>Accent color (CSS)</label>
+          <div className="field"><label>{tr('ui.taxonomy.accent-color-css', 'Accent color (CSS)')}</label>
             <input value={newGroup.color} onChange={(e) => setNewGroup({ ...newGroup, color: e.target.value })} /></div>
           <div className="dialog-actions">
-            <button className="btn ghost" onClick={() => setAddingGroup(false)}>Cancel</button>
-            <button className="btn primary" onClick={addGroup} disabled={!newGroup.label.trim()}>Create</button>
+            <button className="btn ghost" onClick={() => setAddingGroup(false)}>{tr('ui.taxonomy.cancel', 'Cancel')}</button>
+            <button className="btn primary" onClick={addGroup} disabled={!newGroup.label.trim()}>{tr('ui.taxonomy.create', 'Create')}</button>
           </div>
         </Dialog>
       )}
@@ -143,11 +144,11 @@ function TypeEditor({ type, tax, updateType, onDelete }: {
   return (
     <div className="panel" style={{ padding: 18 }}>
       <div className="row">
-        <div className="field"><label>Label</label>
+        <div className="field"><label>{tr('ui.taxonomy.label', 'Label')}</label>
           <input value={type.label} onChange={(e) => updateType(type.key, (t) => { t.label = e.target.value; })} /></div>
-        <div className="field"><label>Plural</label>
+        <div className="field"><label>{tr('ui.taxonomy.plural', 'Plural')}</label>
           <input value={type.labelPlural} onChange={(e) => updateType(type.key, (t) => { t.labelPlural = e.target.value; })} /></div>
-        <div className="field"><label>Group</label>
+        <div className="field"><label>{tr('ui.taxonomy.group', 'Group')}</label>
           <select value={type.group} onChange={(e) => updateType(type.key, (t) => { t.group = e.target.value; })}>
             {tax.groups.map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}
           </select></div>
@@ -155,14 +156,14 @@ function TypeEditor({ type, tax, updateType, onDelete }: {
       <div className="meta mono" style={{ color: "var(--fg-subtle)", marginBottom: 12 }}>key: {type.key}</div>
 
       <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
-        <h3 style={{ fontSize: 13, flex: 1 }}>Fields</h3>
-        <button className="btn sm" onClick={addField}><Icon.plus /> Field</button>
+        <h3 style={{ fontSize: 13, flex: 1 }}>{tr('ui.taxonomy.fields', 'Fields')}</h3>
+        <button className="btn sm" onClick={addField}><Icon.plus /> {tr('ui.taxonomy.field', 'Field')}</button>
       </div>
 
       {type.fields.map((f, idx) => (
         <div key={idx} className="field-row">
           <div className="row" style={{ gap: 8 }}>
-            <input style={{ flex: "2 1 140px" }} value={f.label} onChange={(e) => setField(idx, { label: e.target.value, key: f.key })} placeholder="Label" />
+            <input style={{ flex: "2 1 140px" }} value={f.label} onChange={(e) => setField(idx, { label: e.target.value, key: f.key })} placeholder={tr('ui.taxonomy.label', 'Label')} />
             <select style={{ flex: "1 1 110px" }} value={f.type} onChange={(e) => setField(idx, { type: e.target.value as FieldType })}>
               {FIELD_TYPES.map((ft) => <option key={ft} value={ft}>{ft}</option>)}
             </select>
@@ -175,7 +176,7 @@ function TypeEditor({ type, tax, updateType, onDelete }: {
             <label className="chip" style={{ cursor: "pointer" }}>
               <input type="checkbox" style={{ width: "auto" }} checked={!!f.required} onChange={(e) => setField(idx, { required: e.target.checked })} /> req
             </label>
-            <button className="btn ghost sm danger" onClick={() => removeField(idx)} aria-label="Remove field"><Icon.trash /></button>
+            <button className="btn ghost sm danger" onClick={() => removeField(idx)} aria-label={tr('ui.taxonomy.remove-field', 'Remove field')}><Icon.trash /></button>
           </div>
           {f.type === "enum" && (
             <input className="mono" style={{ marginTop: 6, fontSize: 12 }} value={(f.options ?? []).join(", ")}
@@ -191,7 +192,7 @@ function TypeEditor({ type, tax, updateType, onDelete }: {
       ))}
 
       <div className="menu-sep" />
-      <button className="btn ghost sm danger" onClick={onDelete}><Icon.trash /> Delete entity type</button>
+      <button className="btn ghost sm danger" onClick={onDelete}><Icon.trash /> {tr('ui.taxonomy.delete-entity-type', 'Delete entity type')}</button>
     </div>
   );
 }

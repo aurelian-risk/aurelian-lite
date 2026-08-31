@@ -3,9 +3,10 @@
 // workshop table's editor, plus its incoming relationships. Fixed header and
 // footer, scrollable body, so nothing is ever cut off.
 import { useEffect, useState } from "react";
+import { t as tr } from "../domain/i18n";
 import { createPortal } from "react-dom";
 import type { EntityRecord, EntityTypeDef, FieldValue, Study, Taxonomy } from "../domain/types";
-import { emptyValues, getType, recordTitle, refFields, validateRecord } from "../domain/taxonomy";
+import { emptyValues, fieldHelp, fieldLabel, fieldRelation, getType, recordTitle, refFields, typeLabel, validateRecord } from "../domain/taxonomy";
 import { stepFields, predecessorCandidates } from "../domain/killchain";
 import { useStore } from "../domain/store";
 import { getEditor, setEditor } from "../domain/audit";
@@ -81,7 +82,7 @@ export function EntityModal({ type, tax, study, record, onClose, onBack, backLab
       for (const f of refFields(et)) {
         const v = e.values[f.key];
         const ids = f.type === "multiref" ? (Array.isArray(v) ? (v as string[]) : []) : v ? [v as string] : [];
-        if (ids.includes(record.id)) incoming.push({ rel: f.relation ?? f.label, from: e });
+        if (ids.includes(record.id)) incoming.push({ rel: fieldRelation(f), from: e });
       }
     }
   }
@@ -112,32 +113,32 @@ export function EntityModal({ type, tax, study, record, onClose, onBack, backLab
     <Overlay onClose={onClose}>
       <div className="modal-lg" onMouseDown={(e) => e.stopPropagation()}>
         <header className="modal-lg-head">
-          {onBack && <button className="btn ghost sm em-back" onClick={onBack} title="Back">‹ {backLabel ?? "Back"}</button>}
+          {onBack && <button className="btn ghost sm em-back" onClick={onBack} title={tr('ui.entity.back', 'Back')}>‹ {backLabel ?? "Back"}</button>}
           <div style={{ flex: 1 }}>
-            <div className="dialog-sub" style={{ margin: 0 }}>{type.label}</div>
-            <h2 style={{ fontSize: 19 }}>{record ? recordTitle(type, record) : `New ${type.label}`}</h2>
-            {record?.source && <div className="ent-source" title="Extracted from this source"><Icon.doc /> {record.source}</div>}
+            <div className="dialog-sub" style={{ margin: 0 }}>{typeLabel(type)}</div>
+            <h2 style={{ fontSize: 19 }}>{record ? recordTitle(type, record) : `New ${typeLabel(type)}`}</h2>
+            {record?.source && <div className="ent-source" title={tr('ui.entity.extracted-from-this-source', 'Extracted from this source')}><Icon.doc /> {record.source}</div>}
           </div>
-          <button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon.close /></button>
+          <button className="btn ghost sm" onClick={onClose} aria-label={tr('ui.entity.close', 'Close')}><Icon.close /></button>
         </header>
 
         <div className="modal-lg-body">
           <div className="form-grid">
             {type.fields.map((f) => (
               <div className={"field" + (f.type === "textarea" || f.type === "multiref" ? " span2" : "")} key={f.key}>
-                <label>{f.label}{f.required && <span style={{ color: "var(--color-state-error)" }}> *</span>}</label>
-                <FieldInput field={f} value={draft[f.key] ?? null} onChange={(v) => patch(f.key, v)} refOptions={refOptions} siblings={draft} suggested={f.type === "ref" ? suggestedFor(f) : undefined} multirefOptions={sf && f.key === sf.predField.key ? predOptions() : undefined} />
-                {f.help && <span className="hint">{f.help}</span>}
+                <label>{fieldLabel(f, type)}{f.required && <span style={{ color: "var(--color-state-error)" }}> *</span>}</label>
+                <FieldInput field={f} type={type} value={draft[f.key] ?? null} onChange={(v) => patch(f.key, v)} refOptions={refOptions} siblings={draft} suggested={f.type === "ref" ? suggestedFor(f) : undefined} multirefOptions={sf && f.key === sf.predField.key ? predOptions() : undefined} />
+                {fieldHelp(f, type) && <span className="hint">{fieldHelp(f, type)}</span>}
               </div>
             ))}
           </div>
 
           {incoming.length > 0 && (
             <div className="detail-rels" style={{ marginTop: 8 }}>
-              <span className="d-sub">Referenced by</span>
+              <span className="d-sub">{tr('ui.entity.referenced-by', 'Referenced by')}</span>
               <div className="multi">
                 {incoming.map((r, i) => (
-                  <span className="chip clickable" key={i} role="button" tabIndex={0} title="Open"
+                  <span className="chip clickable" key={i} role="button" tabIndex={0} title={tr('ui.entity.open', 'Open')}
                     onClick={() => setRefRec(r.from)}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRefRec(r.from); } }}>
                     <span className="chip-lbl">{recordTitle(getType(tax, r.from.type)!, r.from)}</span>
@@ -149,11 +150,11 @@ export function EntityModal({ type, tax, study, record, onClose, onBack, backLab
           )}
 
           <div className="audit-row">
-            <label className="audit-fld"><span className="audit-k">Editor</span>
-              <input value={editor} onChange={(e) => setEditorName(e.target.value)} placeholder="your name" />
+            <label className="audit-fld"><span className="audit-k">{tr('ui.entity.editor', 'Editor')}</span>
+              <input value={editor} onChange={(e) => setEditorName(e.target.value)} placeholder={tr("ui.entitymodal.your-name", "your name")} />
             </label>
-            <label className="audit-fld"><span className="audit-k">Change note <span className="hint">optional</span></span>
-              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="why this change" />
+            <label className="audit-fld"><span className="audit-k">{tr('ui.entity.change-note', 'Change note')} <span className="hint">optional</span></span>
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={tr("ui.entitymodal.why-this-change", "why this change")} />
             </label>
           </div>
 
@@ -161,9 +162,9 @@ export function EntityModal({ type, tax, study, record, onClose, onBack, backLab
         </div>
 
         <footer className="modal-lg-foot">
-          {record && <button className="btn ghost danger" onClick={remove}><Icon.trash /> Delete</button>}
+          {record && <button className="btn ghost danger" onClick={remove}><Icon.trash /> {tr('ui.entity.delete', 'Delete')}</button>}
           <span style={{ flex: 1 }} />
-          <button className="btn ghost" onClick={onClose}>Cancel</button>
+          <button className="btn ghost" onClick={onClose}>{tr('ui.entity.cancel', 'Cancel')}</button>
           <button className="btn primary" onClick={save}>{record ? "Save" : "Create"}</button>
         </footer>
       </div>

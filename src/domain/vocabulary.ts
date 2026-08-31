@@ -17,6 +17,7 @@
 //  · Values that stay keep their position. The publisher's document order is an accident
 //    of where a term happens to appear first; the profile's order is a decision.
 import type { EntityRecord, Taxonomy, FieldDef } from "./types";
+import { fieldLabel, typeLabel } from "./taxonomy";
 import type { Framework } from "./frameworks";
 
 /** The label of the catalogue's top-level grouping, as a vocabulary source. */
@@ -92,7 +93,7 @@ export function catalogDefinesVocabulary(tax: Taxonomy, fw: Framework): boolean 
 function vocabularyFields(tax: Taxonomy): { typeKey: string; typeLabel: string; field: FieldDef }[] {
   const out: { typeKey: string; typeLabel: string; field: FieldDef }[] = [];
   for (const t of tax.entityTypes) {
-    for (const f of t.fields) if (f.vocabulary) out.push({ typeKey: t.key, typeLabel: t.label, field: f });
+    for (const f of t.fields) if (f.vocabulary) out.push({ typeKey: t.key, typeLabel: typeLabel(t), field: f });
   }
   return out;
 }
@@ -132,7 +133,7 @@ export function planVocabularyUpdate(tax: Taxonomy, fw: Framework, entities: Ent
       ...keptInUse,
     ];
     if (!added.length && !removed.length) continue;
-    changes.push({ typeKey, typeLabel, fieldKey: field.key, fieldLabel: field.label,
+    changes.push({ typeKey, typeLabel, fieldKey: field.key, fieldLabel: fieldLabel(field),
       source: field.vocabulary!, current, merged, mergedReplacing, added, removed, keptInUse });
   }
   return changes;

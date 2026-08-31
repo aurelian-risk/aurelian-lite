@@ -5,6 +5,7 @@
 // see MATURITY. The chain makes any edit to a past entry detectable: each entry's
 // hash covers the previous entry's hash, so altering history breaks verification.
 import type { ChangeEntry, FieldChange, FieldValue } from "./types";
+import { tn } from "./i18n";
 
 // ── Compact synchronous SHA-256 (operates on a UTF-8 string) ─────────────────
 const K = new Uint32Array([
@@ -176,8 +177,8 @@ export function verdictText(v: LogVerdict): string {
   if (v.ok) return "change log complete and matching";
   if (v.chainBroken) return `change log broken at entry ${v.brokenAt ?? "?"}`;
   const parts: string[] = [];
-  if (v.drifted.length) parts.push(`${v.drifted.length} record${v.drifted.length === 1 ? "" : "s"} edited outside the app`);
-  if (v.untracked.length) parts.push(`${v.untracked.length} record${v.untracked.length === 1 ? "" : "s"} missing from the log`);
+  if (v.drifted.length) parts.push(`${tn("ui.audit.records", v.drifted.length, "{0} record", "{0} records")} edited outside the app`);
+  if (v.untracked.length) parts.push(`${tn("ui.audit.records", v.untracked.length, "{0} record", "{0} records")} missing from the log`);
   return parts.join(", ");
 }
 

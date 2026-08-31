@@ -2,7 +2,7 @@
 // Derives a node/edge graph from a study's generic entities, using the
 // taxonomy's ref/multiref fields as relationships.
 import type { EntityRecord, Study, Taxonomy } from "./types";
-import { getType, recordTitle, refFields } from "./taxonomy";
+import { fieldRelation, getType, recordTitle, refFields } from "./taxonomy";
 
 export interface GNode {
   id: string;
@@ -46,7 +46,7 @@ export function buildGraph(tax: Taxonomy, study: Study): { nodes: GNode[]; links
     const t = getType(tax, r.type);
     if (!t) continue;
     for (const f of refFields(t)) {
-      const rel = f.relation ?? f.label;
+      const rel = fieldRelation(f);
       const v = r.values[f.key];
       const targets = f.type === "multiref" ? (Array.isArray(v) ? v : []) : v ? [v] : [];
       for (const target of targets) {
