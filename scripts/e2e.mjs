@@ -1795,16 +1795,22 @@ try {
     ok("Escape closes the export menu", (await page.locator(".menu-pop").count()) === 0);
     await page.locator("button", { hasText: "Export / Import" }).first().click();
     await page.waitForSelector(".menu-pop", { timeout: 8000 });
-    if (!(/Password/.test(body) && /Key/.test(body))) console.log("   menu:", body.replace(/\n/g, " | ").slice(0, 160));
-    ok("the export offers both kinds of protection", /Password/.test(body) && /\bKey\b/.test(body));
-    await menu.locator(".seg-btn", { hasText: /^Key$/ }).click();
+    // Format, protection and recipients used to be asked here AND in a dialog beside it -
+    // two places for one answer. They live in the dialog now; the menu is the way in.
+    await menu.locator(".menu-item", { hasText: /Export/ }).click();
+    await page.waitForSelector(".export-dlg", { timeout: 8000 });
+    await page.waitForTimeout(300);
+    const dlg = await page.locator(".export-dlg").innerText();
+    if (!(/Password/.test(dlg) && /keys/i.test(dlg))) console.log("   dialog:", dlg.replace(/\n/g, " | ").slice(0, 200));
+    ok("the export offers both kinds of protection", /Password/.test(dlg) && /Named keys/.test(dlg));
+    await page.locator(".export-dlg .seg-btn", { hasText: /^Named keys$/ }).click();
     await page.waitForTimeout(250);
-    const rows = await menu.locator(".menu-to-row").count();
-    ok("...listing the keys that have been named", rows >= 1, `${rows} recipients`);
-    ok("...and saying the recipient list is readable in the file",
-      /readable in the file/i.test(await menu.innerText()));
+    const rows = await page.locator(".export-dlg .check-row").count();
+    ok("...listing the keys that have been named", rows >= 1, `${rows} rows`);
+    ok("...and saying what a second recipient costs",
+      /wrapped key/i.test(await page.locator(".export-dlg").innerText()));
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(300);
     await page.locator("body").click({ position: { x: 5, y: 5 } }).catch(() => {});
     await page.waitForTimeout(200);
   }
@@ -1886,6 +1892,83 @@ try {
   }
 
   await page.screenshot({ path: `${shots}/Model.png` });
+
+  // ── an archive carries the documents, and a stranger's browser gets them back ──
+  // The JSON export deliberately holds references only: measured on a corpus of 40
+  // documents it is 6.2 MB with the bodies against 9 kB without. The bodies and the source
+  // files travel here instead - so this checks the thing that would otherwise be lost.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
+    const a = await ctx.newPage();
+    a.on("pageerror", (e) => errors.push("pageerror: " + e.message));
+    await a.goto(file); await a.waitForSelector("#root .app", { timeout: 10000 });
+    await a.getByText(/Load sample study/).click();
+    await a.waitForSelector(".ws-tabs", { timeout: 10000 });
+    await a.waitForTimeout(500);
+    // A document with a body, put in the way the app stores one.
+    await a.evaluate(async () => {
+      const bytes = new TextEncoder().encode("Prüfbericht. " + "Zugriffskontrolle. ".repeat(300));
+      const st = await new Promise((res) => { const r = indexedDB.open("ebios_offline", 1);
+        r.onsuccess = () => { const g = r.result.transaction("state", "readonly").objectStore("state").get("app"); g.onsuccess = () => res(g.result); }; });
+      const db = await new Promise((res) => { const r = indexedDB.open("ebios_offline_docs", 1);
+        r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains("docs")) r.result.createObjectStore("docs", { keyPath: "id" }); };
+        r.onsuccess = () => res(r.result); });
+      await new Promise((res) => { const tx = db.transaction("docs", "readwrite");
+        tx.objectStore("docs").put({ id: "e2e-doc", studyId: st.studies[0].id, name: "Prüfbericht 2026.pdf",
+          mime: "application/pdf", size: bytes.length, addedAt: new Date().toISOString(),
+          text: new TextDecoder().decode(bytes), file: new Blob([bytes], { type: "application/pdf" }) });
+        tx.oncomplete = res; });
+    });
+    await a.getByRole("button", { name: /Export \/ Import/ }).click();
+    await a.waitForTimeout(300);
+    // One dialog decides the whole export: which studies, what goes in, how it is written
+    // and who may open it. The archive is a choice inside it, not a second menu entry.
+    await a.locator(".menu-item", { hasText: /Export/ }).click();
+    await a.waitForSelector(".export-dlg", { timeout: 10000 });
+    await a.waitForTimeout(300);
+    ok("the dialog states the scope as a choice", (await a.locator(".export-dlg .seg-wide").first().locator(".seg-btn").count()) === 2);
+    await a.locator(".export-dlg .seg-btn", { hasText: /^Archive$/ }).click();
+    await a.waitForTimeout(300);
+    ok("...and says what it found to pack", /\d+ file/.test(await a.locator(".export-dlg").innerText()));
+    ok("...and suggests a file name with a date",
+      /\d{4}-\d{2}-\d{2}$/.test(await a.locator(".export-dlg .fn-row input").inputValue()));
+    const dl = a.waitForEvent("download");
+    await a.locator(".modal-lg-foot .primary").click();
+    const got = await dl;
+    const zipPath = "/tmp/ebios-e2e-archive.zip";
+    await got.saveAs(zipPath);
+    ok("the archive export produces a zip", /\.zip$/.test(got.suggestedFilename()));
+    await ctx.close();
+
+    // A different profile - nothing carried over but the file itself.
+    const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const c = await ctx2.newPage();
+    c.on("pageerror", (e) => errors.push("pageerror: " + e.message));
+    await c.goto(file); await c.waitForSelector("#root .app", { timeout: 10000 });
+    ok("...into a profile that has nothing", (await c.locator(".card").count()) === 0);
+    await c.getByRole("button", { name: /^Data/ }).click();
+    await c.waitForTimeout(300);
+    const chooser = c.waitForEvent("filechooser");
+    await c.locator(".menu-item", { hasText: "Import data" }).click();
+    await c.waitForTimeout(400);
+    const btn = c.locator("button", { hasText: /Choose file|Select/ }).first();
+    if (await btn.count()) await btn.click();
+    (await chooser).setFiles(zipPath);
+    await c.waitForTimeout(1200);
+    const confirm = c.locator("button", { hasText: /^(Import|Apply|Confirm)/ }).last();
+    if (await confirm.count()) { await confirm.click(); await c.waitForTimeout(1500); }
+    const back = await c.evaluate(async () => {
+      const db = await new Promise((res) => { const r = indexedDB.open("ebios_offline_docs", 1); r.onsuccess = () => res(r.result); });
+      const all = await new Promise((res) => { const r = db.transaction("docs", "readonly").objectStore("docs").getAll(); r.onsuccess = () => res(r.result); });
+      return all.map((d) => ({ name: d.name, text: d.text?.length ?? 0, file: d.file?.size ?? 0, type: d.file?.type }));
+    });
+    console.log(`   ${JSON.stringify(back)}`);
+    ok("...and the study arrives", (await c.locator(".card").count()) > 0);
+    ok("...with the document's SOURCE FILE, not just its text",
+      back.length === 1 && back[0].file > 5000 && back[0].type === "application/pdf");
+    ok("...and its name intact through the archive", back[0]?.name === "Prüfbericht 2026.pdf");
+    await ctx2.close();
+  }
 
   // ── which language a reader is shown ────────────────────────────────────────
   // Three answers to one question - what the reader chose, what the browser asked, what
@@ -1980,8 +2063,8 @@ try {
     await seed.p.waitForTimeout(800);
     ok("...and follows the reader to the other one", /Patientenakten/.test(await firstName() ?? ""));
 
-    // But ONLY while it is untouched. Once a record is gone it is somebody's study, and
-    // re-seeding it would throw their work away - the failure this check exists to catch.
+    // An EDITED sample is re-seeded too - a half-translated example is the state that
+    // confuses - but not silently: the reader is asked, and cancelling changes nothing.
     const rows = () => seed.p.locator("table.tbl tbody tr:not(.detail-row):not(.group-row)").count();
     const before = await rows();
     await seed.p.locator("table.tbl tbody tr").first().click();
@@ -1990,15 +2073,46 @@ try {
     await seed.p.waitForTimeout(400);
     await seed.p.locator(".scope-dlg .modal-lg-foot .danger").click();
     await seed.p.waitForTimeout(700);
-    // Deleting cascades, so how MANY went is not the point and not asserted - only that
-    // something did, and that the switch afterwards leaves the study exactly as it was.
+    // Deleting cascades, so how MANY went is not asserted - only that something did.
     const worked = await rows();
-    const workedName = await firstName();
+    ok("...and a delete in it is a real edit", worked < before);
+
+    seed.p.once("dialog", (d) => d.dismiss());          // the reader says no
     await seed.p.locator(".sidebar .nav-item", { hasText: "English" }).click();
     await seed.p.waitForTimeout(900);
-    console.log(`   ${before} rows → ${worked} after the delete → ${await rows()} after switching back`);
-    ok("a sample somebody has worked in is left alone",
-      worked < before && (await rows()) === worked && (await firstName()) === workedName);
+    ok("an edited sample asks before it is replaced, and cancelling keeps it",
+      (await rows()) === worked && (await seed.p.locator(".sidebar .nav-item", { hasText: "English" }).count()) === 1);
+
+    // An EDIT that changes no structure - the case the first version of this check missed.
+    // Deleting moves the record count, so a check written around counts passes while an
+    // edited description walks straight past it: measured, no question asked, the work
+    // replaced. Every edit writes a log entry, and that is what is compared now.
+    seed.p.once("dialog", (d) => d.dismiss());
+    await seed.p.evaluate(async () => {
+      const db = await new Promise((res) => { const r = indexedDB.open("ebios_offline", 1); r.onsuccess = () => res(r.result); });
+      const st = await new Promise((res) => { const g = db.transaction("state", "readonly").objectStore("state").get("app"); g.onsuccess = () => res(g.result); });
+      const st2 = st.studies.find((x) => x.sample);
+      st2.entities[0].values.description = "E2E-EDIT";
+      st2.log.push({ ts: new Date().toISOString(), seq: 9999, editor: "e2e", kind: "update",
+        entity: st2.entities[0].id, entityType: st2.entities[0].type, title: "x", hash: "h", prev: "p" });
+      await new Promise((res) => { const tx = db.transaction("state", "readwrite"); tx.objectStore("state").put(st, "app"); tx.oncomplete = res; });
+    });
+    await seed.p.reload();
+    await seed.p.waitForSelector("#root .app", { timeout: 10000 });
+    await seed.p.waitForTimeout(700);
+    // The switch NAMES THE LANGUAGE IT SWITCHES TO, so its label depends on where this
+    // sequence has got to. Matching either is what makes the step independent of that.
+    await seed.p.locator(".sidebar .nav-item").filter({ hasText: /Deutsch|English/ }).click();
+    await seed.p.waitForTimeout(900);
+    ok("an edit that changes no structure is noticed too",
+      await seed.p.evaluate(() => document.body.innerText.includes("E2E-EDIT")));
+
+    seed.p.once("dialog", (d) => d.accept());           // and this time yes
+    await seed.p.locator(".sidebar .nav-item", { hasText: "English" }).click();
+    await seed.p.waitForTimeout(900);
+    console.log(`   ${before} rows → ${worked} after the delete → ${await rows()} after accepting`);
+    ok("...and accepting puts the sample back, whole and in the new language",
+      (await rows()) === before && /Patient records/.test(await firstName() ?? ""));
     await seed.ctx.close();
 
     // And the language a reader switched INTO has to be the same one they would have got

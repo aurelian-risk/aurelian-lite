@@ -5,42 +5,67 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.6.9] — 2026-09-01
+
+### Added
+- **An export can be packaged as an archive.** One zip holds the study as readable JSON and
+  the source documents beside it - the PDFs and Word files a study argues from, which until
+  now were dropped once their text had been extracted. Encrypted the same two ways as any
+  other export, on the bytes rather than as base64, so a 200 kB archive grows by 162 bytes
+  instead of a third.
+- **One dialog decides an export**: which studies, what goes in, whether it is a single file
+  or an archive, what the file is called, and who may open it. Each option states its size.
+  The menu used to ask for the format, the password and the recipients as well, and a dialog
+  beside it asked several of the same things again.
+- **The public keys travel with a portable export**, so the seals in a study can be checked
+  by whoever receives it. Public keys only; the sender's private key never leaves.
+- **A stored source file can be saved back out**, and the browser asks where it goes.
+
+### Changed
+- **The document text is no longer written into the JSON export.** Extraction has already
+  put what it found into the data model; the raw text after that is bulk. Measured on a
+  corpus of 40 documents at 150 kB: 6.2 MB of JSON with the bodies against 9 kB without.
+  Text and files travel in the archive instead, where they compress to about 45%.
+- **A study is never exported without its data model.** It costs 3 kB compressed and is
+  constant, while a record built on a model the recipient does not have is imported and
+  then never shown - no register exists to draw it in. Files of that shape are still read,
+  and the import now says which types and fields will not appear.
+- **The report reads in the language it is shown in**, including the option values and
+  ratings it prints. Risk quantification stays in English throughout.
+- **Switching language re-seeds the sample study** in the new one, and asks first where that
+  would discard work.
+
+### Fixed
+- **Two legends in the report drew their labels on top of each other.** Both computed a
+  width instead of measuring one; the outcome ring counted the label but drew the label and
+  a figure. Wrong in English too, and only visible once German made the words longer.
+
 ## [0.6.8] — 2026-08-31
 
 ### Added
-- **The interface is available in German, and a switch in the sidebar chooses it.** Which
-  language is shown follows, in order: the choice made here, then what the browser asks for,
-  then English. The switch names its target in that target's own language. The choice is
-  kept in the browser, beside the table arrangements and outside the study, so switching
-  language is never recorded as an edit to the analysis.
-- **The German reading covers the taxonomy as well as the chrome** - 7 workshops, 12
-  registers, 85 field names, 13 rating scales and 10 option vocabularies. Nothing stored is
-  translated: `taxonomy.ts` is untouched, an export still carries `Reduce` and `in scope`,
-  and a study written in one language reads identically in the other. Left in English on
-  purpose: the 14 ATT&CK tactic names (they are the stored value and MITRE's published
-  wording), the sector names (they index the calibration tables), the NIS2 and NIST CSF
-  requirement titles (translating a published text would be inventing one), and the whole
-  of risk quantification, whose vocabulary is read in English by the people who use it.
-- **The sample study is in German too, and follows the reader.** Switching language
-  re-seeds it in the new one - but only while it is untouched: once a record has been
-  renamed, added or removed it is somebody's study and is left exactly as it is.
+- **The interface is available in German**, with a language switch in the sidebar. Which
+  language is shown follows, in order: the choice made there, then what the browser asks
+  for, then English. The choice is kept outside the study, so it is never recorded as an
+  edit to the analysis.
+- **German covers the taxonomy as well as the chrome** - 7 workshops, 12 registers, 85
+  field names, 13 rating scales. Nothing stored is translated: an export still carries
+  `Reduce` and `in scope`, and a study reads the same in either language. English on
+  purpose: the ATT&CK tactics, the sector names, the NIS2 and NIST CSF requirement titles,
+  and risk quantification.
+- **The sample study is in German too**, and follows the reader - but only while it is
+  untouched. Once a record has been changed it is left exactly as it is.
 
 ### Changed
-- **A multilingual embedding model is on offer for extraction.**
-  `paraphrase-multilingual-MiniLM-L12` (~120 MB, 50 languages) joins the two English models.
-  Extraction compares a document against the taxonomy's labels, which are English, so
-  sources in another language are matched across a language barrier. Measured over six
-  reference documents: a German audit report goes from 2 of 17 expected entities to 8, and
-  the whole corpus from 28 of 62 to 35. It is five times the size of the default and about
-  twice as slow (24 s per 1,000 words against 10); nothing downloads until it is chosen.
-- **The note on keeping the model as a file is set as three steps** rather than one
-  sentence with arrows in it.
+- **A multilingual embedding model is on offer for extraction**,
+  `paraphrase-multilingual-MiniLM-L12` (~120 MB, 50 languages). Extraction matches a
+  document against the taxonomy's English labels, so other-language sources were read
+  across a language barrier. Over six reference documents: a German audit report goes from
+  2 of 17 expected entities to 8, the whole corpus from 28 of 62 to 35. Five times the size
+  of the default and about twice as slow; nothing downloads until it is chosen.
 
 ### Fixed
-- **The dialog that asks before a delete or a scope change is drawn in the window.** It was
-  laid out against the panel it was raised from - `position: fixed` resolves against the
-  nearest ancestor with a transform, and a panel animates in with one - so on a long
-  register it appeared below the fold and read as cut off.
+- **The dialog before a delete or a scope change is drawn in the window.** It was laid out
+  against the panel it was raised from, so on a long register it appeared below the fold.
 
 ## [0.6.7] — 2026-08-30
 

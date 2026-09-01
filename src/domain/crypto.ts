@@ -131,3 +131,102 @@ export async function decryptText(envelope: string, password: string): Promise<s
   const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bs(unb64(o.iv)) }, key, bs(unb64(o.ct)));
   return dec.decode(pt);
 }
+
+
+// ── The same two schemes, applied to BYTES ──────────────────────────────────
+//
+// An archive is not text, and the envelopes above are JSON: putting a 100 MB zip through
+// them would mean base64 (a third more) held as one JavaScript string. So the payload
+// stays binary and only the HEADER is JSON:
+//
+//   "AEB1" | uint32 header length | JSON header | ciphertext
+//
+// The header is the envelope above with `ct` left out, which means `envelopeRecipients`
+// and the wrapping code are shared rather than written twice — the part that is easy to
+// get subtly wrong exists once. The text envelopes are untouched: files already written
+// keep opening exactly as before.
+const MAGIC = "AEB1";
+
+function frame(header: object, ct: ArrayBuffer): Uint8Array {
+  const h = enc.encode(JSON.stringify(header));
+  const out = new Uint8Array(4 + 4 + h.length + ct.byteLength);
+  out.set(enc.encode(MAGIC), 0);
+  new DataView(out.buffer).setUint32(4, h.length, true);
+  out.set(h, 8);
+  out.set(new Uint8Array(ct), 8 + h.length);
+  return out;
+}
+
+function unframe(buf: Uint8Array): { header: Record<string, unknown>; ct: Uint8Array } {
+  if (!isEncryptedBytes(buf)) throw new Error("Not an encrypted Aurelian archive.");
+  const len = new DataView(buf.buffer, buf.byteOffset).getUint32(4, true);
+  const header = JSON.parse(dec.decode(buf.subarray(8, 8 + len))) as Record<string, unknown>;
+  return { header, ct: buf.subarray(8 + len) };
+}
+
+/** Is this a binary envelope? The first four bytes say so. */
+export function isEncryptedBytes(buf: Uint8Array): boolean {
+  return buf.length > 8 && dec.decode(buf.subarray(0, 4)) === MAGIC;
+}
+
+/** Encrypt bytes with a password. */
+export async function encryptBytes(data: Uint8Array, password: string): Promise<Uint8Array> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(password, salt, ITER);
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: bs(iv) }, key, bs(data));
+  return frame({ "ebios-encrypted": 1, cipher: "AES-256-GCM", kdf: "PBKDF2-SHA256", iter: ITER,
+    salt: b64(salt), iv: b64(iv) }, ct);
+}
+
+/** Decrypt bytes with a password. Throws on a wrong one (GCM authentication fails). */
+export async function decryptBytes(buf: Uint8Array, password: string): Promise<Uint8Array> {
+  const { header, ct } = unframe(buf);
+  if (header["ebios-encrypted"] !== 1) throw new Error("Not an encrypted Aurelian archive.");
+  if (!header.salt) throw new Error("This archive is addressed to a key, not a password.");
+  const key = await deriveKey(password, unb64(String(header.salt)), Number(header.iter) || ITER);
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bs(unb64(String(header.iv))) }, key, bs(ct));
+  return new Uint8Array(pt);
+}
+
+/** Encrypt bytes once, wrapped for each recipient. */
+export async function encryptBytesToRecipients(data: Uint8Array, recipients: Recipient[]): Promise<Uint8Array> {
+  if (!recipients.length) throw new Error("No recipients: nobody could open this file.");
+  const contentKeyRaw = crypto.getRandomValues(new Uint8Array(32));
+  const contentKey = await crypto.subtle.importKey("raw", bs(contentKeyRaw), { name: "AES-GCM" }, false, ["encrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: bs(iv) }, contentKey, bs(data));
+  const to = [];
+  for (const r of recipients) to.push({ ...(await wrapFor(r.jwk, contentKeyRaw)), name: r.name ?? "" });
+  return frame({ "ebios-encrypted": 1, cipher: "AES-256-GCM", kdf: "ECDH-P256+HKDF-SHA256", iv: b64(iv), to }, ct);
+}
+
+/** Open a binary envelope addressed to a key we hold. Null when it is not addressed to
+ *  this key — a different thing from a wrong key, and it reads differently. */
+export async function decryptBytesForKey(buf: Uint8Array, privateJwk: JsonWebKey, kid: string): Promise<Uint8Array | null> {
+  const { header, ct } = unframe(buf);
+  const list = header.to as { kid: string; epk: JsonWebKey; iv: string; ct: string }[] | undefined;
+  if (!Array.isArray(list)) throw new Error("Not an archive addressed to a key.");
+  const mine = list.find((t) => t.kid === kid);
+  if (!mine) return null;
+  const priv = await crypto.subtle.importKey("jwk", privateJwk, P256, false, ["deriveBits"]);
+  const epk = await crypto.subtle.importKey("jwk", mine.epk, P256, true, []);
+  const shared = await crypto.subtle.deriveBits({ name: "ECDH", public: epk }, priv, 256);
+  const base = await crypto.subtle.importKey("raw", shared, "HKDF", false, ["deriveKey"]);
+  const kek = await crypto.subtle.deriveKey(
+    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(16), info: enc.encode("aurelian-recipient-v1") },
+    base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+  const raw = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bs(unb64(mine.iv)) }, kek, bs(unb64(mine.ct)));
+  const contentKey = await crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["decrypt"]);
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bs(unb64(String(header.iv))) }, contentKey, bs(ct));
+  return new Uint8Array(pt);
+}
+
+/** Who can open a binary envelope. */
+export function bytesEnvelopeRecipients(buf: Uint8Array): { kid: string; name: string }[] {
+  try {
+    const { header } = unframe(buf);
+    const list = header.to as { kid: string; name?: string }[] | undefined;
+    return Array.isArray(list) ? list.map((t) => ({ kid: t.kid, name: t.name ?? "" })) : [];
+  } catch { return []; }
+}

@@ -254,3 +254,36 @@ export function setBackBlocked(tax: Taxonomy, study: Study, r: EntityRecord): st
   }
   return null;
 }
+
+
+/** What an incoming study needs that this taxonomy does not have.
+ *
+ *  Measured, because the consequence is silent: a record whose TYPE is unknown here is
+ *  stored and never drawn - every register is derived from the taxonomy, so there is no
+ *  table for it to appear in. A value in an unknown FIELD is the same. Nothing is lost from
+ *  the file, and nothing is visible either, which is the worst of the two.
+ *
+ *  This is why a data-only export is only safe between installations that share a data
+ *  model. Where they might not, the model belongs in the file. */
+export function taxonomyGap(tax: Taxonomy, studies: { entities: EntityRecord[] }[]): {
+  types: string[];
+  fields: { type: string; field: string }[];
+  records: number;
+} {
+  const known = new Map(tax.entityTypes.map((t) => [t.key, new Set(t.fields.map((f) => f.key))]));
+  const types = new Set<string>();
+  const fields = new Map<string, { type: string; field: string }>();
+  let records = 0;
+  for (const s of studies ?? []) {
+    for (const e of s.entities ?? []) {
+      const t = known.get(e.type);
+      if (!t) { types.add(e.type); records++; continue; }
+      let hit = false;
+      for (const k of Object.keys(e.values ?? {})) {
+        if (!t.has(k)) { fields.set(`${e.type}.${k}`, { type: e.type, field: k }); hit = true; }
+      }
+      if (hit) records++;
+    }
+  }
+  return { types: [...types], fields: [...fields.values()], records };
+}

@@ -179,6 +179,18 @@ input, textarea, select {
   border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; width: 100%;
   transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
 }
+/* A tick is not a text field: the rule above stretches every input to the width of its
+   container, which for a checkbox pushes the label it belongs to across the dialog. */
+input[type="checkbox"], input[type="radio"] {
+  width: auto; flex: none; margin: 0; padding: 0; accent-color: var(--primary);
+}
+/* One switch and the text that explains it, as used by the export dialog. */
+.check-row { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.check-row.off { cursor: default; opacity: 0.55; }
+.check-row > input { margin-top: 3px; }
+.check-row .ck-t { display: block; font-weight: 600; }
+.check-row .ck-s { display: block; }
+
 input::placeholder, textarea::placeholder { color: var(--fg-subtle); }
 input:focus, textarea:focus, select:focus { outline: none; border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-glow); }
@@ -629,6 +641,30 @@ select { cursor: pointer; }
 .seg-btn { flex: 1; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--bg-panel); color: var(--fg-muted); cursor: pointer; font-size: 12px; font-weight: 600; }
 .seg-btn.on { background: var(--primary); color: var(--primary-fg); border-color: transparent; }
+/* A row of choices in a dialog rather than in a popover: roomier, and a label that needs
+   two words keeps them on one line. `.seg-btn` is sized for a narrow menu, where "Named
+   keys" wrapped and left the row three different heights. */
+.seg-wide { display: flex; gap: 6px; margin-bottom: 12px; }
+.seg-wide .seg-btn { flex: 1 1 0; padding: 9px 12px; font-size: 12.5px; white-space: nowrap;
+  min-width: 0; text-overflow: ellipsis; overflow: hidden; }
+.seg-wide .seg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+/* The line under a row of choices that says what the chosen one means. */
+.seg-note { margin: -6px 0 14px; line-height: 1.45; }
+/* A secondary choice under a primary one - the file FORMAT under file-or-archive. Narrow,
+   so it reads as a detail of the row above rather than as a third question. */
+.seg-minor { max-width: 190px; margin-top: -6px; }
+.seg-minor .seg-btn { padding: 6px 10px; font-size: 11.5px; }
+/* Name and extension as one field: the extension is not editable, so it sits inside the
+   box rather than beside it, where it would read as a separate thing. */
+.fn-row { display: flex; align-items: stretch; gap: 0; }
+.fn-row input { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.fn-ext { display: flex; align-items: center; padding: 0 11px; font-size: 12.5px; color: var(--fg-subtle);
+  background: var(--bg-hover); border: 1px solid var(--border); border-left: none;
+  border-radius: 0 10px 10px 0; white-space: nowrap; }
+/* The sentence that says what the button will produce. It is the widest thing in the
+   footer, so it wraps there rather than pushing the buttons off the edge. */
+.export-dlg .modal-lg-foot { align-items: flex-end; }
+.export-dlg .export-out { flex: 1 1 auto; min-width: 0; line-height: 1.45; }
 
 /* ── Extraction progress: phases + bar ────────────────────────────── */
 .phases { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
