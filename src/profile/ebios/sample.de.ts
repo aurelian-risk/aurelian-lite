@@ -81,7 +81,7 @@ export const SAMPLE_DE: Record<string, string> = {
   "Extort a ransom": "Lösegeld erpressen",
   "Encrypt clinical systems and demand payment.": "Klinische Systeme verschlüsseln und Zahlung fordern.",
   "Sell patient data": "Patientendaten verkaufen",
-  "Exfiltrate and monetize health records.": "Gesundheitsdaten abziehen und zu Geld machen.",
+  "Exfiltrate and monetize health records.": "Gesundheitsdaten exfiltrieren und zu Geld machen.",
   "Disrupt hospital operations": "Klinikbetrieb stören",
   "Take services offline to draw public attention.": "Dienste lahmlegen, um öffentliche Aufmerksamkeit zu erzeugen.",
 
@@ -95,13 +95,13 @@ export const SAMPLE_DE: Record<string, string> = {
   "Ransomware via maintenance access": "Ransomware über den Wartungszugang",
   "A financially-motivated ransomware crew compromises the external IT-maintenance provider and abuses its standing remote access to pivot from the maintenance host into the clinical network, ending in encryption of the core systems and an extortion demand.":
     "Eine finanziell motivierte Ransomware-Gruppe kompromittiert den externen IT-Wartungsdienstleister und missbraucht dessen dauerhaften Fernzugang, um vom Wartungsrechner in das klinische Netz zu wechseln. Am Ende stehen die Verschlüsselung der Kernsysteme und eine Lösegeldforderung.",
-  "Supply-chain compromise via device vendor": "Lieferkettenangriff über den Gerätehersteller",
+  "Supply-chain compromise via device vendor": "Supply-Chain-Angriff über den Gerätehersteller",
   "The attacker rides the remote-service connection of a networked-medical-device supplier to reach clinical systems and quietly exfiltrate patient data, exploiting trust in the third party rather than breaching the perimeter directly.":
     "Der Angreifer nutzt die Fernwartungsverbindung eines Herstellers vernetzter Medizingeräte, um klinische Systeme zu erreichen und unbemerkt Patientendaten abzuziehen. Er bricht nicht den Perimeter, sondern nutzt das Vertrauen in den Dritten.",
   "Operational disruption by hacktivists": "Betriebsstörung durch Hacktivisten",
   "An ideologically-motivated collective overwhelms the hospital's public-facing services with a denial-of-service campaign to interrupt care and draw media attention to their cause.":
     "Ein ideologisch motiviertes Kollektiv überlastet die öffentlich erreichbaren Dienste des Klinikums mit einer Denial-of-Service-Kampagne, um die Versorgung zu unterbrechen und mediale Aufmerksamkeit für sein Anliegen zu erzeugen.",
-  "Insider data exfiltration": "Datenabfluss durch Innentäter",
+  "Insider data exfiltration": "Insider-Exfiltration",
   "A privileged, disgruntled insider abuses legitimate database access to copy bulk patient records onto external media, for revenge or resale, leaving few of the network traces an outside attacker would.":
     "Ein privilegierter, verärgerter Innentäter missbraucht seinen legitimen Datenbankzugang, um Patientenakten in großer Zahl auf externe Datenträger zu kopieren - aus Rache oder zum Weiterverkauf. Er hinterlässt kaum die Netzspuren, die ein externer Angreifer erzeugt.",
 
@@ -109,19 +109,19 @@ export const SAMPLE_DE: Record<string, string> = {
   "Ransomware encryption of clinical systems": "Ransomware-Verschlüsselung der klinischen Systeme",
   "The full end-to-end kill chain a ransomware operator would follow: an initial spear-phish of the maintenance provider, persistence on the maintenance host, theft of cached admin credentials, lateral movement into the clinical network, exfiltration of patient records for double extortion, and finally encryption of the Hospital Information System.":
     "Die vollständige Kill-Chain, der ein Ransomware-Betreiber folgen würde: Spear-Phishing beim Wartungsdienstleister, Persistenz auf dem Wartungsrechner, Diebstahl zwischengespeicherter Administratorzugänge, seitliche Bewegung in das klinische Netz, Abfluss von Patientenakten für die doppelte Erpressung und schließlich Verschlüsselung des Krankenhausinformationssystems.",
-  "Phishing the maintenance provider": "Phishing beim Wartungsdienstleister",
+  "Phishing the maintenance provider": "Spear-Phishing beim Wartungsdienstleister",
   "Spear-phishing email delivers a loader.": "Eine Spear-Phishing-Mail bringt einen Loader ein.",
-  "Establish persistence via scheduled task": "Persistenz über eine geplante Aufgabe",
+  "Establish persistence via scheduled task": "Persistence über eine geplante Aufgabe",
   "Register a scheduled task to survive reboots.": "Eine geplante Aufgabe eintragen, um Neustarts zu überdauern.",
-  "Credential dumping on maintenance host": "Zugangsdaten vom Wartungsrechner abgreifen",
-  "Harvest cached admin credentials.": "Zwischengespeicherte Administratorzugänge einsammeln.",
-  "Lateral movement into clinical network": "Seitliche Bewegung ins klinische Netz",
-  "Pivot via remote services.": "Über Remote-Dienste weiterspringen.",
-  "Exfiltrate patient records": "Patientenakten abziehen",
+  "Credential dumping on maintenance host": "Credential Dumping auf dem Wartungsrechner",
+  "Harvest cached admin credentials.": "Zwischengespeicherte Admin-Credentials abgreifen.",
+  "Lateral movement into clinical network": "Lateral Movement ins klinische Netz",
+  "Pivot via remote services.": "Pivoting über Remote-Dienste.",
+  "Exfiltrate patient records": "Exfiltration der Patientenakten",
   "Stage and copy records to an external server before encryption.": "Datensätze vor der Verschlüsselung sammeln und auf einen externen Server kopieren.",
   "Encrypt the HIS database": "KIS-Datenbank verschlüsseln",
   "Deploy ransomware on the core database.": "Ransomware auf der Kerndatenbank ausrollen.",
-  "Insider exfiltration of patient records": "Abfluss von Patientenakten durch einen Innentäter",
+  "Insider exfiltration of patient records": "Insider-Exfiltration von Patientenakten",
   "A shorter, quieter chain: a privileged insider logs in with legitimate elevated credentials, queries and stages bulk patient records, and copies them onto an encrypted USB drive - producing few of the malware or lateral-movement artefacts an external attacker would leave.":
     "Eine kürzere, leisere Kette: Ein privilegierter Innentäter meldet sich mit legitimen erhöhten Rechten an, fragt Patientenakten in großer Zahl ab, sammelt sie und kopiert sie auf einen verschlüsselten USB-Datenträger - fast ohne die Schadsoftware- und Bewegungsspuren, die ein externer Angreifer hinterlässt.",
   "Abuse valid database credentials": "Gültige Datenbankzugänge missbrauchen",
@@ -129,7 +129,7 @@ export const SAMPLE_DE: Record<string, string> = {
   "Collect patient records": "Patientenakten zusammentragen",
   "Query and stage bulk patient records.": "Patientenakten in großer Zahl abfragen und sammeln.",
   "Copy records to removable media": "Akten auf Wechseldatenträger kopieren",
-  "Exfiltrate onto an encrypted USB drive.": "Abzug auf einen verschlüsselten USB-Datenträger.",
+  "Exfiltrate onto an encrypted USB drive.": "Exfiltration auf einen verschlüsselten USB-Datenträger.",
 
   // ── security measures ──
   "Secure email gateway & phishing training": "Sicheres E-Mail-Gateway & Phishing-Schulung",
@@ -141,7 +141,7 @@ export const SAMPLE_DE: Record<string, string> = {
   "Network segmentation (IT / clinical VLANs)": "Netzsegmentierung (IT- / Klinik-VLANs)",
   "The clinical VLANs are firewalled off from the corporate IT network so that an attacker who lands in IT cannot move laterally into the ward and medical-device networks unimpeded, containing the blast radius of an intrusion.":
     "Die klinischen VLANs sind vom IT-Netz der Verwaltung durch Firewalls getrennt, damit ein Angreifer, der in der IT landet, nicht ungehindert in die Stations- und Medizingerätenetze weiterkommt. Das begrenzt die Reichweite eines Einbruchs.",
-  "Egress monitoring & DLP": "Ausgangsüberwachung & DLP",
+  "Egress monitoring & DLP": "Egress Monitoring & DLP",
   "Egress monitoring and data-loss-prevention rules detect and block bulk transfers of health records to external destinations, whether staged over a web service before ransomware or copied to removable media by an insider.":
     "Ausgangsüberwachung und Regeln zur Verhinderung von Datenabfluss erkennen und blockieren die Übertragung großer Mengen von Gesundheitsdaten nach außen - ob über einen Webdienst vor der Verschlüsselung oder auf einen Wechseldatenträger durch einen Innentäter.",
   "EDR on clinical endpoints": "EDR auf klinischen Endgeräten",
@@ -166,6 +166,21 @@ export const SAMPLE_DE: Record<string, string> = {
     "Reduzieren: Die Abflussschritte der Kill-Chain sind gut abgedeckt, und das Restrisiko ist aus dieser Abdeckung abgeleitet.",
   "CISO": "CISO",
   "Data Protection Officer": "Datenschutzbeauftragte",
+
+  // ── what the sample calls its requirement groups ──
+  // Free text on the record, not an option value - the categories a study invents for its
+  // own register. The requirement TITLES stay as NIS2 and NIST CSF publish them.
+  "Governance": "Governance",
+  "Operations": "Betrieb",
+  "Resilience": "Resilienz",
+  "Access": "Zugriff",
+  "Protect": "Schützen",
+  "Detect": "Erkennen",
+  "Control family": "Maßnahmenfamilie",
+  "Supply chain": "Lieferkette",
+  "People": "Personal",
+  "Protection": "Schutz",
+  "Access & assets": "Zugriff & Werte",
 
   // ── what the change log records ──
   "Raised to critical after the DPIA - leakage triggers mandatory breach notification.":

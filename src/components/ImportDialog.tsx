@@ -2,13 +2,15 @@
 // Data import dialog with a review step: parse a bundle (file / paste / a demo
 // revision), preview the diff against the current data (added / changed / removed
 // entities, per field), then apply it additively or destructively.
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { t as tr, tn } from "../domain/i18n";
 import { createPortal } from "react-dom";
 import { useActiveStudy, useStore } from "../domain/store";
-import { pickTextFile, parseBundle } from "../domain/persistence";
-import { isEncrypted, decryptText, decryptForKey, envelopeRecipients } from "../domain/crypto";
+import { pickImportFile, parseBundle, parseArchive, type ArchiveDoc } from "../domain/persistence";
+import { isEncrypted, decryptText, decryptForKey, envelopeRecipients,
+  isEncryptedBytes, decryptBytes, decryptBytesForKey, bytesEnvelopeRecipients } from "../domain/crypto";
 import { fingerprint, knownKey, ownKey, publicOf, readPublicKeyFile, rememberKey, verifyAllSeals } from "../domain/keys";
+import { taxonomyGap } from "../domain/taxonomy";
 import { getType, recordTitle } from "../domain/taxonomy";
 import { sealState } from "./SealPanel";
 import { importDocs } from "../domain/documents";
@@ -65,6 +67,10 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
     setMatchMsg(`Match. The seal was made by this key${k.name ? ` (${k.name})` : ""}, and it is now named here — the seal reads as verified.`);
   };
 
+  /** What an archive brought with it, held until the import is confirmed. Null for a
+   *  plain JSON bundle, which carries references only. */
+  const pendingDocs = useRef<ArchiveDoc[] | null>(null);
+
   const preview = async (bundle: Bundle, note?: string, source?: string) => {
     const diff = diffBundle(tax, store.studies, bundle.studies ?? []);
     // Verify the incoming file BEFORE it is confirmed. Confirming an import re-establishes
@@ -90,6 +96,28 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
     setStatus("");
   };
 
+  /** The same two questions as `resolveText`, asked of an archive's bytes.
+   *
+   *  Written beside it rather than folded into it, because the answers differ in kind: a
+   *  binary envelope is recognised by its first four bytes, not by parsing JSON, and what
+   *  comes out is a zip rather than a string. */
+  const resolveBytes = async (raw: Uint8Array): Promise<Uint8Array> => {
+    if (!isEncryptedBytes(raw)) return raw;
+    const to = bytesEnvelopeRecipients(raw);
+    if (to.length) {
+      const mine = ownKey();
+      if (!mine) throw new Error(`addressed to ${to.map((t) => t.name || t.kid).join(", ")} - this installation holds no key`);
+      const kid = await fingerprint(publicOf(mine));
+      const opened = await decryptBytesForKey(raw, mine, kid).catch(() => { throw new Error("addressed to this key, but it does not open the file"); });
+      if (opened === null) throw new Error(`not addressed to this key (${kid}) - it is for ${to.map((t) => t.name || t.kid).join(", ")}`);
+      return opened;
+    }
+    const pw = prompt(tr("ui.import.archive-encrypted", "This archive is encrypted. Enter the password:"));
+    if (pw === null) throw new Error("cancelled");
+    try { return await decryptBytes(raw, pw); }
+    catch { throw new Error("wrong password or corrupt archive"); }
+  };
+
   const resolveText = async (raw: string): Promise<string> => {
     // Addressed to a key? Then no password is involved: either this installation holds one
     // of the keys it names, or it does not - and "not addressed to you" is a different
@@ -112,7 +140,21 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
 
   const fromFile = async () => {
     setBusy(true); setStatus("");
-    try { const f = await pickTextFile(); await preview(parseBundle(await resolveText(f.text)), undefined, f.name); }
+    try {
+      const f = await pickImportFile();
+      if (f.buf) {
+        const opened = await resolveBytes(new Uint8Array(f.buf));
+        // An archive: the bundle is read out of it, and the documents are held until the
+        // import is confirmed. They are not written on preview - a preview that has
+        // already changed something is not a preview.
+        const { bundle, docs } = await parseArchive(opened.buffer.slice(opened.byteOffset, opened.byteOffset + opened.byteLength) as ArrayBuffer);
+        pendingDocs.current = docs;
+        await preview(bundle, undefined, f.name);
+      } else {
+        pendingDocs.current = null;
+        await preview(parseBundle(await resolveText(f.text ?? "")), undefined, f.name);
+      }
+    }
     catch (e) { if (e instanceof Error && e.message !== "No file selected" && e.message !== "cancelled") setStatus("Import failed: " + e.message); }
     setBusy(false);
   };
@@ -144,7 +186,16 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
           + `signature verified, covering ${top.verdict.payload?.seq ?? 0} entries as "${top.editor}".`;
     }
     store.applyBundle(b, { studiesMode: mode, source: pending.source, sealNotes });
-    if (b.documents?.length) await importDocs(b.documents);
+    // From an archive the documents carry their text and their source file; from a JSON
+    // bundle only the references. Whichever came in is what is written.
+    if (pendingDocs.current?.length) await importDocs(pendingDocs.current);
+    else if (b.documents?.length) await importDocs(b.documents);
+    // The public keys the sender knew, so their seals can be checked here. Added, never
+    // replacing: a key already on this ring keeps the name it was given locally, and an
+    // import cannot rename somebody else's key under the reader's nose.
+    for (const k of b.keys ?? []) {
+      if (!knownKey(k.kid)) rememberKey(k.kid, k.name, k.jwk as JsonWebKey, k.seen ?? new Date().toISOString());
+    }
     if (b.settings) {
       if (b.settings.modelId) setModelId(b.settings.modelId);
       if (b.settings.genModelId) (await gen())?.setGenModelId(b.settings.genModelId);
@@ -189,6 +240,40 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
         ) : (
           <div className="modal-lg-body">
             {pending.note && <div className="guide" style={{ marginBottom: 12 }}>{pending.note}</div>}
+            {/* A file without a data model, from an installation that uses a different one.
+                Measured: such records are stored and then never drawn - every register is
+                derived from the taxonomy, so there is no table for them to appear in. The
+                data is neither lost nor visible, which is the worst of the two, and the
+                only moment to say so is before the import. */}
+            {(() => {
+              const gap = pending.bundle.taxonomy ? null : taxonomyGap(tax, pending.bundle.studies ?? []);
+              if (!gap || (!gap.types.length && !gap.fields.length)) return null;
+              return (
+                <div className="guide warn" style={{ marginBottom: 12 }}>
+                  <strong>{tr("ui.import.gap-title", "This file carries no data model, and it does not fit this one.")}</strong>
+                  <div style={{ marginTop: 6 }}>
+                    {tn("ui.import.gap-records", gap.records,
+                      "{0} record uses something this installation does not have. It would be imported and then never shown - no table exists for it.",
+                      "{0} records use something this installation does not have. They would be imported and then never shown - no table exists for them.")}
+                  </div>
+                  {gap.types.length > 0 && (
+                    <div className="hint" style={{ marginTop: 5 }}>
+                      {tr("ui.import.gap-types", "Unknown types:")} <span className="mono">{gap.types.join(", ")}</span>
+                    </div>
+                  )}
+                  {gap.fields.length > 0 && (
+                    <div className="hint" style={{ marginTop: 3 }}>
+                      {tr("ui.import.gap-fields", "Unknown fields:")}{" "}
+                      <span className="mono">{gap.fields.slice(0, 8).map((f) => `${f.type}.${f.field}`).join(", ")}</span>
+                      {gap.fields.length > 8 && ` +${gap.fields.length - 8}`}
+                    </div>
+                  )}
+                  <div className="hint" style={{ marginTop: 6 }}>
+                    {tr("ui.import.gap-fix", "Ask the sender for an export that includes the data model.")}
+                  </div>
+                </div>
+              );
+            })()}
             {pending.audit?.map((a, i) => (
               <div key={i}>
               {/* Who signed this file, before anything is imported. The one question a

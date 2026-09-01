@@ -3,8 +3,8 @@
 // the schema (entity types + fields) followed by the data (entities with
 // relationships resolved to names). Paste into an LLM chat as grounded context.
 import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue, Study, Taxonomy } from "./types";
-import { tn } from "./i18n";
-import { columnFields, fieldLabel, getType, groupDescription, groupLabel, isSetBack, recordTitle, scaleLabel, scaleMax, typeLabel, typeLabelPlural } from "./taxonomy";
+import { t as tr, tn } from "./i18n";
+import { columnFields, fieldLabel, getType, groupDescription, groupLabel, isSetBack, optionLabel, recordTitle, scaleLabel, scaleMax, typeLabel, typeLabelPlural } from "./taxonomy";
 import { spreadColumn } from "./graph";
 import { PRODUCT } from "../profile";
 import { deriveInputs, meanOf } from "./quantModel";
@@ -26,7 +26,13 @@ function fieldSpec(f: FieldDef, tax: Taxonomy): string {
   return `\`${f.key}\` (${parts.join(", ")})`;
 }
 
-function valueMd(f: FieldDef, v: FieldValue, tax: Taxonomy, study: Study): string {
+/** A field's value as the report shows it.
+ *
+ *  `type` is what makes an enum readable: the stored value is data ("Information",
+ *  "Implemented"), and only the type says which vocabulary reads it. Without it the report
+ *  printed the stored value, so a German report carried English option values throughout
+ *  while every heading around them was translated. */
+function valueMd(f: FieldDef, v: FieldValue, tax: Taxonomy, study: Study, type?: EntityTypeDef): string {
   const nameOf = (id: string) => {
     const r = study.entities.find((e) => e.id === id);
     const t = r && getType(tax, r.type);
@@ -34,8 +40,9 @@ function valueMd(f: FieldDef, v: FieldValue, tax: Taxonomy, study: Study): strin
   };
   if (v == null || v === "") return "—";
   switch (f.type) {
-    case "scale": return typeof v === "number" ? scaleLabel(f, v) : String(v);
-    case "boolean": return v ? "yes" : "no";
+    case "scale": return typeof v === "number" ? scaleLabel(f, v, type) : String(v);
+    case "boolean": return v ? tr("ui.report.yes", "yes") : tr("ui.report.no", "no");
+    case "enum": return optionLabel(f, String(v), type);
     case "ref": return typeof v === "string" ? nameOf(v) : "—";
     case "multiref": return Array.isArray(v) && v.length ? (v as string[]).map(nameOf).join(", ") : "—";
     default: return String(v);
@@ -58,7 +65,7 @@ export function workshopMarkdown(tax: Taxonomy, study: Study, groupKey: string):
   L.push("## Schema (valid taxonomy for this workshop)");
   for (const t of types) {
     L.push(`### ${typeLabel(t)} \`${t.key}\``);
-    for (const f of t.fields) L.push(`- ${fieldLabel(f)}: ${fieldSpec(f, tax)}`);
+    for (const f of t.fields) L.push(`- ${fieldLabel(f, t)}: ${fieldSpec(f, tax)}`);
     L.push("");
   }
 
@@ -71,8 +78,8 @@ export function workshopMarkdown(tax: Taxonomy, study: Study, groupKey: string):
       L.push(`${i + 1}. **${recordTitle(t, e)}**`);
       for (const f of t.fields) {
         if (f.key === (t.titleField ?? "name")) continue;
-        const val = valueMd(f, e.values[f.key] ?? null, tax, study);
-        if (val !== "—") L.push(`   - ${fieldLabel(f)}: ${val}`);
+        const val = valueMd(f, e.values[f.key] ?? null, tax, study, t);
+        if (val !== "—") L.push(`   - ${fieldLabel(f, t)}: ${val}`);
       }
     });
     L.push("");
@@ -204,7 +211,7 @@ function assetHeatmapSection(tax: Taxonomy, study: Study): string | null {
   H += PAD - gap;
   const p: string[] = [`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif">`];
   p.push(`<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="14" fill="${HEX.card}" stroke="${HEX.edge}"/>`);
-  p.push(`<text x="${PAD}" y="${PAD + 11}" font-size="11" font-weight="600" fill="${HEX.muted}">Business assets by criticality - with supporting assets</text>`);
+  p.push(`<text x="${PAD}" y="${PAD + 11}" font-size="11" font-weight="600" fill="${HEX.muted}">${esc(tr("ui.report.assets-by-criticality", "Business assets by criticality - with supporting assets"))}</text>`);
   let y = PAD + 22;
   for (const t of tiles) {
     const c = barColor(t.v, max, false);
@@ -217,7 +224,7 @@ function assetHeatmapSection(tax: Taxonomy, study: Study): string | null {
       const midY = sy + rowH / 2;
       p.push(`<path d="M ${PAD + 16} ${y + headH} L ${PAD + 16} ${midY} L ${PAD + 27} ${midY}" fill="none" stroke="${HEX.edge}" stroke-width="1.2"/>`);
       let tx = PAD + 32;
-      const tg = typeF && sa.values[typeF.key] ? mm(String(sa.values[typeF.key]), 16) : "";
+      const tg = typeF && sa.values[typeF.key] ? mm(optionLabel(typeF, String(sa.values[typeF.key]), supp), 16) : "";
       if (tg) { const tw2 = 10 + tg.length * 5.4; p.push(`<rect x="${tx}" y="${midY - 8}" width="${tw2.toFixed(0)}" height="16" rx="4" fill="${HEX.track}"/><text x="${(tx + tw2 / 2).toFixed(0)}" y="${midY + 4}" text-anchor="middle" font-size="9.5" fill="${HEX.muted}">${esc(tg)}</text>`); tx += tw2 + 9; }
       p.push(`<text x="${tx}" y="${midY + 4}" font-size="11.5" fill="${HEX.ink}">${esc(mm(recordTitle(supp!, sa), 64))}</text>`);
       sy += rowH;
@@ -228,7 +235,7 @@ function assetHeatmapSection(tax: Taxonomy, study: Study): string | null {
 
   const tree = tiles.map((t) => {
     const headLine = `- **${mm(recordTitle(biz, t.e), 60)}** - ${scaleLabel(critF, t.v)}`;
-    const kids = t.sup.map((sa) => `  - ${mm(recordTitle(supp!, sa), 60)}${typeF && sa.values[typeF.key] ? ` _(${mm(String(sa.values[typeF.key]), 20)})_` : ""}`);
+    const kids = t.sup.map((sa) => `  - ${mm(recordTitle(supp!, sa), 60)}${typeF && sa.values[typeF.key] ? ` _(${mm(optionLabel(typeF, String(sa.values[typeF.key]), supp), 20)})_` : ""}`);
     return [headLine, ...kids].join("\n");
   }).join("\n");
   return `<div align="center">${p.join("")}</div>\n\n${tree}\n`;
@@ -281,9 +288,15 @@ function radarSvg(axisLabels: string[], series: RSeries[], axisSubs?: string[]):
     if (!multi) p.push(`<text x="${x.toFixed(0)}" y="${(y + 13).toFixed(0)}" text-anchor="${anchor}" font-size="10" fill="${HEX.muted}">${Math.round(series[0].values[i] * 100)}%${axisSubs ? ` · ${esc(axisSubs[i])}` : ""}</text>`);
   });
   if (multi) series.forEach((s, i) => {
-    const lx = 14 + (i % 2) * ((W - 28) / 2), ly = 248 + Math.floor(i / 2) * 20 - 4;
+    const colW = (W - 28) / 2;
+    const lx = 14 + (i % 2) * colW, ly = 248 + Math.floor(i / 2) * 20 - 4;
+    // How many characters fit is a property of the COLUMN, not a constant: at 11px an
+    // average character is about 5.9px wide, and the swatch takes 16 of them. A fixed 34
+    // was right for "Ransomware group" and ran into the next column as soon as the same
+    // actor was called "Ransomware-Gruppe · Cybercriminals".
+    const fits = Math.max(8, Math.floor((colW - 22) / 5.9));
     p.push(`<rect x="${lx}" y="${ly - 9}" width="11" height="11" rx="2" fill="${s.color}"/>`);
-    p.push(`<text x="${lx + 16}" y="${ly}" font-size="11" fill="${HEX.ink}">${esc(mm(s.label + (s.sub ? ` · ${s.sub}` : ""), 34))}</text>`);
+    p.push(`<text x="${lx + 16}" y="${ly}" font-size="11" fill="${HEX.ink}">${esc(mm(s.label + (s.sub ? ` · ${s.sub}` : ""), fits))}</text>`);
   });
   p.push("</svg>");
   return p.join("");
@@ -300,7 +313,7 @@ function threatRadarSvg(tax: Taxonomy, study: Study): string | null {
   if (!actors.length) return null;
   const series: RSeries[] = actors.map((a, i) => ({
     label: recordTitle(t, a), color: SERIES_HEX[i % SERIES_HEX.length],
-    sub: catF ? String(a.values[catF.key] ?? "") : undefined,
+    sub: catF ? optionLabel(catF, String(a.values[catF.key] ?? ""), t) : undefined,
     values: scales.map((f) => (Number(a.values[f.key] ?? 1) - 1) / Math.max(1, scaleMax(f) - 1)),
   }));
   return radarSvg(scales.map((f) => fieldLabel(f)), series);
@@ -352,7 +365,7 @@ function attackFlowSvg(tax: Taxonomy, study: Study): string | null {
   for (const s of sNodes) {
     if (!s.fearedId) continue;
     const fe = get(s.fearedId); if (!fe || !fearedType || feared.has(s.fearedId)) continue;
-    const sub = [impF && String(fe.values[impF.key] ?? ""), sevF && scaleLabel(sevF, Number(fe.values[sevF.key] ?? 1))].filter(Boolean).join(", ");
+    const sub = [impF && optionLabel(impF, String(fe.values[impF.key] ?? ""), fearedType), sevF && scaleLabel(sevF, Number(fe.values[sevF.key] ?? 1), fearedType)].filter(Boolean).join(", ");
     feared.set(s.fearedId, { id: s.fearedId, title: recordTitle(fearedType, fe), sub });
   }
 
@@ -400,12 +413,12 @@ function attackFlowSvg(tax: Taxonomy, study: Study): string | null {
       + `<text x="${x + 12}" y="${t1.toFixed(1)}" font-size="11.5" font-weight="600" fill="${HEX.ink}">${esc(truncTxt(n.title, 44))}</text>`
       + (n.sub ? `<text x="${x + 12}" y="${t2.toFixed(1)}" font-size="10" fill="${HEX.muted}">${esc(truncTxt(n.sub, 44))}</text>` : "");
   };
-  for (const o of origins) if (oY.has(o.id)) p.push(box(x0, oY.get(o.id)!, { title: recordTitle(originType, o), sub: catF ? String(o.values[catF.key] ?? "") : "" }, HEX.red));
+  for (const o of origins) if (oY.has(o.id)) p.push(box(x0, oY.get(o.id)!, { title: recordTitle(originType, o), sub: catF ? optionLabel(catF, String(o.values[catF.key] ?? ""), originType) : "" }, HEX.red));
   for (const s of shown) p.push(box(x1, sY.get(s.id)!, s, HEX.amber));
   for (const [fid, n] of feared) if (fY.has(fid)) p.push(box(x2, fY.get(fid)!, n, HEX.orange));
   // column captions
   const cap = (x: number, t: string) => `<text x="${x + colW / 2}" y="${H - 2}" text-anchor="middle" font-size="10" font-weight="600" fill="${HEX.muted}">${t}</text>`;
-  p.push(cap(x0, "Risk source") + cap(x1, "Strategic scenario") + cap(x2, "Feared event"));
+  p.push(cap(x0, tr("ui.report.cap-risk-source", "Risk source")) + cap(x1, tr("ui.report.cap-strategic-scenario", "Strategic scenario")) + cap(x2, tr("ui.report.cap-feared-event", "Feared event")));
   if (omitted) {
     p.push(`<text x="${W / 2}" y="${H - 20}" text-anchor="middle" font-size="10.5" fill="${HEX.muted}">`
       + `${tn("report.furtherScenarios", omitted, "{0} further scenario", "{0} further scenarios")} not drawn - the full list is in the Strategic Scenarios section</text>`);
@@ -440,14 +453,14 @@ function outcomeBarSvg(r: QuantResult): string {
   const caught = clamp01(r.detected);
   const blocked = clamp01(1 - through - caught);
   const parts: { label: string; v: number; c: string }[] = [
-    { label: "blocked", v: blocked, c: HEX.green },
-    { label: "detected in time", v: caught, c: "#3d7fd1" },
-    { label: "reaches the objective", v: through, c: HEX.red },
+    { label: tr("ui.mitigation.blocked", "blocked"), v: blocked, c: HEX.green },
+    { label: tr("ui.mitigation.detected-in-time", "detected in time"), v: caught, c: "#3d7fd1" },
+    { label: tr("ui.mitigation.reaches-the-objective", "reaches the objective"), v: through, c: HEX.red },
   ];
   const p: string[] = [`<svg xmlns="http://www.w3.org/2000/svg" width="${W + PAD * 2}" height="${H + PAD * 2}" viewBox="0 0 ${W + PAD * 2} ${H + PAD * 2}" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif">`];
   p.push(`<rect x="0.5" y="0.5" width="${W + PAD * 2 - 1}" height="${H + PAD * 2 - 1}" rx="14" fill="${HEX.card}" stroke="${HEX.edge}"/>`);
   p.push(`<g transform="translate(${PAD} ${PAD})">`);
-  p.push(`<text x="${BX}" y="26" font-size="11.5" font-weight="600" fill="${HEX.muted}">Outcome of an attack attempt</text>`);
+  p.push(`<text x="${BX}" y="26" font-size="11.5" font-weight="600" fill="${HEX.muted}">${esc(tr("ui.report.outcome-of-an-attempt", "Outcome of an attack attempt"))}</text>`);
   let x = BX;
   for (const s of parts) {
     const w = Math.max(0, s.v * BW);
@@ -460,9 +473,13 @@ function outcomeBarSvg(r: QuantResult): string {
   p.push(`<rect x="${BX}" y="${BY}" width="${BW}" height="${BH}" rx="6" fill="none" stroke="${HEX.edge}"/>`);
   let lx = BX;
   for (const s of parts) {
+    // Advance by what is DRAWN, not by the label alone: the figure beside it is part of the
+    // run, and leaving it out of the width put every following entry a percentage too far
+    // left - "blocked 94%" landed on "detected in time 2%".
+    const run = `${esc(s.label)} ${Math.round(s.v * 100)}%`;
     p.push(`<rect x="${lx}" y="${BY + BH + 16}" width="9" height="9" rx="2" fill="${s.c}"/>`);
-    p.push(`<text x="${lx + 14}" y="${BY + BH + 24.5}" font-size="10.5" fill="${HEX.ink}">${esc(s.label)} ${Math.round(s.v * 100)}%</text>`);
-    lx += 22 + esc(s.label).length * 5.6;
+    p.push(`<text x="${lx + 14}" y="${BY + BH + 24.5}" font-size="10.5" fill="${HEX.ink}">${run}</text>`);
+    lx += 22 + run.length * 5.7;
   }
   p.push("</g></svg>");
   return p.join("");
@@ -648,17 +665,18 @@ function treatmentSection(tax: Taxonomy, study: Study): string[] | null {
   const ddF = treatType.fields.find((f) => f.key === "deadline"), stF = treatType.fields.find((f) => f.key === "status");
   const cell = (v: FieldValue | undefined) => esc(v == null || v === "" ? "—" : String(v));
 
-  const L: string[] = ["---\n", "## Risk treatment\n",
-    "_Treatment decision per risk (strategic scenario). The residual position is DERIVED, never typed in: "
-    + "it comes from the same chain traversal as the risk figures, split across both axes. "
-    + "**Reduce** moves the risk down and left by what the measures achieve on each side - "
-    + "less often, or less costly when it happens - so a treatment that only buys recovery "
-    + "moves it down rather than left. **Share** moves gravity, and by at least one level, "
-    + "because that is what buying the transfer is for. **Accept** keeps the inherent level. "
-    + "**Avoid** removes the exposure._\n"];
+  const L: string[] = ["---\n", `## ${tr("ui.report.risk-treatment", "Risk treatment")}\n`,
+    `_${tr("ui.report.treatment-lede",
+      "Treatment decision per risk (strategic scenario). The residual position is DERIVED, never typed in: "
+      + "it comes from the same chain traversal as the risk figures, split across both axes. "
+      + "**Reduce** moves the risk down and left by what the measures achieve on each side - "
+      + "less often, or less costly when it happens - so a treatment that only buys recovery "
+      + "moves it down rather than left. **Share** moves gravity, and by at least one level, "
+      + "because that is what buying the transfer is for. **Accept** keeps the inherent level. "
+      + "**Avoid** removes the exposure.")}_\n`];
   // Words, not figures - so this one is set like any other table rather than as a column
   // of numbers: an owner and a target date belong at the left margin of their column.
-  let tbl = `<table><thead><tr><th>Risk</th><th>Decision</th><th>Owner</th><th>Deadline</th><th>Status</th><th>Inherent → Residual (L·G)</th></tr></thead><tbody>`;
+  let tbl = `<table><thead><tr><th>${esc(tr("ui.report.th-risk", "Risk"))}</th><th>${esc(tr("ui.report.th-decision", "Decision"))}</th><th>${esc(tr("ui.report.th-owner", "Owner"))}</th><th>${esc(tr("ui.report.th-deadline", "Deadline"))}</th><th>${esc(tr("ui.report.th-status", "Status"))}</th><th>${esc(tr("ui.report.th-inherent-residual", "Inherent → Residual (L·G)"))}</th></tr></thead><tbody>`;
   for (const t of treatments) {
     const risk = byId.get(t.values[refF.key] as string);
     let shift = "—";
@@ -667,7 +685,9 @@ function treatmentSection(tax: Taxonomy, study: Study): string[] | null {
       const inh = `${scaleLabel(xF, Number(risk.values[xF.key]) || 1)}·${scaleLabel(yF, Number(risk.values[yF.key]) || 1)}`;
       shift = `${esc(inh)} → <strong>${esc(scaleLabel(xF, res.x))}·${esc(scaleLabel(yF, res.y))}</strong>`;
     }
-    tbl += `<tr><td>${risk ? esc(recordTitle(riskType, risk)) : "—"}</td><td>${cell(decF && t.values[decF.key])}</td><td>${cell(ownF && t.values[ownF.key])}</td><td>${cell(ddF && t.values[ddF.key])}</td><td>${cell(stF && t.values[stF.key])}</td><td>${shift}</td></tr>`;
+    const opt = (f: FieldDef | undefined, v: FieldValue | undefined) =>
+      f && typeof v === "string" && v ? esc(optionLabel(f, v, treatType)) : cell(v);
+    tbl += `<tr><td>${risk ? esc(recordTitle(riskType, risk)) : "—"}</td><td>${opt(decF, decF && t.values[decF.key])}</td><td>${cell(ownF && t.values[ownF.key])}</td><td>${cell(ddF && t.values[ddF.key])}</td><td>${opt(stF, stF && t.values[stF.key])}</td><td>${shift}</td></tr>`;
   }
   L.push(tbl + "</tbody></table>", "");
 
@@ -684,11 +704,11 @@ function treatmentSection(tax: Taxonomy, study: Study): string[] | null {
 
 export function reportMarkdown(tax: Taxonomy, study: Study): string {
   const L: string[] = [];
-  L.push(`# ${study.name} - ${PRODUCT.documentTitle ?? "Risk Analysis Report"}`);
+  L.push(`# ${study.name} - ${PRODUCT.documentTitle ?? tr("ui.report.title", "Risk Analysis Report")}`);
   const meta: string[] = [];
-  if (study.organization) meta.push(`**Organization:** ${study.organization}`);
-  if (study.scope) meta.push(`**Scope:** ${study.scope}`);
-  meta.push(`**Generated:** ${new Date().toISOString().slice(0, 10)}`);
+  if (study.organization) meta.push(`**${tr("ui.report.organization", "Organization")}:** ${study.organization}`);
+  if (study.scope) meta.push(`**${tr("ui.report.scope", "Scope")}:** ${study.scope}`);
+  meta.push(`**${tr("ui.report.generated", "Generated")}:** ${new Date().toISOString().slice(0, 10)}`);
   L.push(meta.join("  \n"));
   L.push("");
 
@@ -697,21 +717,21 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
   // Document control. A concept handed to an auditor has to state what it was made from
   // and what has happened to it since — the vocabulary it works to, and the change record
   // with its integrity. Both are already held; not printing them was the omission.
-  L.push("## Document control\n");
+  L.push(`## ${tr("ui.report.document-control", "Document control")}\n`);
   const dc: string[] = [];
   dc.push(`| | |`, `|---|---|`);
-  dc.push(`| Document | ${PRODUCT.documentTitle ?? "Risk Analysis Report"} |`);
-  if (study.organization) dc.push(`| Institution | ${study.organization} |`);
-  if (study.sector) dc.push(`| Sector | ${study.sector} |`);
-  dc.push(`| Generated | ${new Date().toISOString().slice(0, 10)} |`);
+  dc.push(`| ${tr("ui.report.document", "Document")} | ${PRODUCT.documentTitle ?? tr("ui.report.title", "Risk Analysis Report")} |`);
+  if (study.organization) dc.push(`| ${tr("ui.report.institution", "Institution")} | ${study.organization} |`);
+  if (study.sector) dc.push(`| ${tr("ui.report.sector", "Sector")} | ${study.sector} |`);
+  dc.push(`| ${tr("ui.report.generated", "Generated")} | ${new Date().toISOString().slice(0, 10)} |`);
   if (tax.vocabularySource) {
-    dc.push(`| Vocabulary | ${tax.vocabularySource.name}${tax.vocabularySource.version ? `, version ${tax.vocabularySource.version}` : ""} |`);
+    dc.push(`| ${tr("ui.report.vocabulary", "Vocabulary")} | ${tax.vocabularySource.name}${tax.vocabularySource.version ? `, ${tr("ui.report.version", "version")} ${tax.vocabularySource.version}` : ""} |`);
   }
   const log = study.log ?? [];
   if (log.length) {
     const editors = [...new Set(log.map((e) => e.editor).filter(Boolean))];
     const last = log[log.length - 1];
-    dc.push(`| Change record | ${log.length} entries, ${tn("report.editors", editors.length, "{0} editor", "{0} editors")}, last ${String(last?.ts ?? "").slice(0, 10)} |`);
+    dc.push(`| ${tr("ui.report.change-record", "Change record")} | ${tn("ui.report.entries", log.length, "{0} entry", "{0} entries")}, ${tn("ui.report.editors", editors.length, "{0} editor", "{0} editors")}, ${tr("ui.report.last", "last")} ${String(last?.ts ?? "").slice(0, 10)} |`);
   }
   L.push(dc.join("\n"));
   L.push("");
@@ -719,8 +739,8 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
   if (log.length) {
     const updates = log.filter((e) => e.kind === "update" && e.comment).slice(-12);
     if (updates.length) {
-      L.push("### Changes of record\n");
-      L.push("| Date | Editor | Record | Reason |");
+      L.push(`### ${tr("ui.report.changes-of-record", "Changes of record")}\n`);
+      L.push(`| ${tr("ui.report.date", "Date")} | ${tr("ui.report.editor", "Editor")} | ${tr("ui.report.record", "Record")} | ${tr("ui.report.reason", "Reason")} |`);
       L.push("|---|---|---|---|");
       for (const e of updates) {
         L.push(`| ${String(e.ts).slice(0, 10)} | ${e.editor} | ${(e.title ?? "").replace(/\|/g, "/")} | ${(e.comment ?? "").replace(/\|/g, "/")} |`);
@@ -729,7 +749,7 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
     }
   }
 
-  L.push("## Overview\n");
+  L.push(`## ${tr("ui.report.overview", "Overview")}\n`);
   for (const t of tax.entityTypes) {
     const n = study.entities.filter((e) => e.type === t.key).length;
     if (n) L.push(`- **${typeLabelPlural(t)}:** ${n}`);
@@ -738,14 +758,14 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
 
   const svg = riskMatrixSvg(tax, study);
   if (svg) {
-    L.push("## Risk matrix\n");
+    L.push(`## ${tr("ui.report.risk-matrix", "Risk matrix")}\n`);
     L.push(`<div align="center">${svg}</div>`);
     L.push("");
   }
 
   const flow = attackFlowSvg(tax, study);
   if (flow) {
-    L.push("## Attack paths (origin -> action -> result)\n");
+    L.push(`## ${tr("ui.report.attack-paths", "Attack paths (origin -> action -> result)")}\n`);
     L.push(`<div align="center">${flow}</div>`);
     L.push("");
   }
@@ -755,7 +775,7 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
   if (attackerType) {
     const actors = study.entities.filter((e) => e.type === attackerType.key && !isSetBack(tax, e));
     if (actors.length) {
-      L.push("## Threat landscape & attacker profiles\n");
+      L.push(`## ${tr("ui.report.threat-landscape", "Threat landscape & attacker profiles")}\n`);
       const radar = threatRadarSvg(tax, study);
       if (radar) { L.push(`<div align="center">${radar}</div>`); L.push(""); }
       for (const a of actors) {
@@ -769,7 +789,7 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
 
   const assets = assetHeatmapSection(tax, study);
   if (assets) {
-    L.push("## Assets\n");
+    L.push(`## ${tr("ui.report.assets", "Assets")}\n`);
     L.push(assets);
     L.push("");
   }
@@ -821,10 +841,10 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
       // kill chain underneath, and a chain does not go in a cell.
       if (items.length > CARD_LIMIT && t.key !== kcOpKey) {
         const cols = columnFields(t).filter((f) => f.key !== titleKey).slice(0, TABLE_COLS);
-        L.push(`| ${typeLabel(t)} | ${cols.map((f) => fieldLabel(f)).join(" | ")} |`);
+        L.push(`| ${typeLabel(t)} | ${cols.map((f) => fieldLabel(f, t)).join(" | ")} |`);
         L.push(`|${" --- |".repeat(cols.length + 1)}`);
         for (const e of items) {
-          const cells = cols.map((f) => cellText(valueMd(f, e.values[f.key] ?? null, tax, study)));
+          const cells = cols.map((f) => cellText(valueMd(f, e.values[f.key] ?? null, tax, study, t)));
           L.push(`| ${cellText(recordTitle(t, e))} | ${cells.join(" | ")} |`);
         }
         L.push("");
@@ -838,14 +858,14 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
         for (const f of t.fields) {
           if (f.key === titleKey || f.key === descF?.key) continue;
           const raw = e.values[f.key];
-          const val = valueMd(f, raw ?? null, tax, study);
+          const val = valueMd(f, raw ?? null, tax, study, t);
           if (val === "—") continue;
           if (f.type === "scale" && typeof raw === "number") {
             // Encode the level so the HTML report can draw a mini level bar: (n/m)
             // for "higher = worse" scales, [n/m] for "higher = better" (positive).
             const br = f.polarity === "positive" ? `[${raw}/${scaleMax(f)}]` : `(${raw}/${scaleMax(f)})`;
-            attrs.push(`**${fieldLabel(f)}:** ${val} ${br}`);
-          } else attrs.push(`**${fieldLabel(f)}:** ${val}`);
+            attrs.push(`**${fieldLabel(f, t)}:** ${val} ${br}`);
+          } else attrs.push(`**${fieldLabel(f, t)}:** ${val}`);
         }
         if (attrs.length) L.push(attrs.map((a) => `- ${a}`).join("\n"));
         if (kcStepType && t.key === kcOpKey) { const kc = kcStepsHtml(e); if (kc) L.push(kc); }
@@ -920,7 +940,7 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
         p.push(`<line x1="${x0}" y1="${y}" x2="${x1 - 7}" y2="${y}" stroke="${c}" stroke-width="1.8"/><path d="M${x1 - 7} ${y - 4} L${x1} ${y} L${x1 - 7} ${y + 4}" fill="${c}"/>`);
         p.push(`<circle cx="${x0}" cy="${y}" r="9" fill="${c}" fill-opacity="0.2" stroke="${c}"/><text x="${x0}" y="${y + 3.5}" text-anchor="middle" font-size="10" font-weight="700" fill="${c}">${i + 1}</text>`);
         p.push(`<text x="${x0 + 13}" y="${y - 6}" font-size="10.5" font-weight="600" fill="${HEX.ink}">${esc(truncTxt(label, maxc))}</text>`);
-        p.push(`<text x="${x0 + 13}" y="${y + 13}" font-size="9.5" fill="${c}">${ok ? "shielded by " + esc(truncTxt(cov.map((m) => recordTitle(measureType, m)).join(", "), maxc - 6)) : "no mitigation (gap)"}</text>`);
+        p.push(`<text x="${x0 + 13}" y="${y + 13}" font-size="9.5" fill="${c}">${ok ? esc(tr("ui.report.shielded-by", "shielded by ")) + esc(truncTxt(cov.map((m) => recordTitle(measureType, m)).join(", "), maxc - 6)) : esc(tr("ui.report.no-mitigation-gap", "no mitigation (gap)"))}</text>`);
       });
       p.push("</svg>");
       return p.join("");
@@ -932,11 +952,8 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
       // here: a reader who has just read a kill chain wants to know what defends it, and
       // sending them to a later section to find out breaks the argument in half.
       const L = chainDefence;
-      L.push("## Chain defence\n");
-      L.push("_A step is **defended** only where something stops or catches the attacker there. "
-        + "Corrective, deterrent and avoidance measures on a step are real work and move the risk "
-        + "figures - they reduce the loss, or the number of attempts - but they do not stop him "
-        + "reaching it, so they do not make the step look handled._\n");
+      L.push(`## ${tr("ui.report.chain-defence", "Chain defence")}\n`);
+      L.push(`_${tr("ui.report.chain-defence-lede", "A step is **defended** only where something stops or catches the attacker there. Corrective, deterrent and avoidance measures on a step are real work and move the risk figures - they reduce the loss, or the number of attempts - but they do not stop him reaching it, so they do not make the step look handled.")}_\n`);
       for (const op of ops) {
         const steps = study.entities.filter((e) => e.type === stepType.key && e.values[parentF.key] === op.id && !isSetBack(tax, e))
           .sort((a, b) => Number(a.values[orderF.key] || 0) - Number(b.values[orderF.key] || 0));
@@ -944,14 +961,14 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
         // Defended, not merely covered: the same rule the app's chain view applies.
         const defends = (m: EntityRecord) => { const c = effectClassOf(m); return c === "Preventive" || c === "Detective"; };
         const defended = steps.filter((s) => covering(s.id).some(defends)).length;
-        L.push(`### ${recordTitle(opType, op)} - ${defended}/${steps.length} steps defended`);
+        L.push(`### ${recordTitle(opType, op)} - ${tr("ui.report.n-of-m-defended", "{0}/{1} steps defended").replace("{0}", String(defended)).replace("{1}", String(steps.length))}`);
         L.push(`<div align="center">${killChainSvg(op, steps, covering)}</div>`);
         for (const s of steps) {
           const cov = covering(s.id);
           // Each measure with the class it acts through, so "covered" cannot be mistaken
           // for "stopped here".
           const shown = cov.map((m) => `${recordTitle(measureType, m)} _(${effectClassOf(m).toLowerCase()})_`).join(", ");
-          const verdict = !cov.length ? "**GAP - no measure**"
+          const verdict = !cov.length ? `**${tr("ui.report.gap-no-measure", "GAP - no measure")}**`
             : cov.some(defends) ? shown
             : `${shown} - **nothing prevents or detects here**`;
           L.push(`- ${recordTitle(stepType, s)} -> ${verdict}`);
@@ -974,7 +991,7 @@ export function reportMarkdown(tax: Taxonomy, study: Study): string {
   const fwRadar = frameworkRadarSvg(tax, study);
   if (fwRadar) {
     L.push("---\n");
-    L.push("## Compliance coverage\n");
+    L.push(`## ${tr("ui.report.compliance-coverage", "Compliance coverage")}\n`);
     L.push(`<div align="center">${fwRadar}</div>`);
     L.push("");
   }

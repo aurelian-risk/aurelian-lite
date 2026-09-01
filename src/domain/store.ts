@@ -13,6 +13,10 @@ import { reconcileCalibration, type Calibration } from "./calibration";
 import { scopeValue, deleteChange } from "./scope";
 import { loadRaw, saveState } from "./persistence";
 import { isPristineSample, makeSampleStudy } from "../profile";
+
+/** Is this the product's sample study? The mark it carries, or - for one created before
+ *  the mark existed - its untouched contents. */
+const isSample = (s: Study): boolean => s.sample === true || isPristineSample(s);
 import { appendAll, appendLog, diffValues, entryKey, getEditor, hashValues, sealLog, STUDY_SCOPE, verdictText, verifyLog, type LogInput } from "./audit";
 
 function uid(): ID {
@@ -257,8 +261,12 @@ export interface StoreState {
   createStudy: (name: string, organization?: string, scope?: string) => ID;
   updateStudy: (id: ID, patch: Partial<Pick<Study, "name" | "organization" | "scope" | "sector">>) => void;
   deleteStudy: (id: ID) => void;
-  /** Re-seed any untouched sample study in the language now being read. */
+  /** Re-seed the product's sample study in the language now being read. Returns how many
+   *  were replaced. */
   reseedSample: () => number;
+  /** How many sample studies carry edits — i.e. how much work re-seeding would discard.
+   *  Asked BEFORE the language changes, so the reader can be told rather than surprised. */
+  editedSamples: () => number;
   /** Sign the head of the active study's log. Resolves to the fingerprint used, or null
    *  when there is no key or nothing to seal. */
   sealActive: (by: string) => Promise<string | null>;
@@ -387,10 +395,14 @@ export const useStore = create<StoreState>((set, get) => ({
     // hash-chained log describing text that is no longer there, and the study would read
     // as "changed outside the app" — which is exactly what the chain is for. A fresh
     // sample brings its own chain.
+    //
+    // Every sample study goes, edited or not: a sample that is half in the other language
+    // is the state that confuses, and this is demonstration material. The reader is asked
+    // first where that would discard work — see `editedSamples`.
     const fresh: Study[] = [];
     let n = 0, active = get().activeStudyId;
     for (const s of get().studies) {
-      if (!isPristineSample(s)) { fresh.push(s); continue; }
+      if (!isSample(s)) { fresh.push(s); continue; }
       const seed = makeSampleStudy();
       if (active === s.id) active = seed.id;
       forgetStudy(s.id);                 // its folds describe records that no longer exist
@@ -399,6 +411,7 @@ export const useStore = create<StoreState>((set, get) => ({
     if (n) { set({ studies: fresh, activeStudyId: active }); schedulePersist(get); }
     return n;
   },
+  editedSamples: () => get().studies.filter((s) => isSample(s) && !isPristineSample(s)).length,
   deleteStudy: (id) => {
     set({
       studies: get().studies.filter((s) => s.id !== id),

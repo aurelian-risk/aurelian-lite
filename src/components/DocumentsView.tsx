@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { Sentence } from "./Sentence";
 import { t as tr, tn } from "../domain/i18n";
 import { useActiveStudy, useStore } from "../domain/store";
-import { addRef, deleteDoc, listDocs, pickFileForRef, type RefDoc } from "../domain/documents";
+import { addRef, deleteDoc, getDocFile, listDocs, pickFileForRef, type RefDoc } from "../domain/documents";
 import { ExtractionDialog } from "./ExtractionDialog";
 import { CatalogImport } from "./CatalogImport";
 import { Icon } from "./ui";
@@ -27,12 +27,52 @@ export function DocumentsView() {
 
   // Import works even without a study: the first document bootstraps a study to
   // hold the corpus (documents are attached to a study).
+  /** Hand a stored source file back to the reader.
+   *
+   *  Documents live in the app's database, not on disk - which is what lets a study move
+   *  between machines without a path to fix up. The price is that a file which travelled
+   *  in would be trapped there, so this is the way out: the browser's own save dialog,
+   *  which works in every browser and on file://. */
+  const saveFile = async (d: RefDoc) => {
+    const blob = await getDocFile(d.id);
+    if (!blob) return;
+    // Where it goes is the reader's to decide, so ASK where it goes. A plain `<a download>`
+    // obeys a browser setting that is off by default in Chrome - the file then lands in
+    // the downloads folder without a word, which is not the same as choosing.
+    //
+    // The picker exists on file:// too (measured); Firefox does not have it at all, so the
+    // download stays as the fallback rather than as the only way.
+    const picker = (window as unknown as { showSaveFilePicker?: (o: object) => Promise<FileSystemFileHandle> }).showSaveFilePicker;
+    if (picker) {
+      try {
+        const handle = await picker({
+          suggestedName: d.name,
+          types: d.mime ? [{ description: d.mime, accept: { [d.mime]: [`.${d.name.split(".").pop() ?? "bin"}`] } }] : undefined,
+        });
+        const w = await handle.createWritable();
+        await w.write(blob);
+        await w.close();
+        return;
+      } catch (e) {
+        // The reader closing the dialog is an answer, not a failure - do not then save the
+        // file anyway behind their back.
+        if ((e as { name?: string })?.name === "AbortError") return;
+        // Anything else (no permission, an unsupported type): fall through to the download.
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = d.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const addReference = async () => {
     const m = await pickFileForRef();
     if (!m) return;
     let sid = study?.id;
     if (!sid) { sid = createStudy(m.name.replace(/\.[^.]+$/, "").slice(0, 60) || "Document corpus"); setActiveStudy(sid); }
-    await addRef(sid, m.name, m.mime, m.size, m.text);
+    await addRef(sid, m.name, m.mime, m.size, m.text, "", m.file);
     listDocs(sid).then(setDocs);
   };
 
@@ -96,6 +136,11 @@ export function DocumentsView() {
                     <td>
                       <div className="row-actions">
                         <button className="btn ghost sm" onClick={() => setExtract({ name: d.name, docId: d.id })} title={d.hasText ? "Extract from cached text" : "Extract (open file)"} aria-label={tr('ui.documents.extract', 'Extract')}><Icon.spark /></button>
+                        {d.hasFile && (
+                          <button className="btn ghost sm" onClick={() => saveFile(d)}
+                            title={tr("ui.documents.save-file", "Save the source file")}
+                            aria-label={tr("ui.documents.save-file", "Save the source file")}><Icon.download /></button>
+                        )}
                         <button className="btn ghost sm danger" onClick={() => remove(d.id)} aria-label={tr('ui.documents.remove', 'Remove')}><Icon.trash /></button>
                       </div>
                     </td>

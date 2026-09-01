@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 import { useEffect, useState } from "react";
 import { useStore } from "./domain/store";
-import { t, chooseLanguage, getLanguage, languagesOffered } from "./domain/i18n";
+import { t, tn, chooseLanguage, getLanguage, languagesOffered } from "./domain/i18n";
 import { PRODUCT } from "./profile";
 import { Dashboard } from "./components/Dashboard";
 import { StudyView } from "./components/StudyView";
@@ -31,12 +31,27 @@ const endonym = (lang: string): string => {
 
 /** Offered only where there is something to choose. One language is not a choice, and a
  *  product that ships one should not carry a button that does nothing. */
+/** Change language, and re-seed the sample study with it.
+ *
+ *  The sample is demonstration material and follows the reader — a half-German example is
+ *  the state that confuses. But it is replaced, not converted, so anything typed into it
+ *  goes: where that would discard work the reader is asked first, and where it would not
+ *  (the ordinary case) nothing is asked at all. */
+function switchTo(lang: string): void {
+  const edited = useStore.getState().editedSamples();
+  if (edited > 0 && !confirm(tn("ui.nav.language.reseed-ask", edited,
+    "The sample study has been edited. Switching language replaces it with the version in the new language, and those edits are lost. Continue?",
+    "The sample studies have been edited. Switching language replaces them with the versions in the new language, and those edits are lost. Continue?"))) return;
+  chooseLanguage(lang);
+  useStore.getState().reseedSample();
+}
+
 function LanguageSwitch() {
   const offered = languagesOffered();
   if (offered.length < 2) return null;
   const next = offered[(offered.indexOf(getLanguage()) + 1) % offered.length];
   return (
-    <button className="nav-item" onClick={() => { chooseLanguage(next); useStore.getState().reseedSample(); }}
+    <button className="nav-item" onClick={() => switchTo(next)}
       title={t("ui.nav.language.title", "Show the interface in another language")} lang={next}>
       <span className="nav-mark"><Icon.globe /></span>
       {endonym(next)}
