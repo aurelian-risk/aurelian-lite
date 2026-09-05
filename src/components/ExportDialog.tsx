@@ -13,6 +13,7 @@
 import { useEffect, useState } from "react";
 import { t as tr, tn } from "../domain/i18n";
 import { Overlay } from "./ui";
+import { KeyManager } from "./KeyManager";
 import { knownKeys } from "../domain/keys";
 import { slug, type Format } from "../domain/persistence";
 
@@ -77,6 +78,15 @@ export function ExportDialog({ facts, onClose, onExport }: {
   const [documents, setDocuments] = useState(true);
   const [keys, setKeys] = useState(ring.length > 0);
   const [encrypt, setEncrypt] = useState<ExportChoice["encrypt"]>("none");
+  /** The key ring, opened FROM here rather than reached through the change history.
+   *
+   *  Addressing a file to a recipient needs their public key, and the only way to get one
+   *  onto this installation used to be a panel three views away — so the one thing the
+   *  reader came here to do was the one thing they could not start. It is the same
+   *  component the seal panel shows, not a second one that could only add a public key,
+   *  and "back" returns to the export with every choice as it was. */
+  const [managing, setManaging] = useState(false);
+  const [ringVersion, bumpRing] = useState(0);
   const [password, setPassword] = useState("");
   const [to, setTo] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -104,6 +114,16 @@ export function ExportDialog({ facts, onClose, onExport }: {
   // A schema has no documents and no keys to carry; saying so by disabling is clearer than
   // letting somebody tick a box that then does nothing.
   useEffect(() => { if (!ring.length && encrypt === "keys") setEncrypt("none"); }, [ring.length, encrypt]);
+  // A recipient can be forgotten while the export is open. Left in, the kid would be looked
+  // up against a ring that no longer holds it and silently drop out of the wrapped keys —
+  // a file addressed to nobody, or to fewer people than the dialog last showed.
+  useEffect(() => {
+    setTo((prev) => {
+      const next = new Set([...prev].filter((kid) => ring.some((k) => k.kid === kid)));
+      return next.size === prev.size ? prev : next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ringVersion]);
 
   const blocked = (encrypt === "password" && password.length < 4) || (encrypt === "keys" && to.size === 0);
 
@@ -162,8 +182,18 @@ export function ExportDialog({ facts, onClose, onExport }: {
     <Overlay onClose={onClose}>
       <div className="modal-lg scope-dlg export-dlg" style={{ maxWidth: 580 }} onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-lg-head">
-          <h3>{tr("ui.exportdlg.title", "Export")}</h3>
+          {managing && (
+            <button className="btn ghost sm" onClick={() => setManaging(false)}
+              title={tr("ui.exportdlg.back-to-export", "Back to the export")}>← {tr("ui.exportdlg.back", "Back")}</button>
+          )}
+          <h3>{managing ? tr("ui.seal.keys-you-have-named", "Keys you have named") : tr("ui.exportdlg.title", "Export")}</h3>
         </div>
+        {managing ? (
+          <div className="modal-lg-body">
+            <p className="hint">{tr("ui.exportdlg.keys-note", "A file addressed to a key can be opened by whoever holds that key and by nobody else. This is the same key ring as the one in the change history; the choices you have made here are kept.")}</p>
+            <KeyManager onChange={() => bumpRing((n) => n + 1)} />
+          </div>
+        ) : (
         <div className="modal-lg-body">
           {/* Only where there is something to choose. With one study on the installation
               the two buttons produce the same file, and a choice between two identical
@@ -244,6 +274,13 @@ export function ExportDialog({ facts, onClose, onExport }: {
             { v: "keys", label: tr("ui.exportdlg.to-keys", "Named keys"), off: ring.length === 0,
               title: ring.length ? undefined : tr("ui.exportdlg.no-keys", "No keys are named on this installation.") },
           ])}
+          {/* Reachable WITHOUT a key being there already — which is the case in which it is
+              needed most: "Named keys" above is disabled until the ring holds one. */}
+          <div className="seg-note">
+            <button className="btn ghost sm" onClick={() => setManaging(true)}>
+              {tr("ui.exportdlg.manage-keys", "Manage keys…")}
+            </button>
+          </div>
 
           {encrypt === "password" && (
             <div className="field" style={{ marginTop: 10 }}>
@@ -277,8 +314,11 @@ export function ExportDialog({ facts, onClose, onExport }: {
             </div>
           )}
         </div>
+        )}
         <div className="modal-lg-foot">
-          <span className="hint export-out">{outcome()}</span>
+          {/* The outcome describes the file, so it is not shown while the reader is looking
+              at the key ring instead. Export stays reachable: the choices are all made. */}
+          <span className="hint export-out">{managing ? "" : outcome()}</span>
           <span className="spacer" />
           <button className="btn ghost sm" onClick={onClose}>{tr("ui.exportdlg.cancel", "Cancel")}</button>
           <button className="btn sm primary" disabled={blocked || busy} onClick={go}>

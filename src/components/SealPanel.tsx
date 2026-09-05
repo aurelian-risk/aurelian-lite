@@ -6,18 +6,16 @@
 // behind "What does a seal prove?" and in docs/seals-and-keys.md. A wall of caveats on the
 // page is not read, and pushes the one line that matters off the screen.
 import { useEffect, useState } from "react";
-import { Sentence } from "./Sentence";
 import { t as tr, tn } from "../domain/i18n";
 import { createPortal } from "react-dom";
 import { useActiveStudy, useStore } from "../domain/store";
 import { verifyLog } from "../domain/audit";
 import {
-  fingerprint, forgetKey, generateKeyPair, knownKey, knownKeys, ownKey, publicKeyFile, publicOf,
-  readPublicKeyFile, rememberKey, setOwnKey, signingAvailable, verifyAllSeals, type Seal, type SealVerdict,
+  fingerprint, knownKey, ownKey, publicOf, rememberKey, signingAvailable, verifyAllSeals,
+  type Seal, type SealVerdict,
 } from "../domain/keys";
-import { downloadText } from "../domain/clipboard";
-import { encryptText, decryptText } from "../domain/crypto";
 import { Icon, Overlay } from "./ui";
+import { KeyManager } from "./KeyManager";
 
 type Row = { seq: number; ts: string; editor: string; seal: Seal; verdict: SealVerdict };
 
@@ -39,9 +37,6 @@ export function SealPanel() {
   const [dialog, setDialog] = useState<"none" | "keys" | "seal" | "explain" | "trust">("none");
   const [pending, setPending] = useState<{ kid: string; jwk: JsonWebKey } | null>(null);
   const [field, setField] = useState("");
-  const [pw, setPw] = useState("");
-  const keyFile = useState<{ el: HTMLInputElement | null }>({ el: null })[0];
-  const pubFile = useState<{ el: HTMLInputElement | null }>({ el: null })[0];
 
   useEffect(() => {
     const k = ownKey();
@@ -59,41 +54,8 @@ export function SealPanel() {
   if (!study) return null;
   if (!signingAvailable()) return <div className="guide warn">{tr('ui.seal.this-browser-exposes-no', 'This browser exposes no Web Crypto, so studies cannot be sealed here.')}</div>;
 
-  const close = () => { setDialog("none"); setPw(""); setField(""); setPending(null); };
+  const close = () => { setDialog("none"); setField(""); setPending(null); };
 
-  const makeKey = async () => {
-    setBusy(true);
-    const kp = await generateKeyPair().catch(() => null);
-    if (kp) { setOwnKey(kp.privateJwk); rememberKey(kp.kid, "you", kp.publicJwk, new Date().toISOString()); setMsg(`Key ${kp.kid} created.`); }
-    setBusy(false); bump((n) => n + 1);
-  };
-  const saveKey = async () => {
-    if (!mine || pw.length < 4) { setMsg("The key file needs a password of at least 4 characters."); return; }
-    setBusy(true);
-    downloadText("aurelian-signing-key.json", await encryptText(JSON.stringify(mine), pw), "application/json");
-    setMsg("Private key saved, encrypted with that password."); setPw(""); setBusy(false);
-  };
-  const savePublic = async () => {
-    if (!mine) return;
-    downloadText(`aurelian-public-key-${kid}.json`, publicKeyFile(kid, "", publicOf(mine)), "application/json");
-    setMsg("Public key saved. It is not a secret — send it any way you like, then have the other side check the fingerprint.");
-  };
-  const loadKey = async (file: File) => {
-    setBusy(true);
-    try {
-      const jwk = JSON.parse(await decryptText(await file.text(), pw)) as JsonWebKey;
-      setOwnKey(jwk);
-      const fp = await fingerprint(publicOf(jwk));
-      rememberKey(fp, "you", publicOf(jwk), new Date().toISOString());
-      setMsg(`Key ${fp} loaded.`); setPw("");
-    } catch { setMsg("Not a key file, or the wrong password."); }
-    setBusy(false); bump((n) => n + 1);
-  };
-  const loadPublic = async (file: File) => {
-    const k = await readPublicKeyFile(await file.text());
-    if (!k) { setMsg("Not a public-key file — or it claims a fingerprint it does not have."); return; }
-    setPending({ kid: k.kid, jwk: k.jwk }); setField(k.name); setDialog("trust");
-  };
   const doSeal = async () => {
     if (!field.trim()) return;
     setBusy(true);
@@ -192,59 +154,11 @@ export function SealPanel() {
         </Modal>
       )}
 
+      {/* One key ring, wherever a key is needed: the export shows this same component,
+          so what a key file is is decided in one place. */}
       {dialog === "keys" && (
         <Modal title={tr('ui.seal.keys', 'Keys')} onClose={close} wide>
-          <div className="sp-sec">
-            <div className="sp-sec-t">{tr('ui.seal.this-installation', 'This installation')}</div>
-            {/* The two halves are separate rows, and they have to be: a password field
-                between "save public" and "save private" reads as belonging to whichever
-                button the eye reaches first, and the public half needs no password at
-                all. One row per key, the password inside the row it protects. */}
-            {mine ? (
-              <>
-                <div className="sp-fp mono">{kid}</div>
-                <div className="sp-half">
-                  <div className="sp-half-t">{tr('ui.seal.public-key', 'Public key')} <span>not a secret — hand it to whoever checks your seals</span></div>
-                  <div className="sp-acts">
-                    <button className="btn sm" onClick={savePublic}><Icon.download /> {tr('ui.seal.save-public-key', 'Save public key…')}</button>
-                  </div>
-                </div>
-                <div className="sp-half">
-                  <div className="sp-half-t">{tr('ui.seal.private-key', 'Private key')} <span>keep it; the file is encrypted with the password you give here</span></div>
-                  <div className="sp-acts">
-                    <input type="password" placeholder="password for this file" value={pw} onChange={(e) => setPw(e.target.value)} style={{ maxWidth: 210 }} />
-                    <button className="btn sm" disabled={busy} onClick={saveKey}><Icon.download /> {tr('ui.seal.save-private-key', 'Save private key…')}</button>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="sp-acts">
-                  <button className="btn sm primary" disabled={busy} onClick={makeKey}><Icon.plus /> {tr('ui.seal.create-a-key', 'Create a key')}</button>
-                </div>
-                <div className="sp-half">
-                  <div className="sp-half-t"><Sentence k="ui.seal.or-load-one" parts={[<span>{tr('ui.seal.the-password-its-file', 'the password its file was saved with')}</span>]} en={"Or load one you already have {0}"} /></div>
-                  <div className="sp-acts">
-                    <input type="password" placeholder="password of that file" value={pw} onChange={(e) => setPw(e.target.value)} style={{ maxWidth: 210 }} />
-                    <button className="btn sm" disabled={busy} onClick={() => keyFile.el?.click()}><Icon.upload /> {tr('ui.seal.load-private-key', 'Load private key…')}</button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="sp-sec">
-            <div className="sp-sec-t">{tr('ui.seal.keys-you-have-named', 'Keys you have named')}</div>
-            {knownKeys().length === 0 && <p className="meta">{tr('ui.seal.none-yet-name-a', "None yet. Name a key from a seal, or load someone's public-key file.")}</p>}
-            {knownKeys().map((k) => (
-              <div className="sp-ring-row" key={k.kid}>
-                <span className="mono">{k.kid}</span><span>{k.name}</span>
-                <button className="btn ghost sm danger" title={tr('ui.seal.forget-this-key', 'Forget this key')} onClick={() => { forgetKey(k.kid); bump((n) => n + 1); }}><Icon.trash /></button>
-              </div>
-            ))}
-            <div className="sp-acts"><button className="btn sm" onClick={() => pubFile.el?.click()}><Icon.upload /> {tr('ui.seal.add-someone-s-public', "Add someone's public key…")}</button></div>
-          </div>
-          {msg && <p className="hint">{msg}</p>}
+          <KeyManager onChange={() => bump((n) => n + 1)} />
         </Modal>
       )}
 
@@ -258,11 +172,6 @@ export function SealPanel() {
           <div className="modal-acts"><button className="btn primary" onClick={close}>{tr('ui.seal.close', 'Close')}</button></div>
         </Modal>
       )}
-
-      <input ref={(el) => { keyFile.el = el; }} type="file" accept=".json" style={{ display: "none" }}
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) loadKey(f); e.target.value = ""; }} />
-      <input ref={(el) => { pubFile.el = el; }} type="file" accept=".json" style={{ display: "none" }}
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) loadPublic(f); e.target.value = ""; }} />
     </div>
   );
 }
