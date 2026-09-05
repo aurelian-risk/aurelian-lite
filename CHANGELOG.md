@@ -5,6 +5,22 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.6.10] — 2026-09-05
+
+### Added
+- **The key ring is reachable from the export.** Addressing a file to a recipient needs
+  their public key, and the only way to get one onto the installation was a panel in the
+  change history — so the one thing the reader came for was the one thing they could not
+  start there. "Manage keys…" opens the same ring the seal panel shows: create a key, save
+  either half, load one back, name someone else's. Back returns to the export with every
+  choice as it was.
+
+### Fixed
+- **A recipient chosen from a ring that had just changed could be dropped silently.** The
+  export menu read the named keys once when it was drawn, so a key added while the dialog
+  was open resolved to nothing when the file was addressed; a key forgotten while it was
+  open stayed ticked. The ring is read when it is used, and the selection follows it.
+
 ## [0.6.9] — 2026-09-01
 
 ### Added

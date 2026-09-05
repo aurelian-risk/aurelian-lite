@@ -26,7 +26,9 @@ export function DataMenu({ studyScope, label }: { studyScope?: Study; label?: st
   const [facts, setFacts] = useState<ExportFacts | null>(null);
   useDismissOnEscape(open, () => setOpen(false));
   const [importing, setImporting] = useState(false);
-  const ring = knownKeys();
+  // Read at the moment of use, not once per render of this menu: the export dialog can add
+  // and forget keys while it is open, and this component does not re-render for that. A ring
+  // captured up here would resolve a freshly added recipient to nothing.
   const store = useStore();
 
 
@@ -44,7 +46,7 @@ export function DataMenu({ studyScope, label }: { studyScope?: Study; label?: st
       endpoint: (await gen())?.getEndpoint?.(),
       userModels: getUserModels(),
     },
-    keys: ring.map((k) => ({ kid: k.kid, name: k.name, jwk: k.jwk as unknown, seen: k.seen })),
+    keys: knownKeys().map((k) => ({ kid: k.kid, name: k.name, jwk: k.jwk as unknown, seen: k.seen })),
   });
 
   /** Measure first, then ask: every option in the dialog states its size, and a size that
@@ -75,7 +77,7 @@ export function DataMenu({ studyScope, label }: { studyScope?: Study; label?: st
       await exportToFile(store.exportState(), c.what, c.as, {
         studies: chosen, filename: c.filename, documents, settings: c.what === "taxonomy" ? undefined : carried.settings, keys,
         password: c.encrypt === "password" ? c.password : undefined,
-        recipients: c.encrypt === "keys" ? ring.filter((k) => c.recipients.has(k.kid)).map((k) => ({ kid: k.kid, name: k.name, jwk: k.jwk })) : undefined,
+        recipients: c.encrypt === "keys" ? knownKeys().filter((k) => c.recipients.has(k.kid)).map((k) => ({ kid: k.kid, name: k.name, jwk: k.jwk })) : undefined,
       });
       return;
     }
@@ -103,7 +105,7 @@ export function DataMenu({ studyScope, label }: { studyScope?: Study; label?: st
     if (c.encrypt === "password") {
       downloadBytes(name.replace(/\.zip$/, ".zip.enc"), await encryptBytes(bytes, c.password), "application/octet-stream");
     } else if (c.encrypt === "keys") {
-      const picked = ring.filter((k) => c.recipients.has(k.kid)).map((k) => ({ kid: k.kid, name: k.name, jwk: k.jwk }));
+      const picked = knownKeys().filter((k) => c.recipients.has(k.kid)).map((k) => ({ kid: k.kid, name: k.name, jwk: k.jwk }));
       downloadBytes(name.replace(/\.zip$/, ".zip.enc"), await encryptBytesToRecipients(bytes, picked), "application/octet-stream");
     } else {
       downloadBytes(name, bytes, "application/zip");

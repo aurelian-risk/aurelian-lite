@@ -1803,12 +1803,58 @@ try {
     const dlg = await page.locator(".export-dlg").innerText();
     if (!(/Password/.test(dlg) && /keys/i.test(dlg))) console.log("   dialog:", dlg.replace(/\n/g, " | ").slice(0, 200));
     ok("the export offers both kinds of protection", /Password/.test(dlg) && /Named keys/.test(dlg));
+    // The key ring is reachable FROM here, and BEFORE a key is chosen: addressing a file to
+    // a recipient needs their public key, and "Named keys" above is disabled until the ring
+    // holds one - so the one thing the reader came for was the one thing they could not
+    // start. The button therefore sits outside the recipient list, not inside it.
+    {
+      const manage = page.locator(".export-dlg .modal-lg-body button", { hasText: /^Manage keys…$/ });
+      ok("the export offers the key ring without a key being chosen", (await manage.count()) === 1);
+      await manage.first().click();
+      await page.waitForTimeout(350);
+      const head = (await page.locator(".export-dlg .modal-lg-head h3").innerText()).trim();
+      ok("...it opens on the keys", /Keys you have named/.test(head), head);
+      // The SAME panel the change history shows, not a second one that can only add a public
+      // key: creating a key, saving it and loading one back are what a sender actually needs,
+      // and all three used to be in the other view.
+      const kbody = (await page.locator(".export-dlg .modal-lg-body").innerText()).replace(/\s+/g, " ");
+      // Case-insensitive on purpose: the section headings are uppercased in CSS, and
+      // `innerText` reports what is rendered.
+      const whole = /this installation/i.test(kbody) && /(create a key|save private key)/i.test(kbody)
+        && /keys you have named/i.test(kbody);
+      if (!whole) console.log("   key ring:", kbody.slice(0, 140));
+      ok("...and it is the whole key ring, this installation's own key included", whole);
+      await page.locator(".export-dlg .modal-lg-head button", { hasText: /Back/ }).click();
+      await page.waitForTimeout(300);
+      ok("...and back returns to the export, not to the start",
+        (await page.locator(".export-dlg .fn-row input").count()) === 1);
+    }
     await page.locator(".export-dlg .seg-btn", { hasText: /^Named keys$/ }).click();
     await page.waitForTimeout(250);
     const rows = await page.locator(".export-dlg .check-row").count();
     ok("...listing the keys that have been named", rows >= 1, `${rows} rows`);
     ok("...and saying what a second recipient costs",
       /wrapped key/i.test(await page.locator(".export-dlg").innerText()));
+    // A detour, not a restart: what makes the ring reachable from here worth anything is
+    // that the half-made export is still there afterwards.
+    {
+      // A RECIPIENT row, not the "include the public keys" box above it: both are
+      // `.check-row` with a `.ck-s` sub-line, and the one that matters here is the one
+      // whose sub-line is a fingerprint - i.e. `mono`.
+      const rcpt = page.locator(".export-dlg .check-row:has(.ck-s.mono) input[type=checkbox]").first();
+      await rcpt.check();
+      ok("...and a chosen recipient is what unblocks the export",
+        !(await page.locator(".export-dlg .modal-lg-foot .btn.primary").isDisabled()));
+      const name = await page.locator(".export-dlg .fn-row input").inputValue();
+      await page.locator(".export-dlg .modal-lg-body button", { hasText: /^Manage keys…$/ }).click();
+      await page.waitForTimeout(300);
+      await page.locator(".export-dlg .modal-lg-head button", { hasText: /Back/ }).click();
+      await page.waitForTimeout(300);
+      ok("...and every choice is as it was on the way back",
+        (await page.locator(".export-dlg .seg-btn.on", { hasText: /^Named keys$/ }).count()) === 1
+        && (await page.locator(".export-dlg .check-row:has(.ck-s.mono) input[type=checkbox]").first().isChecked())
+        && (await page.locator(".export-dlg .fn-row input").inputValue()) === name);
+    }
     await page.keyboard.press("Escape");
     await page.waitForTimeout(300);
     await page.locator("body").click({ position: { x: 5, y: 5 } }).catch(() => {});
