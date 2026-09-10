@@ -1148,7 +1148,7 @@ try {
 
     await panel.locator(".panel-head .btn.primary").click();
     await page.waitForSelector(".sp-modal", { timeout: 5000 });
-    await page.locator(".sp-modal input").first().fill("M. Westerberg");
+    await page.locator(".sp-modal input").first().fill("A. Analyst");
     await page.locator(".sp-modal .btn.primary").click();
     await page.waitForTimeout(900);
     const sealed = await panel.locator(".sp-seal").first().innerText().catch(() => "");

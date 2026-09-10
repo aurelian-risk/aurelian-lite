@@ -5,6 +5,34 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [0.6.11] — 2026-09-10
+
+### Added
+- **A table can be ordered by any of its columns.** Three steps per column: ascending,
+  descending, and back to the order the records were written in — that last one is a state
+  worth being able to return to, which a two-way toggle makes unreachable. The order comes
+  back with the reader, like folding and the choice of columns, and stays out of the study.
+  Four kinds of column would be wrong if compared as text and are not: a scale orders by
+  its number rather than its label, an enum by the order its options are declared in, a
+  number as a number, and a reference by the title its chip shows. An empty value sorts
+  last whichever way the column points — a hole is not a small value.
+
+### Changed
+- **An empty section says what fills it.** On a study somebody has just created that is
+  every panel on the screen, and "No business assets yet." left them with no next act; it
+  now names the button above that adds the first.
+- **A refused "add" names both ends.** The field a reference sits in is usually named after
+  the type it points at, so the old reason said the same word twice: `Create a Business
+  Asset first — required by "Business Asset"`. It now says which record needs which, and it
+  is no longer painted as an error: a precondition is not a failure.
+- **The one disabled button that gave no reason gives one** — and there are two different
+  reasons it can be off.
+
+### Fixed
+- **A distribution handle can be hit.** Painted at 14 px and grabbed at 24, without growing
+  the dot that has to stay small for the curve to be visible. The lane header in the flow
+  view carries its full name, which at 1280 px it was losing.
+
 ## [0.6.10] — 2026-09-05
 
 ### Added
