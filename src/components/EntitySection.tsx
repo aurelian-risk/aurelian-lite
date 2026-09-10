@@ -151,7 +151,10 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
   // One filter, shared with every other long table - see TableTools.
   // The table's own name, so its arrangement is remembered per study and per type.
   const tableScope = foldScope(study.id, type.key);
-  const f = useTableFilter(type, items, () => setCollapsed(new Set()), tableScope);
+  const f = useTableFilter(type, items, () => setCollapsed(new Set()), tableScope, {
+    titleOf: (r) => recordTitle(type, r),
+    refTitle: (id) => { const e = study.entities.find((x) => x.id === id); const t = e && getType(tax, e.type); return t && e ? recordTitle(t, e) : ""; },
+  });
   const { shown, groups, groupField, filtered } = f;
   // What this reader folded away here last time. Kept out of the study on purpose: a fold
   // belongs to whoever is reading, not to the analysis - see viewstate.ts. Grouping by a
@@ -184,7 +187,36 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
   const refTargets = (typeKey: string) => study.entities.filter((e) => e.type === typeKey);
   const missingReq = type.fields.find((f) => f.type === "ref" && f.required && refTargets(f.refType ?? "").length === 0);
   const targetLabel = missingReq ? missingReq.refType ? typeNameOf(tax, missingReq.refType) : "entity" : "";
-  const addBlocked = missingReq ? `Create a ${targetLabel} first — required by "${fieldLabel(missingReq, type)}".` : null;
+  // Name BOTH ends. The field a reference sits in is usually named after the type it
+  // points at, so "Create a Business Asset first — required by \u201cBusiness Asset\u201d" told the
+  // reader the same word twice and left them to work out who was asking. The record they
+  // are trying to make is the missing half, and the field is only worth naming where it
+  // is called something else.
+  const blockField = missingReq ? fieldLabel(missingReq, type) : "";
+  // The German reading builds the sentence WITHOUT an article in front of the type name:
+  // a template cannot know that "Geschäftswert" takes "einen" and "Anforderung" takes
+  // "eine", and "braucht ein Geschäftswert" is what guessing produces.
+  const addBlocked = !missingReq ? null
+    : blockField === targetLabel
+      ? tr("ui.entitysection.needs-first", "A {0} refers to a {1} — create one of those first.")
+          .replace("{0}", typeLabel(type)).replace("{1}", targetLabel)
+      : tr("ui.entitysection.needs-first-field", "A {0} refers to a {1} for \u201c{2}\u201d — create one of those first.")
+          .replace("{0}", typeLabel(type)).replace("{1}", targetLabel).replace("{2}", blockField);
+
+  /** One column head: the label, its state, and the press that changes it. */
+  const sortableHead = (key: string, label: string) => {
+    const on = f.sort?.key === key ? f.sort.dir : null;
+    const next = !on ? tr("ui.entitysection.sort-asc", "Sort by {0}, lowest first")
+      : on === "asc" ? tr("ui.entitysection.sort-desc", "Sort by {0}, highest first")
+      : tr("ui.entitysection.sort-off", "Back to the order {0} was written in");
+    return (
+      <th key={key} className={"sortable" + (on ? " sorted " + on : "")}
+        aria-sort={on === "asc" ? "ascending" : on === "desc" ? "descending" : "none"}
+        title={next.replace("{0}", label)} onClick={() => f.toggleSort(key)}>
+        {label}<span className="th-sort" aria-hidden="true">{on === "asc" ? "\u2191" : on === "desc" ? "\u2193" : "\u2195"}</span>
+      </th>
+    );
+  };
 
   // Open a linked entity from ANOTHER workshop (or type) in the modal popup.
   const openEntity = (id: string) => { const r = study.entities.find((e) => e.id === id); if (r) setModal({ typeKey: r.type, record: r }); };
@@ -204,7 +236,9 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
         )}
       </div>
 
-      {addBlocked && <div style={{ padding: "12px 16px 0" }}><div className="guide warn">{addBlocked}</div></div>}
+      {/* Not `warn`: nothing has gone wrong. This is the order the method works in, said
+          before the reader presses a button that would refuse them. */}
+      {addBlocked && <div style={{ padding: "12px 16px 0" }}><div className="guide">{addBlocked}</div></div>}
 
       {showTools && <TableTools type={type} f={f} columns={{
         fields: allCols, hidden: hiddenCols,
@@ -215,7 +249,16 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
       <div className={"panel-body" + (pinned ? " pinned" : "")} ref={body}
         onScroll={() => setPinned((body.current?.scrollLeft ?? 0) > 0)}>
         {items.length === 0 ? (
-          <div className="empty" style={{ padding: "28px 16px" }}>No {typeLabelPlural(type).toLowerCase()} yet.</div>
+          // An empty table used to state the absence and stop there. On a study somebody
+          // has just created, that is every panel on the screen - the one moment where
+          // the reader most needs to be told what the next act is. Where the button is
+          // there, name it; where it is refused, the line above already says why.
+          <div className="empty" style={{ padding: "28px 16px" }}>
+            {hideAdd || addBlocked
+              ? tr("ui.entitysection.none-yet", "None yet.")
+              : tr("ui.entitysection.none-yet-add", "None yet — \u201c{0}\u201d above adds the first.")
+                  .replace("{0}", typeLabel(type))}
+          </div>
         ) : shown.length === 0 ? (
           <div className="empty" style={{ padding: "28px 16px" }}>
             {tr('ui.entitysection.nothing-matches', 'Nothing matches.')} <button className="btn ghost sm" onClick={clearAll}>{tr('ui.entitysection.clear-filters', 'Clear filters')}</button>
@@ -229,9 +272,12 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
               {cols.map((c) => <col key={c.key} style={{ width: COL_WIDTH[c.type] }} />)}
             </colgroup>
             <thead>
+              {/* A column head orders the table. Three steps - up, down, back to the order
+                  the records were written in - and the head says which state it is in, so
+                  a sorted table is never mistaken for the order somebody entered. */}
               <tr>
-                <th>{type.fields.find((f) => f.key === title)?.label ?? "Name"}</th>
-                {cols.map((c) => <th key={c.key} title={fieldLabel(c, type)}>{fieldLabel(c, type)}</th>)}
+                {sortableHead(title, type.fields.find((f) => f.key === title)?.label ?? "Name")}
+                {cols.map((c) => sortableHead(c.key, fieldLabel(c, type)))}
               </tr>
             </thead>
             {groups.map((g) => (

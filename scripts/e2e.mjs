@@ -1148,7 +1148,7 @@ try {
 
     await panel.locator(".panel-head .btn.primary").click();
     await page.waitForSelector(".sp-modal", { timeout: 5000 });
-    await page.locator(".sp-modal input").first().fill("M. Westerberg");
+    await page.locator(".sp-modal input").first().fill("A. Analyst");
     await page.locator(".sp-modal .btn.primary").click();
     await page.waitForTimeout(900);
     const sealed = await panel.locator(".sp-seal").first().innerText().catch(() => "");
@@ -2170,6 +2170,74 @@ try {
     ok("switching into a language shows what opening in it would have shown",
       (await words(cold.p)) === switched);
     await cold.ctx.close();
+  }
+
+  // ── The first study somebody makes ─────────────────────────────────────────────────
+  // Its own context: a probe study left in the running session would move every count
+  // after it - the export dialog alone changes shape at more than one study.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const p = await ctx.newPage();
+    p.on("console", (m) => { if (m.type() === "error" && !benign(m.text())) errors.push(m.text()); });
+    p.on("pageerror", (e) => errors.push("pageerror: " + e.message));
+    await p.goto(file);
+    await p.waitForSelector("#root .app", { timeout: 10000 });
+    await p.locator("button", { hasText: "New study" }).first().click();
+    await p.waitForTimeout(400);
+    await p.locator(".overlay input").first().fill("Empty probe");
+    await p.locator(".overlay .btn.primary").first().click();
+    await p.waitForSelector(".ws-tabs", { timeout: 10000 });
+    await p.waitForTimeout(400);
+    // This is the one moment where every panel on the screen is empty. A panel that only
+    // states the absence leaves the reader with no next act.
+    const empty = (await p.locator(".empty").first().innerText()).replace(/\s+/g, " ");
+    ok("an empty section names the button that fills it", /above adds the first/.test(empty), empty);
+    // A precondition is not a failure, and the reason has to name BOTH ends: the field a
+    // reference sits in is usually named after the type it points at, so "required by
+    // Business Asset" told the reader the same word twice.
+    const guide = (await p.locator(".content .guide").allInnerTexts()).map((t) => t.replace(/\s+/g, " "));
+    const pre = guide.find((g) => /refers to/.test(g)) ?? "";
+    ok("a blocked add names what is missing and who needs it",
+      /Feared Event/.test(pre) && /Business Asset/.test(pre), pre);
+    ok("...and is not painted as an error", (await p.locator(".content .guide.warn").count()) === 0);
+    await ctx.close();
+  }
+
+  // ── Ordering a table ──────────────────────────────────────────────────────────────
+  // Also its own context: a table left sorted is a different table for anything that
+  // reads a row by position afterwards.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const p = await ctx.newPage();
+    p.on("console", (m) => { if (m.type() === "error" && !benign(m.text())) errors.push(m.text()); });
+    p.on("pageerror", (e) => errors.push("pageerror: " + e.message));
+    await p.goto(file);
+    await p.waitForSelector("#root .app", { timeout: 10000 });
+    await p.getByText("Load sample study").click();
+    await p.waitForSelector(".ws-tabs", { timeout: 10000 });
+    await p.waitForTimeout(400);
+    // ONE table: a workshop tab holds several, and each carries its own order.
+    const tbl = p.locator(".tbl").first();
+    const head = tbl.locator("thead th.sortable").first();
+    ok("a column head offers to order the table", (await head.count()) === 1);
+    const col = async () => (await tbl.locator("tbody tr .name").allInnerTexts()).map((t) => t.split("\n")[0].trim());
+    const written = await col();
+    await head.click(); await p.waitForTimeout(300);
+    const asc = await col();
+    ok("...ascending orders it", JSON.stringify(asc) === JSON.stringify([...written].sort((a, b) => a.localeCompare(b))),
+      asc.join(" | "));
+    ok("...and the head says which way it points", (await head.getAttribute("aria-sort")) === "ascending");
+    await head.click(); await p.waitForTimeout(300);
+    ok("...a second press reverses it", JSON.stringify(await col()) === JSON.stringify([...asc].reverse()));
+    await head.click(); await p.waitForTimeout(300);
+    ok("...a third gives back the order they were written in", JSON.stringify(await col()) === JSON.stringify(written));
+    // An arrangement, so it comes back with the reader - like folding and column choice.
+    await head.click(); await p.waitForTimeout(250);
+    await p.locator(".ws-tab").nth(1).click(); await p.waitForTimeout(300);
+    await p.locator(".ws-tab").first().click(); await p.waitForTimeout(400);
+    ok("...and the order is still there after leaving the tab",
+      (await p.locator(".tbl").first().locator("thead th.sorted").count()) === 1);
+    await ctx.close();
   }
 } catch (e) {
   errors.push("exception: " + (e?.message ?? String(e)));

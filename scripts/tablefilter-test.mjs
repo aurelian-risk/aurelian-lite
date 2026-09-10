@@ -9,7 +9,7 @@
 import { pathToFileURL } from "node:url";
 
 const need = (n) => { const v = process.env[n]; if (!v) { console.error(`set ${n}`); process.exit(2); } return v; };
-const { facetsOf, countFacets, filterItems, groupItems, matchesQuery, haystack, activeCount, TOOLBAR_MIN_ROWS } =
+const { facetsOf, countFacets, filterItems, groupItems, sortItems, matchesQuery, haystack, activeCount, TOOLBAR_MIN_ROWS } =
   await import(pathToFileURL(need("MOD_TF")).href);
 
 let pass = 0, fail = 0;
@@ -156,6 +156,71 @@ ok("the toolbar threshold is a small table, not a large one", TOOLBAR_MIN_ROWS >
   ok("the switch field is offered as the first facet", fs[0]?.field.key === "scope",
     fs.map((f) => f.field.key).join(","));
   ok("...and the others are still offered", fs.some((f) => f.field.key === "kind"));
+}
+
+
+// ── Sorting: the three cases where ordering by the TEXT is the wrong answer ─────────────
+{
+  const T = { key: "s", label: "S", labelPlural: "Ss", group: "g", fields: [
+    { key: "name", label: "Name", type: "text", required: true },
+    { key: "sev", label: "Severity", type: "scale", scaleLabels: ["negligible", "limited", "serious", "critical"] },
+    { key: "band", label: "Band", type: "enum", options: ["low", "medium", "high"] },
+    { key: "cost", label: "Cost", type: "number" },
+    { key: "owner", label: "Owner", type: "ref", refType: "p" },
+  ] };
+  const disp = (f, v) => {
+    if (v == null || v === "") return "";
+    if (f.type === "scale") return typeof v === "number" ? (f.scaleLabels?.[v - 1] ?? String(v)) : "";
+    if (f.type === "ref" || f.type === "multiref") return "";
+    return String(v);
+  };
+  const rec = (id, values) => ({ id, type: "s", values, createdAt: "", updatedAt: "" });
+  const rows = [
+    rec("1", { name: "alpha", sev: 4, band: "low",    cost: 9,   owner: "p2" }),
+    rec("2", { name: "bravo", sev: 2, band: "high",   cost: 10,  owner: null }),
+    rec("3", { name: "chuck", sev: 3, band: "medium", cost: 100, owner: "p1" }),
+    rec("4", { name: "delta", sev: 1, band: "low",    cost: null, owner: "p3" }),
+  ];
+  const titleOf = (r) => String(r.values.name);
+  const names = (list) => list.map((r) => r.values.name).join(",");
+  const of = (key, dir, refTitle) => names(sortItems(rows, T, { key, dir }, disp, titleOf, refTitle));
+
+  ok("no sort is the order the records were written in", names(sortItems(rows, T, null, disp, titleOf)) === "alpha,bravo,chuck,delta");
+  ok("text sorts by its text", of("name", "asc") === "alpha,bravo,chuck,delta");
+  ok("...and reverses", of("name", "desc") === "delta,chuck,bravo,alpha");
+
+  // A scale is a number wearing a label: by the label this would be
+  // "critical,limited,negligible,serious", which says nothing about severity.
+  ok("a scale sorts by its number, not by its label", of("sev", "asc") === "delta,bravo,chuck,alpha",
+    of("sev", "asc"));
+  // The alphabet's answer here is high,low,low,medium.
+  ok("an enum sorts by the order its options are declared in", of("band", "asc") === "alpha,delta,chuck,bravo",
+    of("band", "asc"));
+  // Comparing as text puts 10 and 100 before 9.
+  ok("a number sorts as a number", of("cost", "asc") === "alpha,bravo,chuck,delta", of("cost", "asc"));
+
+  // A hole is not a small value. It goes last whichever way the column points, so
+  // reversing does not fill the top of the table with blanks.
+  ok("an empty value sorts last ascending", of("cost", "asc").endsWith("delta"), of("cost", "asc"));
+  ok("...and last descending too", of("cost", "desc").endsWith("delta"), of("cost", "desc"));
+
+  // A reference column shows chips; `display` has nothing to say about it, so ordering
+  // has to go through what the chips READ.
+  const who = (id) => ({ p1: "Ada", p2: "Bo", p3: "Cy" })[id] ?? "";
+  ok("a reference sorts by the title it shows", of("owner", "asc", who) === "chuck,alpha,delta,bravo",
+    of("owner", "asc", who));
+  ok("...and a missing reference is a hole, so it stays last", of("owner", "desc", who).endsWith("bravo"),
+    of("owner", "desc", who));
+
+  // Equal keys keep the order they came in: sorting by a coarse column must not shuffle
+  // whatever arrangement was underneath it.
+  const ties = sortItems(rows, T, { key: "band", dir: "asc" }, disp, titleOf);
+  ok("equal rows keep their order (stable)", ties[0].values.name === "alpha" && ties[1].values.name === "delta");
+
+  // Sorting orders, it never filters.
+  ok("sorting keeps every row", sortItems(rows, T, { key: "sev", dir: "desc" }, disp, titleOf).length === rows.length);
+  // A column that is not in the type at all falls back to the row's title rather than throwing.
+  ok("an unknown column falls back to the title", of("gone", "asc") === "alpha,bravo,chuck,delta");
 }
 
 console.log(`\n${pass}/${pass + fail} table-filter assertions passed · ${fail} failed`);

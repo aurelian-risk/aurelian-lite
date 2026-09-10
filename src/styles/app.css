@@ -212,6 +212,17 @@ select { cursor: pointer; }
      at the edge, and the full label is the header's tooltip. */
   white-space: normal; overflow-wrap: normal; word-break: normal;
   overflow: hidden; text-overflow: ellipsis; }
+/* A head that orders the table says so by being pressable, and shows its state. The
+   double arrow appears on hover only: one on every column at rest is noise on a table
+   nobody has sorted, and the reader is looking at the DATA, not at the affordances. */
+.tbl th.sortable { cursor: pointer; user-select: none; }
+.tbl th.sortable:hover { color: var(--fg); }
+.th-sort { display: inline-block; margin-left: 6px; opacity: 0; font-size: 11px;
+  transition: opacity 90ms linear; }
+.tbl th.sortable:hover .th-sort, .tbl th.sortable:focus-visible .th-sort { opacity: 0.55; }
+.tbl th.sorted { color: var(--fg); }
+.tbl th.sorted .th-sort { opacity: 1; color: var(--primary); }
+
 .tbl td { padding: 13px 18px; border-top: 1px solid var(--hairline); vertical-align: middle;
   overflow-wrap: anywhere; }
 .tbl tbody tr { transition: background 0.12s var(--ease); }
@@ -764,8 +775,13 @@ select { cursor: pointer; }
 .lane-label { font-size: 10.5px; font-weight: 700; flex: 1; letter-spacing: 0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lane-count { font-size: 9px; font-family: var(--font-mono); padding: 0 5px; border: 1px solid; border-radius: 4px; }
+/* Same trick as the distribution handles: painted at 20, hit at 24. Growing the button
+   itself made the lane header 4px taller, which is a change to a view that is pictured -
+   and the reason to enlarge it was never how it LOOKS. */
 .lane-add { flex: none; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px;
-  border: none; background: transparent; color: var(--fg-subtle); cursor: pointer; }
+  border: none; background: transparent; color: var(--fg-subtle); cursor: pointer; position: relative; }
+.lane-add::before { content: ""; position: absolute; left: 50%; top: 50%; width: 24px; height: 24px;
+  transform: translate(-50%, -50%); }
 .lane-add:hover { background: var(--bg-hover); color: var(--fg); }
 /* No overflow/height cap: cards must be able to fly out of their column during
  * the FLIP flight without being clipped or hidden behind neighbouring lanes. */
@@ -1138,9 +1154,18 @@ button.hm-cell:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm,
 .di-density { position: absolute; inset: 0; width: 100%; height: 100%; }
 .di-range { position: absolute; top: 0; bottom: 0; border-radius: 8px; cursor: grab; touch-action: none; z-index: 1; }
 .di-range:active { cursor: grabbing; }
+/* Painted at 14px, GRABBED at 24. A distribution handle is dragged, not clicked, and a
+   14px target asks for a steady hand on a trackpad - so the pointer area is grown with a
+   pseudo-element instead of the dot, which has to stay small to leave the curve visible. */
 .di-h { position: absolute; top: 50%; width: 14px; height: 14px; transform: translate(-50%, -50%); border-radius: 50%;
   background: var(--bg-raised); border: 2px solid; cursor: ew-resize; padding: 0; box-shadow: var(--shadow-sm); z-index: 2; touch-action: none; }
+.di-h::before { content: ""; position: absolute; left: 50%; top: 50%; width: 24px; height: 24px;
+  transform: translate(-50%, -50%); border-radius: 50%; }
 .di-h-mode { width: 15px; height: 15px; border: none; border-radius: 4px; transform: translate(-50%, -50%) rotate(45deg); }
+/* The mode sits BETWEEN the two edge handles, so where they crowd together its enlarged
+   area must not swallow theirs - it keeps a smaller one and the edges stay reachable. */
+.di-h-mode::before { width: 20px; height: 20px; transform: translate(-50%, -50%) rotate(-45deg); }
+.di-h-min::before, .di-h-max::before { z-index: 1; }
 .di-h:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 .di-shape { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
 .di-shape-cap { font-size: 10px; color: var(--fg-subtle); text-transform: uppercase; letter-spacing: .04em; flex: none; }

@@ -118,6 +118,12 @@ const groups = makeStore<string>("aurelian_view_group", "g", (v) => !v);
 const columns = makeStore<string[]>("aurelian_view_cols", "h",
   (v) => v.length === 0, (v) => v.slice(0, MAX_KEYS));
 
+// Which column a table was last sorted by, and which way. An arrangement like the others:
+// it changes the ORDER of what is shown, never which records there are, so it comes back
+// with the reader and stays out of the study. Stored as "key:dir" - one short string, and
+// an unsorted table stores nothing.
+const sorts = makeStore<string>("aurelian_view_sort", "s", (v) => !v);
+
 // Where a reader pushed a graph node, as offsets from the spot the layout computed. Stored
 // as triples so the same cap as the folds applies, and outside the study for the same
 // reason: moving a node is reading, not analysis - in the study it would travel in every
@@ -145,6 +151,22 @@ export const setGroupKey = (scope: string, key: string): void => groups.set(scop
 export const getHiddenColumns = (scope: string): Set<string> => new Set(columns.get(scope) ?? []);
 
 export const setHiddenColumns = (scope: string, hidden: Set<string>): void => columns.set(scope, [...hidden]);
+
+/** How this table was last sorted, or null for the order the records were written in. */
+export function getSort(scope: string): { key: string; dir: "asc" | "desc" } | null {
+  const v = sorts.get(scope);
+  if (!v) return null;
+  const at = v.lastIndexOf(":");
+  if (at < 1) return null;
+  const dir = v.slice(at + 1);
+  return dir === "asc" || dir === "desc" ? { key: v.slice(0, at), dir } : null;
+}
+
+/** Remember the sort. Null puts the table back to the order the records were written in,
+ *  which is a state worth being able to return to - so it is the third step of the cycle,
+ *  not an absence somebody has to reload to get back. */
+export const setSort = (scope: string, sort: { key: string; dir: "asc" | "desc" } | null): void =>
+  sorts.set(scope, sort ? `${sort.key}:${sort.dir}` : "");
 
 /** Where this reader pushed the graph's nodes, by node id. Empty for an untouched graph. */
 export function getNudges(scope: string): Map<string, { x: number; y: number }> {

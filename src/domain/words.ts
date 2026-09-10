@@ -112,6 +112,15 @@ export const ENGINE_WORDS: Record<string, Overlay> = {
     "ui.entitysection.extracted-from-this-source": "Aus dieser Quelle extrahiert",
     "ui.entitysection.clear-filters": "Filter zurücksetzen",
     "ui.entitysection.nothing-matches": "Nichts passt.",
+    "ui.entitysection.none-yet": "Noch keine.",
+    // Der Artikel bezieht sich auf „Eintrag“, nicht auf den eingesetzten Typnamen — dessen
+    // Geschlecht kennt die Vorlage nicht.
+    "ui.entitysection.none-yet-add": "Noch keine — mit „{0}“ oben legen Sie den ersten Eintrag an.",
+    "ui.entitysection.needs-first": "Erst {1} anlegen — {0} verweist darauf.",
+    "ui.entitysection.needs-first-field": "Erst {1} anlegen — {0} verweist darauf („{2}“).",
+    "ui.entitysection.sort-asc": "Nach {0} ordnen, kleinste zuerst",
+    "ui.entitysection.sort-desc": "Nach {0} ordnen, größte zuerst",
+    "ui.entitysection.sort-off": "Zurück zur Reihenfolge, in der {0} eingetragen wurde",
     "ui.entitysection.nothing-else-is-affected": "Sonst ist nichts betroffen.",
     "ui.entitysection.nothing-else-is-deleted": "Sonst wird nichts gelöscht.",
     "ui.entitysection.counts-again-everywhere": "Zählt überall wieder mit.",
