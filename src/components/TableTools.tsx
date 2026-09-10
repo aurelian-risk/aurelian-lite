@@ -12,10 +12,10 @@
 // entity table (the coverage matrix, say) gets the same behaviour by calling one hook.
 import { useMemo, useRef, useState, useEffect, type RefObject } from "react";
 import { t as tr } from "../domain/i18n";
-import { getGroupKey, setGroupKey as storeGroupKey } from "../domain/viewstate";
+import { getGroupKey, setGroupKey as storeGroupKey, getSort, setSort as storeSort } from "../domain/viewstate";
 import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue } from "../domain/types";
 import { fieldLabel, scaleLabel, typeLabelPlural } from "../domain/taxonomy";
-import { facetsOf, countFacets, filterItems, groupItems, activeCount, type Selection } from "../domain/tablefilter";
+import { facetsOf, countFacets, filterItems, groupItems, sortItems, activeCount, type Selection, type Sort } from "../domain/tablefilter";
 import { Icon, useDismissOnEscape } from "./ui";
 
 /** How a value READS in a table - a scale as its label, not its number. Filtering and
@@ -38,22 +38,36 @@ export interface TableFilter {
   shown: EntityRecord[];
   groupField: FieldDef | null;
   groups: ReturnType<typeof groupItems>;
+  /** Which column the table is ordered by, or null for the order it was written in. */
+  sort: Sort | null;
+  /** Cycle one column: ascending → descending → back to the written order. */
+  toggleSort: (key: string) => void;
   filtered: boolean;
   clearAll: () => void;
   total: number;
 }
 
-export function useTableFilter(type: EntityTypeDef, items: EntityRecord[], onGroupChange?: () => void, scope?: string): TableFilter {
+export function useTableFilter(type: EntityTypeDef, items: EntityRecord[], onGroupChange?: () => void, scope?: string,
+  /** How a row and a reference READ, for the columns `displayValue` cannot speak for. */
+  help?: { titleOf?: (r: EntityRecord) => string; refTitle?: (id: string) => string }): TableFilter {
   const [query, setQuery] = useState("");
   const [sel, setSel] = useState<Selection>({});
   // How the table is ARRANGED comes back with the reader; what it is filtered to does not.
   // A table that silently holds fewer rows than it has, because of a facet set on a
   // previous visit, is a trap - see viewstate.ts.
   const [groupKey, setGroupKeyRaw] = useState(() => (scope ? getGroupKey(scope) : ""));
+  const [sort, setSortRaw] = useState<Sort | null>(() => (scope ? getSort(scope) : null));
+  useEffect(() => { setSortRaw(scope ? getSort(scope) : null); }, [scope]);
 
   const facetSet = useMemo(() => facetsOf(type, items, displayValue), [type, items]);
   const facets = useMemo(() => countFacets(facetSet, items, type, query, sel, displayValue), [facetSet, items, type, query, sel]);
-  const shown = useMemo(() => filterItems(items, type, query, sel, displayValue), [items, type, query, sel]);
+  const matched = useMemo(() => filterItems(items, type, query, sel, displayValue), [items, type, query, sel]);
+  // Sorted BEFORE grouping, so the groups keep their own order (by size) and the rows
+  // inside each one follow the column the reader chose.
+  const shown = useMemo(() => sortItems(matched, type, sort, displayValue,
+    help?.titleOf ?? ((r) => r.id), help?.refTitle),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [matched, type, sort]);
   const groupField = groupKey ? type.fields.find((f) => f.key === groupKey) ?? null : null;
   const groups = useMemo(() => groupItems(shown, groupField, displayValue), [shown, groupField]);
 
@@ -65,10 +79,18 @@ export function useTableFilter(type: EntityTypeDef, items: EntityRecord[], onGro
     return out;
   });
   const setGroupKey = (k: string) => { setGroupKeyRaw(k); if (scope) storeGroupKey(scope, k); onGroupChange?.(); };
+  // Three steps, not two: the order the records were WRITTEN in is a state worth being
+  // able to get back to, and a two-way toggle makes it unreachable without a reload.
+  const toggleSort = (key: string) => {
+    const next: Sort | null = !sort || sort.key !== key ? { key, dir: "asc" }
+      : sort.dir === "asc" ? { key, dir: "desc" } : null;
+    setSortRaw(next);
+    if (scope) storeSort(scope, next);
+  };
 
   return {
     query, setQuery, sel, toggleFacet, groupKey, setGroupKey, facets, shown,
-    groupField, groups,
+    groupField, groups, sort, toggleSort,
     filtered: query.trim() !== "" || activeCount(sel) > 0,
     clearAll: () => { setQuery(""); setSel({}); },
     total: items.length,
