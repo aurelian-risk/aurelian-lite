@@ -11,8 +11,6 @@
 // this module free of React and of the taxonomy's presentation rules.
 import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue } from "./types";
 
-/** Below this many rows a table is readable as it stands, and a toolbar is clutter. */
-export const TOOLBAR_MIN_ROWS = 8;
 /** More distinct values than this and the chips become their own haystack. */
 const MAX_FACET_VALUES = 12;
 

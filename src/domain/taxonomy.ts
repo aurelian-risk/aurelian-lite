@@ -150,8 +150,12 @@ export function scaleLabel(f: FieldDef, value: number, t?: EntityTypeDef): strin
  *  Runs at most once per stored taxonomy, gated on `schemaVersion` - so an option the
  *  user deliberately deleted is not resurrected on every load. Only enum vocabularies
  *  that still overlap the default one are extended; a taxonomy whose options were
- *  replaced wholesale is treated as user-owned and left alone. Nothing else is touched:
- *  no types, fields, labels or orders are added, removed or reordered.
+ *  replaced wholesale is treated as user-owned and left alone. Since schema 4 a FIELD the
+ *  default type has and the stored type lacks is appended too, under the same guard: only
+ *  where the stored type still carries most of the default's fields, so a type the user
+ *  rebuilt is left alone. The engine reads some fields by key ("fails_with", "status"),
+ *  and a study that cannot enter them cannot use what they drive. Nothing else is
+ *  touched: no types are added, nothing is removed, relabelled or reordered.
  *
  *  `vocabulary` is carried over even where the options were replaced: it says where the
  *  values come from, which is the publisher's business rather than the user's, and a
@@ -178,6 +182,11 @@ export function reconcileTaxonomy(tax: Taxonomy): Taxonomy {
       typeChanged = true;
       return { ...next, options: [...opts, ...missing] };
     });
+    // Fields the default has and this type lacks, appended in the default's order.
+    const have = new Set(fields.map((f) => f.key));
+    const shared = def.fields.filter((d) => have.has(d.key)).length;
+    const missing = shared * 2 >= def.fields.length ? def.fields.filter((d) => !have.has(d.key)) : [];
+    if (missing.length) { typeChanged = true; fields.push(...missing.map((d) => ({ ...d }))); }
     return typeChanged ? { ...t, fields } : t;
   });
   return { ...tax, schemaVersion: TAXONOMY_SCHEMA_VERSION, entityTypes };

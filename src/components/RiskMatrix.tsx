@@ -9,12 +9,14 @@ import { t as tr } from "../domain/i18n";
 import type { EntityRecord, EntityTypeDef, Study, Taxonomy } from "../domain/types";
 import { fieldLabel, recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
 import { residualPos } from "../domain/treatment";
+import { badColor } from "../domain/viz";
 import { DEFAULT_CALIBRATION } from "../domain/calibration";
 import { EntityModal } from "./EntityModal";
 
-function risk(r: number) {
-  return r < 0.3 ? "var(--color-state-success)" : r < 0.55 ? "var(--color-state-info)" : r < 0.8 ? "var(--color-state-warning)" : "var(--color-state-error)";
-}
+// Severity on the shared bands. It had its own edges and, as the second of them, the
+// INFO blue that everywhere else in the app means a lifecycle state - planned, detected,
+// recorded but not in force. A quarter of the board was painted in it.
+const risk = (r: number) => badColor(r);
 
 export function RiskMatrix({ tax, study, type, color }: { tax: Taxonomy; study: Study; type: EntityTypeDef; color: string }) {
   const [rec, setRec] = useState<EntityRecord | null>(null);

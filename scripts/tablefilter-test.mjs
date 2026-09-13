@@ -9,7 +9,7 @@
 import { pathToFileURL } from "node:url";
 
 const need = (n) => { const v = process.env[n]; if (!v) { console.error(`set ${n}`); process.exit(2); } return v; };
-const { facetsOf, countFacets, filterItems, groupItems, sortItems, matchesQuery, haystack, activeCount, TOOLBAR_MIN_ROWS } =
+const { facetsOf, countFacets, filterItems, groupItems, sortItems, matchesQuery, haystack, activeCount } =
   await import(pathToFileURL(need("MOD_TF")).href);
 
 let pass = 0, fail = 0;
@@ -108,8 +108,6 @@ ok("counts what is active", activeCount({ framework: ["NIS2", "NIST CSF"], categ
   ok("that group comes last", groups[groups.length - 1].key === "");
 }
 ok("grouping by nothing yields one group", groupItems(ITEMS, null, display).length === 1);
-
-ok("the toolbar threshold is a small table, not a large one", TOOLBAR_MIN_ROWS >= 5 && TOOLBAR_MIN_ROWS <= 15, String(TOOLBAR_MIN_ROWS));
 
 // ── counts follow the current filters ────────────────────────────────────
 //

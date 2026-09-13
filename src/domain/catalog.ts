@@ -89,3 +89,10 @@ export function catalogTargets(tax: Taxonomy): CatalogTarget[] {
 export function targetByKind(tax: Taxonomy, kind: "requirement" | "measure"): CatalogTarget | undefined {
   return catalogTargets(tax).find((t) => t.kind === kind);
 }
+
+/** Is this the table a catalogue fills? Those are the two that hold hundreds of rows
+ *  nobody typed, so they are the two that get search, facets and grouping. Every other
+ *  table in a study is written by hand and stays short enough to read as it stands. */
+export function isCatalogTarget(tax: Taxonomy, typeKey: string): boolean {
+  return catalogTargets(tax).some((t) => t.type.key === typeKey);
+}

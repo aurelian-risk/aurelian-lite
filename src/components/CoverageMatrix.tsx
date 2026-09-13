@@ -11,6 +11,7 @@ import { useStore } from "../domain/store";
 import { EntityModal } from "./EntityModal";
 import { MultiSelect, Icon } from "./ui";
 import { TableTools, useTableFilter } from "./TableTools";
+import { goodColor } from "../domain/viz";
 
 export function CoverageMatrix({ tax, study, reqType, color }: { tax: Taxonomy; study: Study; reqType: EntityTypeDef; color: string }) {
   const updateEntity = useStore((s) => s.updateEntity);
@@ -79,7 +80,10 @@ export function CoverageMatrix({ tax, study, reqType, color }: { tax: Taxonomy; 
                   const covered = list.filter((r) => measures.some((m) => fulfils(m, r.id))).length;
                   const gaps = list.length - covered;
                   const isOpen = open.has(fw);
-                  const sc = gaps === 0 ? "var(--color-state-success)" : "var(--color-state-warning)";
+                  // Was green-or-amber: one gap in a hundred and ninety-nine in a
+                  // hundred read the same. It is a share like any other, so it is
+                  // banded like any other.
+                  const sc = goodColor(list.length ? covered / list.length : 1);
                   return (
                     <Fragment key={fw}>
                       <tr className={"row-clickable" + (isOpen ? " expanded" : "")} onClick={() => toggle(fw)}>

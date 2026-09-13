@@ -122,22 +122,37 @@ function useMenuDismiss(open: boolean, box: RefObject<HTMLDivElement | null>, cl
   useDismissOnEscape(open, close);
 }
 
+/** Which way a popup opens: leftwards from a button at the end of a full toolbar, so it
+ *  stays inside the panel that clips its overflow - but rightwards from a button that IS
+ *  the toolbar, as on a table with no search, where "leftwards" ran under the sidebar and
+ *  showed the last four letters of every column name. Measured, not assumed. */
+const opensLeft = (el: HTMLElement | null, width = 220): boolean => {
+  if (!el) return false;
+  const panel = el.closest(".panel") as HTMLElement | null;
+  const r = el.getBoundingClientRect(), pr = panel?.getBoundingClientRect();
+  const right = pr ? pr.right : window.innerWidth;
+  return r.left + width > right;
+};
+
 function ColumnsMenu({ columns }: { columns: ColumnChoice }) {
   const [open, setOpen] = useState(false);
+  const [toLeft, setToLeft] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useMenuDismiss(open, box, () => setOpen(false));
   const shown = columns.fields.length - columns.hidden.size;
   return (
     <div className="facet-menu" ref={box}>
-      <button type="button" className={"facet-btn" + (columns.hidden.size ? " on" : "")}
-        aria-expanded={open} onClick={() => setOpen((o) => !o)}
+      {/* Styled as a facet menu, but not one: the second class is what tells a check - and
+          a reader of the DOM - which of the two this button is. */}
+      <button type="button" className={"facet-btn cols-btn" + (columns.hidden.size ? " on" : "")}
+        aria-expanded={open} onClick={() => { setToLeft(opensLeft(box.current)); setOpen((o) => !o); }}
         title={tr('ui.tabletools.which-columns-this-table', 'Which columns this table shows')}>
-        Columns
+        {tr("ui.tabletools.columns", "Columns")}
         {columns.hidden.size > 0 && <span className="facet-n">{shown}/{columns.fields.length}</span>}
         <span className="facet-caret"><Icon.chevron /></span>
       </button>
       {open && (
-        <div className="facet-pop to-left">
+        <div className={"facet-pop" + (toLeft ? " to-left" : "")}>
           {columns.fields.map((c) => {
             const on = !columns.hidden.has(c.key);
             return (
@@ -150,7 +165,7 @@ function ColumnsMenu({ columns }: { columns: ColumnChoice }) {
           })}
           {columns.hidden.size > 0 && (
             <button type="button" className="facet-opt more" onClick={columns.showAll}>
-              show all {columns.fields.length}
+              {tr("ui.tabletools.show-all-columns", "show all {0}").replace("{0}", String(columns.fields.length))}
             </button>
           )}
         </div>
@@ -162,6 +177,7 @@ function ColumnsMenu({ columns }: { columns: ColumnChoice }) {
 function FacetMenu({ facet, chosen, onToggle }:
   { facet: TableFilter["facets"][number]; chosen: string[]; onToggle: (v: string) => void }) {
   const [open, setOpen] = useState(false);
+  const [toLeft, setToLeft] = useState(false);
   const [all, setAll] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useMenuDismiss(open, box, () => setOpen(false));
@@ -171,13 +187,13 @@ function FacetMenu({ facet, chosen, onToggle }:
   return (
     <div className="facet-menu" ref={box}>
       <button type="button" className={"facet-btn" + (chosen.length ? " on" : "")}
-        aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        aria-expanded={open} onClick={() => { setToLeft(opensLeft(box.current)); setOpen((o) => !o); }}>
         {fieldLabel(facet.field)}
         {chosen.length > 0 && <span className="facet-n">{chosen.length}</span>}
         <span className="facet-caret"><Icon.chevron /></span>
       </button>
       {open && (
-        <div className="facet-pop">
+        <div className={"facet-pop" + (toLeft ? " to-left" : "")}>
           {values.map((v) => {
             const on = chosen.includes(v.value);
             return (
@@ -191,7 +207,7 @@ function FacetMenu({ facet, chosen, onToggle }:
           })}
           {hidden > 0 && (
             <button type="button" className="facet-opt more" onClick={() => setAll(true)}>
-              show the remaining {hidden}
+              {tr("ui.tabletools.show-remaining", "show the remaining {0}").replace("{0}", String(hidden))}
             </button>
           )}
         </div>
@@ -200,23 +216,26 @@ function FacetMenu({ facet, chosen, onToggle }:
   );
 }
 
-export function TableTools({ type, f, groupable = true, columns }:
-  { type: EntityTypeDef; f: TableFilter; groupable?: boolean; columns?: ColumnChoice }) {
-  // A wide table offers its column choice however short it is - that is the whole reason
-  // the toolbar is there at all in that case.
-  if (!f.facets.length && f.total < 8 && !columns) return null;
+export function TableTools({ type, f, groupable = true, find = true, columns }:
+  { type: EntityTypeDef; f: TableFilter; groupable?: boolean; find?: boolean; columns?: ColumnChoice }) {
+  // Two separate reasons to be here, and either alone is enough: a table somebody has to
+  // search in (`find`, decided by the caller), and a wide table whose columns can be put
+  // away however short it is.
+  if (!find && !columns) return null;
   return (
     <div className="tbl-tools">
-      <label className="tbl-search">
-        <Icon.search />
-        <input type="search" value={f.query} placeholder={`Search ${typeLabelPlural(type).toLowerCase()}…`}
-          onChange={(e) => f.setQuery(e.target.value)} aria-label={`Search ${typeLabelPlural(type)}`} />
-      </label>
-      {f.facets.map((facet) => (
+      {find && (
+        <label className="tbl-search">
+          <Icon.search />
+          <input type="search" value={f.query} placeholder={`Search ${typeLabelPlural(type).toLowerCase()}…`}
+            onChange={(e) => f.setQuery(e.target.value)} aria-label={`Search ${typeLabelPlural(type)}`} />
+        </label>
+      )}
+      {find && f.facets.map((facet) => (
         <FacetMenu key={facet.field.key} facet={facet} chosen={f.sel[facet.field.key] ?? []}
           onToggle={(v) => f.toggleFacet(facet.field.key, v)} />
       ))}
-      {groupable && f.facets.length > 0 && (
+      {find && groupable && f.facets.length > 0 && (
         <select className="tbl-group" value={f.groupKey} onChange={(e) => f.setGroupKey(e.target.value)}
           aria-label={tr('ui.tabletools.group-by', 'Group by')} title={tr('ui.tabletools.group-the-rows-by', 'Group the rows by a column')}>
           <option value="">no grouping</option>
@@ -224,9 +243,10 @@ export function TableTools({ type, f, groupable = true, columns }:
         </select>
       )}
       {columns && columns.fields.length > 1 && <ColumnsMenu columns={columns} />}
-      <span className="tbl-count">
+      {/* What the panel head already says, unless a filter has changed it. */}
+      {find && <span className="tbl-count">
         {f.filtered ? `${f.shown.length} of ${f.total}` : `${f.total}`}
-      </span>
+      </span>}
       {f.filtered && <button className="tbl-clear" onClick={f.clearAll} title={tr('ui.tabletools.clear-every-filter', 'Clear every filter')}><Icon.close /></button>}
     </div>
   );

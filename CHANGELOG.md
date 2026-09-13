@@ -5,6 +5,61 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [1.0.0] — 2026-09-13
+
+The quantification programme of September 2026: every calibration table graded and
+sourced, every measure with a strength, a cost and what it fails with, detection as a
+race against the clock, and the method written up in [docs/method.md](docs/method.md).
+The data format grows (taxonomy schema 7); earlier studies are read and upgraded in place.
+
+### Added
+- **Sensitivity per scenario.** Each factor — six inputs and every defended gate — pinned
+  to the ends of its band in turn, the rest held; a tornado names what the number hangs
+  on. Under the loss distribution and in the report.
+- **Your own record** in the calibration: years, organisations pooled, operations seen
+  per actor class. Rate = (n + ½) ÷ (years × organisations); replaces base rate, sector
+  and size for that class; grade "own".
+- **Organisation size** on the study: base rate ×0.73 / 1 / 1.6 / 2.5 (Eurostat
+  `isoc_cisce_ic` 2024, Cyentia IRIS 2025).
+- **Loss magnitude drawn lognormal**, points read P5 / median / P95; bands anchored on
+  IRIS 2025 and NetDiligence 2025. The sample's ransomware scenario lands at 0.05–0.1
+  loss events/yr, inside the Eurostat/IRIS band.
+- **Fails with** on a measure: steps whose strongest defence names one cause are drawn
+  with one position per attempt — two gates on one cause are worth one.
+- **Strength** on a measure: 0.4 / 0.65 / 0.85 / 1 of the ceiling, unrated = very strong.
+  All 35 library entries rated with evidence (Google MFA research, Marsh McLennan /
+  Cyentia 2023, M-Trends 2026, ASD Essential Eight).
+- **Cost, one-off and yearly**, on a measure. Panel "What each measure buys": annual loss
+  avoided today and once complete, per year and per euro, ranked; one-off cost over 3 years.
+- **ATT&CK mitigations** on a measure (Enterprise v19.2, reduced to the bundled
+  techniques; library sets 27 of 35). Checks: a preventive measure on a step its
+  technique does not answer to; a hard-to-prevent step defended only preventively.
+- **Detection as a time race.** Caught iff alert + response < the attacker's remaining
+  time to the objective, drawn per attempt: step days by tactic, alert days by detective
+  strength, response days by the study's **response readiness** (four levels). Anchors:
+  M-Trends 2026 dwell 14 d median, 9 d internal, 25 d external, hand-off 22 s. Results
+  say "seen and still reached the objective"; check "watched, but never in time".
+  Constants 0.35 (detection) and 0.20 (response floor) retired.
+- **Calibration in four chapters**, folded; fine tuning one fold deeper.
+- **One search across the study** (Ctrl/Cmd-K): table-filter rules, hits as rows with
+  workshop, type and field; a hit opens its row, lifting any filter or fold in the way.
+- Column menu on every table; wheel zoom and drag pan on attack paths; the whole Initial
+  Access tactic in the technique list; calibration technique tables accept any ATT&CK id.
+
+### Changed
+- **`docs/method.md`** rewritten: ten sections, the control-effect model in full, the
+  shipped calibration with source and grade per table (21 tables: 3 measured, 6 derived,
+  11 judgement, 1 own), the limits, the sources with their terms.
+- **Sector rows from two sources** (Sophos, IRIS): healthcare ×1.25, finance ×1.25,
+  manufacturing ×1.05, education ×1.4, technology ×1.3, energy ×0.8 for criminal actors.
+- Mitigation tiles: one figure per tile, planned hatched and counted in words; one set of
+  colour bands for screen and report; risk-matrix cells the same size.
+- Report: external links open in a new tab; computes with the study's own calibration.
+- Sample study: measures rated, MFA on the step where the credential is used, size and
+  readiness set.
+- Loss-distribution axis: labels thinned to what fits once a lognormal tail spans eight
+  decades.
+
 ## [0.6.11] — 2026-09-10
 
 ### Added

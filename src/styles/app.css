@@ -407,8 +407,14 @@ select { cursor: pointer; }
 .ap-choketag { font-size: 11.5px; font-weight: 700; color: var(--color-workshop-1, #c98a2a);
   background: color-mix(in oklch, var(--color-workshop-1, #c98a2a) 16%, transparent); border-radius: var(--radius-pill); padding: 3px 11px; }
 .ap-body { padding: 6px 18px 10px; }
-.ap-stage { border: 1px solid var(--hairline); border-radius: 12px; background: color-mix(in oklch, var(--bg-hover) 26%, transparent); }
-.ap-scroll { overflow-x: auto; padding: 26px 24px; }
+.ap-stage { position: relative; border: 1px solid var(--hairline); border-radius: 12px; background: color-mix(in oklch, var(--bg-hover) 26%, transparent); }
+/* Both axes scroll, the height is capped, the ground is grabbable: without the cap a
+   zoomed graph only grows the page and there is nothing to pan inside. */
+.ap-scroll { overflow: auto; max-height: calc(100vh - 220px); padding: 26px 24px; cursor: grab; overscroll-behavior: contain; }
+.ap-scroll.panning { cursor: grabbing; user-select: none; }
+.ap-zoom { position: absolute; top: 8px; right: 8px; z-index: 2; font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  background: var(--bg-raised); }
+.ap-hint { padding: 0 14px 8px; font-size: 11px; color: var(--fg-subtle); }
 .ap-graph { position: relative; margin: 0 auto; }
 .ap-edges { position: absolute; top: 0; left: 0; display: block; overflow: visible; pointer-events: none; }
 .ap-node { position: absolute; height: 104px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center;
@@ -506,6 +512,11 @@ select { cursor: pointer; }
    tooltip, and the row detail lists them whole. */
 .tbl .chip { background: transparent; border-color: var(--border); color: var(--fg-muted); padding: 2px 8px; font-size: 11.5px;
   max-width: 15ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
+/* A badge in a fixed-layout cell is cut at the cell, like a chip - not laid over the next
+   column. "Maintenance / IT support" in a 124px enum column ran under the exposure bar
+   beside it; the whole value is in the title. */
+.tbl td > .badge:not(:has(.scale)) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; display: inline-block;
+  vertical-align: middle; box-sizing: border-box; }
 .tbl .chip.link:hover { background: color-mix(in oklch, var(--primary) 14%, transparent); color: var(--fg); border-color: color-mix(in oklch, var(--primary) 38%, var(--border)); }
 /* A reference that pointed at something now deleted: the old name, struck through, on a
    light red ground. The name is kept because "deleted" alone does not say WHAT is gone.
@@ -882,9 +893,17 @@ select { cursor: pointer; }
 .risk-matrix { display: grid; grid-template-columns: auto repeat(var(--xn), minmax(110px, 1fr)); gap: 6px; }
 .rm-ylabel { display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; text-align: right;
   font-size: 11px; color: var(--fg-subtle); text-transform: capitalize; }
-.rm-cell { min-height: 66px; border: 1px solid; border-radius: 9px; padding: 6px; display: flex; flex-direction: column; gap: 5px; }
-.rm-chip { text-align: left; font-size: 11.5px; font-weight: 600; border: 1px solid; border-radius: 7px; padding: 4px 8px;
-  background: var(--bg-raised); color: var(--fg); cursor: pointer; line-height: 1.25; }
+/* Every square the same size, whatever is in it. It used to be `min-height`, so a grid
+ * row grew to its fullest cell and the board read as a bar chart of fill: 66px against
+ * 126px in the sample study, and the whole matrix moved by 29px when the residual toggle
+ * shifted one chip (harness/risk-matrix.mjs). A chip is held to one line for the same
+ * reason - wrapping made the height depend on the column width too. The full title is on
+ * the chip's `title`, and the record is one click away. */
+.rm-cell { height: 96px; border: 1px solid; border-radius: 9px; padding: 6px; display: flex;
+  flex-direction: column; gap: 5px; overflow-y: auto; overscroll-behavior: contain; }
+.rm-chip { flex: 0 0 auto; text-align: left; font-size: 11.5px; font-weight: 600; border: 1px solid; border-radius: 7px;
+  padding: 4px 8px; background: var(--bg-raised); color: var(--fg); cursor: pointer; line-height: 1.25;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rm-chip:hover { filter: brightness(1.08); box-shadow: var(--shadow-sm); }
 .rm-treated { color: var(--color-state-success); font-weight: 700; }
 .rm-xlabel { text-align: center; font-size: 11px; color: var(--fg-subtle); text-transform: capitalize; padding-top: 5px; }
@@ -969,6 +988,12 @@ select { cursor: pointer; }
   border: 1px solid var(--hairline); border-top: 3px solid var(--ws-color, var(--primary)); border-radius: 10px;
   background: color-mix(in oklch, var(--ws-color, var(--primary)) 4%, transparent); }
 .kcc-card.gap { border-color: color-mix(in oklch, var(--color-state-warning) 55%, var(--hairline)); }
+/* Recorded here, none of it in force yet. Its own colour, because the reader's next act
+   differs: a gap needs a measure chosen, this one needs the measure rolled out. */
+.kcc-card.pending { border-color: color-mix(in oklch, var(--color-state-info, var(--primary)) 55%, var(--hairline));
+  background: color-mix(in oklch, var(--color-state-info, var(--primary)) 5%, transparent); }
+.kcc-card.pending .kcc-mit > .hint { color: var(--color-state-info, var(--primary)); }
+.kcc-pending-n { color: var(--color-state-info, var(--primary)); font-weight: 600; }
 .kcc-top { display: flex; align-items: center; gap: 8px; }
 .kcc-idx { flex: none; width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center;
   font-size: 11px; font-weight: 700; background: var(--ws-color, var(--primary)); color: var(--primary-fg); }
@@ -1019,14 +1044,29 @@ select { cursor: pointer; }
 .hm-grid > * { min-width: 0; }
 .hm-col { font-size: 10px; color: var(--fg-muted); text-align: center; line-height: 1.2;
   align-self: end; padding: 0 2px 4px; overflow-wrap: normal; hyphens: none; word-break: keep-all; }
-.hm-rowlbl { font-size: 12px; color: var(--fg-muted); display: flex; align-items: center;
-  padding-right: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A scenario name gets two lines and a column of its own width; one line in a column as
+   wide as a tile cut "Ransomware encryption of clinical systems" to "Ransomware encryp". */
+.hm-rowlbl { font-size: 12px; color: var(--fg-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  align-self: center; line-height: 1.25; padding-right: 12px; overflow: hidden; }
 .hm-rowlbl.strong { color: var(--fg); font-weight: 600; }
 .hm-cell { border-radius: 6px; display: grid; place-items: center; padding: 0;
   font-size: 11px; font-family: var(--font-mono); color: var(--fg); border: 1px solid transparent; }
 button.hm-cell { cursor: pointer; transition: transform .12s var(--ease), box-shadow .12s var(--ease); }
 button.hm-cell:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm, 0 2px 6px rgb(0 0 0 / 0.18)); }
 .hm-cell.empty { background: var(--bg-hover); border-color: var(--hairline); }
+/* A tile whose measures are not in force yet: the ground stays the colour of what holds
+   today - the figure is not softened - and the hatch shows what is already recorded
+   against it. Without this a study of planned controls is flat red, which is what a
+   study with no measures at all looks like. */
+.hm-cell.pending { background-image: repeating-linear-gradient(135deg,
+  color-mix(in oklch, var(--fg) 20%, transparent) 0 1.5px, transparent 1.5px 7px); }
+/* The same hatch on a measure chip that is still planned - fainter and wider, because
+   here it runs under a line of text and must not compete with it. */
+.chip.pending, .tbl .chip.pending { background-image: repeating-linear-gradient(135deg,
+  color-mix(in oklch, var(--fg) 11%, transparent) 0 1.5px, transparent 1.5px 9px); }
+.hm-key-pending { display: inline-flex; align-items: center; gap: 5px; }
+.hm-key-pending i { width: 16px; height: 10px; border-radius: 3px; border: 1px solid var(--border);
+  background-image: repeating-linear-gradient(135deg, color-mix(in oklch, var(--fg) 20%, transparent) 0 1.5px, transparent 1.5px 7px); }
 /* Colour key - without it the shades are just decoration. */
 .hm-key { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 10px;
   font-size: 10.5px; color: var(--fg-subtle); }
@@ -1200,16 +1240,56 @@ button.hm-cell:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm,
 /* Where the attempts die: a stacked bar along the chain + the biggest stopping points.
    The blocked segments share the accent (fading as they get deeper into the chain), the
    share that gets through is the warning colour - the only part that costs money. */
+/* The tornado. Bars in the two polarity tokens - below the base in the "good" token,
+   above it in the "bad" one - with a hairline for the base; names, bands and values in
+   text ink. A quiet row is one whose swing is inside the simulation's own noise. */
+.qt-torn { margin-top: 12px; border-top: 1px solid var(--hairline); padding-top: 8px; }
+.qt-torn-h { display: flex; align-items: baseline; gap: 8px; width: 100%; background: none; border: none;
+  padding: 4px 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+.qt-torn-h .caret { align-self: center; }
+.qt-torn-h .qb-scale { margin-left: auto; }
+.qt-torn-read { margin: 6px 0 10px; font-size: 12.5px; color: var(--fg); line-height: 1.45; }
+.qt-torn-rows { display: flex; flex-direction: column; gap: 5px; }
+.qt-torn-row { display: grid; grid-template-columns: minmax(120px, 1.1fr) auto minmax(120px, 2fr) auto; gap: 10px;
+  align-items: center; font-size: 11.5px; }
+.qt-torn-row.quiet { opacity: 0.55; }
+.qt-torn-name { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qt-torn-band { color: var(--fg-subtle); font-size: 10.5px; white-space: nowrap; }
+.qt-torn-bar { position: relative; height: 12px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; }
+.qt-torn-base { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--fg-muted); z-index: 1; }
+.qt-torn-seg { position: absolute; top: 2px; bottom: 2px; border-radius: 2px; }
+.qt-torn-seg.less { background: var(--color-state-success); opacity: 0.8; }
+.qt-torn-seg.more { background: var(--color-state-error); opacity: 0.8; }
+.qt-torn-v { color: var(--fg-muted); font-size: 10.5px; white-space: nowrap; text-align: right; }
+@media (max-width: 760px) {
+  .qt-torn-row { grid-template-columns: 1fr auto; }
+  .qt-torn-bar { grid-column: 1 / -1; }
+}
+
+/* What each measure buys: a table in the app's own idiom, the quiet rows being the ones
+   the simulation's grain would explain. */
+.qb-late { color: var(--color-state-warning); }
+.ft-race { display: block; font-size: 11px; color: var(--fg-muted); margin-top: 2px; }
+.qt-worth-h { width: 100%; background: none; border: none; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+.qt-worth-h .caret { margin-right: 8px; }
+.qt-worth-read { margin: 0 0 12px; font-size: 13px; line-height: 1.5; }
+.qt-worth-tbl-wrap { overflow-x: auto; }
+.qt-worth-tbl { min-width: 720px; }
+.qt-worth-tbl th.num, .qt-worth-tbl td.num { text-align: right; white-space: nowrap; }
+.qt-worth-state { color: var(--fg-muted); font-size: 12px; white-space: nowrap; }
+.qt-worth-quiet td { opacity: 0.55; }
+.di-dist { margin-left: 6px; font-size: 9.5px; color: var(--fg-subtle); letter-spacing: 0.03em; }
 .qt-break { margin-top: 10px; }
 .qt-break-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
 .qt-break-sum { font-size: 11.5px; color: var(--color-state-warning); font-weight: 650; }
 .qt-break-caught { font-style: normal; color: var(--color-state-info, var(--primary)); }
 /* Ring legend footnote + the effect class on a measure chip in the per-step breakdown.
-   A class shown "off" acts somewhere other than on reaching this step. */
+   The class is a label and nothing more. It used to be struck through where the class
+   acts elsewhere than on this step (a deterrent, a backup), and a struck word reads as
+   "not valid" to every reader who did not write the rule; the tooltip says the channel. */
 .mc-ring-sub { color: var(--fg-subtle); font-size: 10.5px; margin-top: 2px; }
 .dd-cls { margin-left: 6px; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em;
   font-weight: 700; color: var(--fg-muted); }
-.dd-cls.off { opacity: 0.55; text-decoration: line-through; text-decoration-thickness: 1px; }
 .qt-break-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--bg-hover);
   border: 1px solid var(--hairline); }
 .qt-break-seg { display: block; height: 100%; min-width: 1px; transition: width .25s var(--ease); }
@@ -1472,6 +1552,7 @@ button.hm-cell:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm,
    somebody reasoned out should not look the same. */
 .cal-grade { margin-left: 9px; padding: 1px 7px; border-radius: var(--radius-pill); font-size: 10px;
   font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; vertical-align: middle; cursor: help; }
+.cal-grade.own { background: color-mix(in oklch, var(--color-state-info, #3d7fd1) 20%, transparent); color: var(--color-state-info, #3d7fd1); }
 .cal-grade.measured { background: color-mix(in oklch, var(--color-state-success, #3fb950) 20%, transparent); color: var(--color-state-success, #3fb950); }
 .cal-grade.derived { background: color-mix(in oklch, var(--primary) 18%, transparent); color: var(--primary); }
 .cal-grade.judgement { background: var(--bg-hover); color: var(--fg-muted); }
@@ -1515,6 +1596,36 @@ select.btn { display: inline-block; width: auto; flex: none; line-height: 1.4; }
 .dial-row { display: flex; align-items: center; gap: 14px; padding: 4px 8px; border-radius: 7px; }
 .dial-row:hover { background: var(--bg-hover); }
 .dial-k { flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--fg-muted); }
+/* A row the reader can add to a technique table, and the control that takes one away. */
+.cal-add-tech { border-top: 1px dashed var(--hairline); margin-top: 4px; padding-top: 8px; }
+
+/* Chapters: the calibration as a table of contents that opens where the reader looks.
+   A chapter head reads like a row - name, one line of what it holds, whether edited,
+   how many tables - and the depth inside it is a quieter row of the same shape. */
+.cal-chapter { border: 1px solid var(--border); border-radius: 12px; margin: 10px 0; background: var(--bg-0); overflow: hidden; }
+.cal-chapter.open { border-color: var(--border-strong); }
+.cal-chapter-h { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; background: none; border: none;
+  font: inherit; color: inherit; cursor: pointer; text-align: left; }
+.cal-chapter-h:hover { background: var(--bg-hover); }
+.cal-chapter-t { font-size: 14px; font-weight: 650; white-space: nowrap; }
+.cal-chapter-lead { font-size: 12px; color: var(--fg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cal-chapter-n { font-size: 11px; color: var(--fg-subtle); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cal-chapter-h .cal-edited { position: static; margin: 0; }
+.cal-chapter-b { padding: 0 14px 14px; border-top: 1px solid var(--hairline); }
+.cal-depth { margin: 12px 0 0; border: 1px dashed var(--border); border-radius: 10px; }
+.cal-depth-h { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 12px; background: none; border: none;
+  font: inherit; font-size: 12.5px; color: var(--fg-muted); cursor: pointer; text-align: left; }
+.cal-depth-h:hover { color: var(--fg); background: var(--bg-hover); }
+.cal-depth.open > .cal-depth-h { color: var(--fg); }
+.cal-depth-b { padding: 0 12px 12px; }
+@media (max-width: 760px) {
+  .cal-chapter-lead { display: none; }
+}
+.cal-add-sel, .cal-add-free { font: inherit; font-size: 12px; padding: 4px 8px; border: 1px solid var(--border);
+  border-radius: 7px; background: var(--bg-input); color: var(--fg); }
+.cal-add-sel { max-width: 260px; }
+.cal-add-free { width: 120px; }
+.cal-drop { padding: 2px 7px; color: var(--fg-subtle); }
 .dial-k em { display: block; font-style: normal; font-size: 11px; color: var(--fg-subtle); }
 .dial-k.pair { display: flex; gap: 6px; flex-wrap: wrap; }
 .dial { display: flex; align-items: center; gap: 10px; flex: 0 0 268px; }
@@ -1756,11 +1867,17 @@ select.chip.ex-cand-type { display: inline-block; width: auto; cursor: pointer; 
 .ex-ctx-text mark { background: color-mix(in oklch, var(--primary) 26%, transparent);
   color: var(--fg); border-radius: 3px; padding: 1px 2px; }
 /* Measures on a step are a list, so they read as one: every chip the full width of the
-   card, the name cut where it runs out rather than each chip a different length. */
+   card, the name cut where it runs out rather than each chip a different length.
+   These cards sit inside a `.tbl` detail row, so `.tbl .chip` was catching them and
+   the intent above never arrived: `max-width: 15ch` held the chip at 110px inside a
+   373px card, `display: inline-block` stopped the label being a flex item, and the
+   ellipsis never appeared because what overflowed was a child element, which
+   `text-overflow` does not see. Measured in harness/mitigation-cards.mjs. */
 .kcc-mit .multi { flex-direction: column; align-items: stretch; gap: 5px; }
-.kcc-mit .multi .chip { width: 100%; justify-content: flex-start; }
-.kcc-mit .multi .chip .chip-lbl { flex: 1; min-width: 0; overflow: hidden;
+.kcc-mit .multi .chip { display: flex; width: 100%; max-width: none; justify-content: flex-start; overflow: hidden; }
+.kcc-mit .multi .chip .chip-lbl { flex: 1 1 auto; min-width: 0; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; }
+.kcc-mit .multi .chip > :not(.chip-lbl) { flex: none; }
 .kcc-mit .multi select { width: 100%; min-width: 0; }
 
 /* What each class of measure did to one factor. A row per class, its effect on the right
@@ -1881,3 +1998,113 @@ select.chip.ex-cand-type { display: inline-block; width: auto; cursor: pointer; 
 .cell-toggle.locked { cursor: not-allowed; opacity: 0.75; box-shadow: none; }
 .cell-toggle.locked:hover { transform: none; background: color-mix(in oklch, var(--color-state-success) 22%, transparent);
   border-color: color-mix(in oklch, var(--color-state-success) 55%, transparent); color: var(--fg); font-weight: 600; }
+
+/* ── Study-wide search ───────────────────────────────────────────────────────
+ *
+ * A sheet rather than a dialog: it is opened, read and left again, often several times
+ * in a row, so it sits high in the window and keeps its input under the cursor. The hits
+ * are ONE column of rows, like a table with the columns taken away: title, where it was
+ * found, and on the right which type in which workshop. A row unfolds in place into a
+ * short preview and the way onward - so the list stays a list, and the eye runs down it
+ * instead of across a grid. */
+.gs-open { gap: 7px; }
+.gs-sheet { display: flex; flex-direction: column; align-self: start; margin-top: 6vh;
+  width: min(820px, 94vw); max-height: 84vh; background: var(--bg-sheet);
+  border: 1px solid var(--border-strong); border-radius: 16px; overflow: hidden;
+  box-shadow: var(--shadow-lg), var(--edge-top);
+  animation: rise 0.22s var(--ease); }
+.gs-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--hairline); }
+.gs-head > svg { color: var(--fg-subtle); flex: none; }
+.gs-input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--fg);
+  font-size: 16px; font-weight: 500; padding: 4px 0; }
+.gs-input::placeholder { color: var(--fg-subtle); font-weight: 400; }
+.gs-count { font-size: 11.5px; color: var(--fg-subtle); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.gs-facets { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 9px 16px;
+  border-bottom: 1px solid var(--hairline); background: color-mix(in oklch, var(--bg-hover) 40%, transparent); }
+.gs-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: var(--radius-pill);
+  border: 1px solid var(--border); background: var(--bg-0); color: var(--fg-muted); font-size: 11px;
+  font-weight: 550; cursor: pointer; transition: border-color 0.14s, color 0.14s, background 0.14s; }
+.gs-chip:hover { border-color: var(--border-strong); color: var(--fg); }
+.gs-chip.on { border-color: color-mix(in oklch, var(--ws, var(--primary)) 60%, transparent);
+  background: color-mix(in oklch, var(--ws, var(--primary)) 14%, transparent); color: var(--fg); }
+.gs-dot { width: 7px; height: 7px; border-radius: 2px; background: var(--ws, var(--primary)); flex: none; }
+.gs-n { font-family: var(--font-mono); font-size: 10px; color: var(--fg-subtle); font-variant-numeric: tabular-nums; }
+.gs-chip.on .gs-n { color: var(--fg-muted); }
+.gs-sep { width: 1px; height: 16px; background: var(--hairline); margin: 0 3px; }
+.gs-clear { margin-left: auto; }
+
+.gs-body { flex: 1; min-height: 0; overflow-y: auto; background: var(--bg-sheet); }
+.gs-empty { padding: 28px 24px; color: var(--fg-muted); max-width: 62ch; }
+.gs-empty p { margin: 0 0 8px; }
+
+/* The list: one column of boxes with air between them. Each hit is its own card - a
+ * hairline border, a little radius, the workshop colour as the left edge - so the eye
+ * can count them, and an unfolded one reads as a box that grew rather than a row that
+ * swallowed its neighbours. */
+.gs-list { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 16px; }
+.gs-row { position: relative; cursor: pointer; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--bg-0); overflow: hidden;
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s; }
+.gs-row::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  background: var(--ws, var(--primary)); opacity: 0.7; }
+.gs-row:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.gs-row.on { border-color: color-mix(in oklch, var(--primary) 55%, var(--border)); }
+.gs-row.on::before, .gs-row.open::before { opacity: 1; }
+.gs-row.open { background: color-mix(in oklch, var(--ws, var(--primary)) 5%, var(--bg-0));
+  border-color: color-mix(in oklch, var(--ws, var(--primary)) 40%, var(--border)); box-shadow: var(--shadow-sm); }
+.gs-row.set-back .gs-title { color: var(--fg-muted); }
+.gs-row-main { display: grid; grid-template-columns: 18px 1fr auto; gap: 10px; align-items: start; padding: 11px 14px 11px 16px; }
+.gs-row .caret { margin-top: 3px; color: var(--fg-subtle); display: inline-flex; transition: transform 0.14s var(--ease); }
+.gs-row .caret.open { transform: rotate(90deg); }
+.gs-row-text { min-width: 0; }
+/* Inline, not flex: a flex title would make the <mark> a flex item and put gaps around it. */
+.gs-title { font-size: 13.5px; font-weight: 600; line-height: 1.35; }
+.gs-back { margin-left: 8px; font-size: 10px; font-weight: 600; color: var(--color-state-warning); text-transform: uppercase; letter-spacing: 0.3px; }
+.gs-snip { margin-top: 2px; font-size: 12px; color: var(--fg-muted); line-height: 1.45;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gs-snip-quiet { color: var(--fg-subtle); }
+.gs-field { color: var(--fg-subtle); font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; margin-right: 6px; }
+.gs-row-where { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; padding-top: 1px; white-space: nowrap; }
+.gs-type { font-size: 11.5px; color: var(--fg-muted); }
+.gs-ws { font-size: 10px; color: var(--ws, var(--primary)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+/* The found word: a quiet blue, not the warning amber - nothing is wrong with it. */
+.gs-title mark, .gs-snip mark, .gs-preview mark { background: color-mix(in oklch, var(--color-state-info) 22%, transparent);
+  color: var(--fg); border-radius: 3px; padding: 0 1px; box-decoration-break: clone; }
+
+/* The unfolded preview: the same detail language as a table row's detail, kept short. */
+.gs-preview { margin: 0 14px 12px 44px; padding: 12px 14px; cursor: default;
+  background: var(--bg-sheet); border: 1px solid var(--hairline); border-radius: 10px;
+  animation: fade 0.16s var(--ease); }
+.gs-pv-text { margin-bottom: 10px; }
+.gs-pv-text p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--fg); }
+.gs-pv-facts { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 12px; }
+.gs-pv-facts > div { display: flex; align-items: baseline; gap: 6px; font-size: 12px; min-width: 0; }
+.gs-pv-facts dt { color: var(--fg-subtle); font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
+.gs-pv-facts dd { margin: 0; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 34ch; }
+.gs-pv-actions { display: flex; gap: 8px; }
+
+@media (max-width: 760px) {
+  .gs-sheet { margin-top: 2vh; max-height: 92vh; }
+  .gs-row-main { grid-template-columns: 18px 1fr; }
+  .gs-row-where { grid-column: 2; flex-direction: row; gap: 8px; align-items: baseline; }
+  .gs-preview { margin-left: 14px; }
+}
+
+/* The row a search hit landed on. A pulse rather than a state: it says "here", then gets
+ * out of the way, so the table looks like itself again once the eye has arrived. */
+@keyframes row-arrive {
+  0%, 55% { background-color: color-mix(in oklch, var(--ws-color, var(--primary)) 24%, var(--bg-hover)); }
+  100% { background-color: var(--bg-hover); }
+}
+@keyframes row-arrive-bar {
+  0%, 55% { box-shadow: inset 4px 0 0 var(--ws-color, var(--primary)); }
+  100% { box-shadow: inset 4px 0 0 transparent; }
+}
+tr.row-revealed > td { animation: row-arrive 2.4s var(--ease) forwards; }
+tr.row-revealed > td:first-child { animation: row-arrive 2.4s var(--ease) forwards, row-arrive-bar 2.4s var(--ease) forwards; }
+
+@media (max-width: 760px) {
+  .gs-sheet { margin-top: 2vh; max-height: 92vh; }
+  .gs-grid { grid-template-columns: 1fr; }
+}

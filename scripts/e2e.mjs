@@ -123,9 +123,16 @@ try {
   // Every row of the break-down opens where its number came from: the records behind
   // it, their state, how they combined, and what that made the bar.
   ok("break-down rows are clickable", (await page.locator(".qb-rows .qb-row").count()) >= 3);
-  await page.locator(".qb-rows .qb-row").nth(1).click();
-  await page.waitForSelector(".ft-card", { timeout: 5000 });
-  const bx = await page.locator(".ft-card").innerText();
+  // The row of a step that carries more than one preventive measure, so the combination
+  // is on show; which row that is depends on the sample, so it is looked for.
+  let bx = "";
+  for (let i = 0; i < await page.locator(".qb-rows .qb-row").count(); i++) {
+    await page.locator(".qb-rows .qb-row").nth(i).click();
+    await page.waitForSelector(".ft-card", { timeout: 5000 });
+    bx = await page.locator(".ft-card").innerText();
+    if (/1 − \(1 − /.test(bx)) break;
+    await page.locator(".ft-head .btn").click(); await page.waitForTimeout(150);
+  }
   ok("...naming the measures behind the number, with their state",
     /measures you recorded on this step/i.test(bx) && /Preventive/.test(bx) && /Implemented/.test(bx));
   // Every figure in the popup has to carry the arithmetic that produced it - otherwise
@@ -946,6 +953,22 @@ try {
       (await tbl.locator(".cell-toggle.locked").count()) === before + 1);
   }
   ok("the tactic heatmap carries a colour key", (await page.locator(".hm-key .hm-key-bar i").count()) >= 4);
+  // Zero defence has two causes and they call for different work: nobody has been here,
+  // or what is here is not in force yet. The key has to name the second, or a study of
+  // planned controls reads as a study of none.
+  ok("...and names the hatch that means recorded but not in force",
+    /includes measures still planned/i.test(await page.locator(".hm-key").innerText()));
+  // Two of the sample's measures are planned, so the tactics they sit on are hatched and
+  // the others are not - a marker that is always on says as little as one never on.
+  {
+    const hatched = await page.locator(".hm-cell.pending").count();
+    const tiles = await page.locator(".hm-cell").count();
+    ok("...and hatches the tactics whose measures are still planned, not every tile",
+      hatched > 0 && hatched < tiles, `${hatched} of ${tiles}`);
+    ok("...and a tile carries one figure, the target staying in its tooltip",
+      (await page.locator(".hm-cell.pending").first().innerText()).trim().match(/^\d+%$/) !== null
+      && /once the measures/.test(await page.locator(".hm-cell.pending").first().getAttribute("title")));
+  }
   ok("the heatmap scrolls instead of clipping its columns", (await page.locator(".hm-scroll").count()) > 0);
   await page.locator(".mc-ring").scrollIntoViewIfNeeded();
   await page.waitForTimeout(200);
@@ -1183,11 +1206,41 @@ try {
   await page.locator(".ws-tab", { hasText: "Compliance" }).click();
   await page.waitForTimeout(250);
 
+  // WHICH TABLES OFFER SEARCH. The two a catalogue fills, and no others - a row count
+  // decided it before, and a reader cannot see a rule that turns on at nine rows and off
+  // at seven. Measured across every tab, because the defect was on the tabs nobody was
+  // looking at: seven panels carried a search box, five of them with four rows or fewer.
+  {
+    const searched = [];
+    for (const name of ["Assets & Scope", "Risk Sources", "Strategic Scenarios",
+      "Operational Scenarios", "Treatment", "Compliance"]) {
+      const tab = page.locator(".ws-tab", { hasText: name }).first();
+      if (!(await tab.count())) continue;
+      await tab.click();
+      await page.waitForTimeout(300);
+      searched.push(...await page.evaluate(() => [...document.querySelectorAll(".panel")]
+        .filter((p) => p.querySelector(".tbl-search"))
+        .map((p) => p.querySelector(".panel-head h3")?.textContent?.trim() ?? "?")));
+    }
+    ok("only the catalogue tables offer a search box",
+      searched.length === 3 && searched.every((s) => /Requirements|Security Measures|Coverage/.test(s)),
+      searched.join(" · "));
+    // The column choice answers a different question and keeps its own rule: a wide table
+    // cannot be read in one piece however short it is.
+    await page.locator(".ws-tab", { hasText: "Strategic Scenarios" }).click();
+    await page.waitForTimeout(300);
+    const short = page.locator(".panel", { has: page.locator(".cols-btn") }).first();
+    ok("a wide table still offers its columns without a search box",
+      (await short.count()) > 0 && (await short.locator(".tbl-search").count()) === 0);
+    await page.locator(".ws-tab", { hasText: "Compliance" }).click();
+    await page.waitForTimeout(300);
+  }
+
   // Search, facets and grouping. The requirements table spans three frameworks, which is
-  // what makes grouping worth having; the toolbar only appears once a table is long enough.
+  // what makes grouping worth having.
   {
     const tools = page.locator(".panel", { has: page.locator(".tbl-tools") }).first();
-    ok("a long table offers a toolbar", (await tools.count()) > 0);
+    ok("the requirements table offers a toolbar", (await tools.count()) > 0);
     // Scoped to the panel the toolbar belongs to: the tab may carry other tables.
     const rows = () => tools.locator(".tbl tbody tr.row-clickable").count();
     const all = await rows();
@@ -1588,6 +1641,15 @@ try {
   const calBody = await page.locator(".cal").innerText();
   ok("calibration lists both sides of the model",
     /how often a scenario is attempted/i.test(calBody) && /what an attempt is up against/i.test(calBody));
+  // Sixteen tables open as four chapters, folded: an overview first, the tables on a
+  // click. Everything is opened here so the checks below can see it all.
+  ok("the calibration opens as five folded chapters", (await page.locator(".cal-chapter").count()) === 5
+    && (await page.locator(".cal-table").count()) === 0);
+  for (let i = 0; i < 5; i++) { await page.locator(".cal-chapter-h").nth(i).click(); await page.waitForTimeout(80); }
+  ok("...each naming what it holds and how many tables", (await page.locator(".cal-chapter-n").allInnerTexts()).join(" ") === "9 tables 5 tables 2 tables 4 tables 1 table");
+  const depths = await page.locator(".cal-depth-h").count();
+  for (let i = 0; i < depths; i++) { await page.locator(".cal-depth-h").nth(i).click(); await page.waitForTimeout(80); }
+  ok("...with the fine tuning one fold deeper", depths === 3 && (await page.locator(".cal-table").count()) === 21);
   ok("every table asks a question in plain words", (await page.locator(".cal-q").count()) >= 8);
   ok("...and can explain where its numbers came from", (await page.locator(".cal-why").count()) >= 8);
   ok("it starts out at the defaults", /defaults, unchanged/i.test(await page.locator(".cal-intro").innerText()));
@@ -1602,7 +1664,8 @@ try {
     /what it changes/i.test(whyBox) && /how the default was arrived at/i.test(whyBox));
   const grades = await page.locator(".cal-grade").allInnerTexts();
   ok("every table declares how much it rests on", grades.length >= 10
-    && grades.every((g) => /measured|derived|judgement/i.test(g)));
+    && grades.every((g) => /measured|derived|judgement|own/i.test(g)));
+  ok("...one of them the organisation's own record", grades.some((g) => /^own$/i.test(g)));
   ok("...and they are not all the same claim", new Set(grades.map((g) => g.toLowerCase())).size >= 2);
   ok("a measured or derived table names its source", /source/i.test(
     await page.locator(".cal-table").first().locator(".cal-why-box").innerText()));
@@ -1706,7 +1769,19 @@ try {
   // Sector lives in the scope workshop, with what it actually does to the numbers.
   await page.locator(".ws-tab", { hasText: "Assets" }).click();
   await page.waitForTimeout(350);
-  ok("the sector picker sits in workshop 1", (await page.locator(".panel-head select").count()) === 1);
+  ok("the sector picker sits in workshop 1", (await page.locator(".panel-head select.sect-pick").count()) === 1);
+  // Size beside it: the second dimension of the base rate, and the stronger one.
+  ok("...with the organisation's size beside it", (await page.locator(".panel-head select.size-pick").count()) === 1
+    && (await page.locator(".panel-head select.size-pick option").count()) === 5);
+  {
+    const sel = page.locator(".panel-head select.size-pick");
+    await sel.selectOption("Large (250-999)"); await page.waitForTimeout(300);
+    ok("...and a chosen size says what it does to the attack rate", /every class ×1\.6/.test(await page.locator(".sect-eff").innerText()));
+    await sel.selectOption("Large (250-999)"); await page.waitForTimeout(100);
+    await sel.selectOption("Medium (50-249)"); await page.waitForTimeout(200);
+  }
+  ok("...and the organisation's response readiness beside them - the defender's side of the race",
+    (await page.locator(".panel-head select.readiness-pick").count()) === 1 && (await page.locator(".panel-head select.readiness-pick option").count()) === 5);
   ok("...as the app's standard panel", (await page.locator(".panel.ws-accent .panel-head h3").first().innerText()) === "Sector");
   const sectTxt = await page.locator(".sect-body").innerText();
   ok("...and explains what is specific about the chosen sector", /clinical systems|availability/i.test(sectTxt));
@@ -1717,9 +1792,9 @@ try {
   // changes every risk figure in the study. That has to be a recorded change like any
   // other - it used to be written straight into the study with nothing in the log.
   {
-    const before = await page.locator(".panel-head select").inputValue();
+    const before = await page.locator(".panel-head select.sect-pick").inputValue();
     const other = before === "Manufacturing" ? "Finance & insurance" : "Manufacturing";
-    await page.locator(".panel-head select").selectOption(other);
+    await page.locator(".panel-head select.sect-pick").selectOption(other);
     await page.waitForTimeout(400);
     await page.locator(".sidebar .nav-item", { hasText: "Timeline" }).click();
     await page.waitForTimeout(400);
@@ -1735,7 +1810,7 @@ try {
     await page.waitForTimeout(400);
     await page.locator(".ws-tab", { hasText: "Assets" }).click();
     await page.waitForTimeout(350);
-    await page.locator(".panel-head select").selectOption(before);
+    await page.locator(".panel-head select.sect-pick").selectOption(before);
     await page.waitForTimeout(350);
   }
 

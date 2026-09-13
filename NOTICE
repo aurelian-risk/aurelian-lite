@@ -20,7 +20,9 @@ Reference frameworks & datasets bundled with the application
 
 MITRE ATT&CK(R)
   A curated subset of ATT&CK tactic and technique identifiers and names is
-  bundled to power an offline typeahead while describing kill-chain steps.
+  bundled to power an offline typeahead while describing kill-chain steps, and
+  the Enterprise "mitigates" relationships (mitigation ids and names, version
+  19.2) reduced to those techniques, for the technique-fit checks.
   ATT&CK(R) and related content are (C) The MITRE Corporation and are used under
   the MITRE ATT&CK Terms of Use:
   https://attack.mitre.org/resources/legal-and-branding/terms-of-use/

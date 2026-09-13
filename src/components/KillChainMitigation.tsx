@@ -6,10 +6,12 @@
 import { Fragment, useState } from "react";
 import { t as tr } from "../domain/i18n";
 import type { EntityRecord, Study, Taxonomy } from "../domain/types";
-import { getType, toggleStates, recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
+import { getType, isSetBack, toggleStates, recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
 import { useStore } from "../domain/store";
-import { effectClassOf, effectChannel } from "../domain/controls";
-import { statusColor } from "../domain/viz";
+import { effectClassOf, effectChannel, defendsStep } from "../domain/controls";
+import { scaleColor, statusColor } from "../domain/viz";
+import { measureEfficacyInForce, measureEfficacyOf, stepCoverage } from "../domain/quantModel";
+import { DEFAULT_CALIBRATION } from "../domain/calibration";
 import { EntityModal } from "./EntityModal";
 import { MultiSelect, Icon } from "./ui";
 import { CatalogAdd } from "./CatalogAdd";
@@ -49,20 +51,13 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
   // amber → orange → red as coverage drops. (Status stays in the tooltip.)
   const implF = measureType.fields.find((f) => f.key === "implementation_level");
   const statusF = measureType.fields.find((f) => f.key === "status");
-  const levelColor = (v: number, max: number) => {
-    const r = max ? v / max : 0;
-    return r >= 1 ? "var(--color-state-success)"                                        // full → green
-      : r >= 0.66 ? "var(--color-state-warning)"                                         // substantial → amber
-      : r >= 0.34 ? "color-mix(in oklch, var(--color-state-warning) 45%, var(--color-state-error))" // partial → orange
-      : "var(--color-state-error)";                                                      // minimal → red
-  };
   const implBar = (id: string) => {
     if (!implF) return null;
     const m = measures.find((x) => x.id === id); if (!m) return null;
     const v = Number(m.values[implF.key] ?? 0); if (!v) return null;
     const max = scaleMax(implF);
     const s = statusF ? String(m.values[statusF.key] ?? "") : "";
-    const c = levelColor(v, max);
+    const c = scaleColor(v, max, true);
     return (
       <span className="scale mini" title={`Implementation: ${scaleLabel(implF, v)}${s ? ` · status: ${s}` : ""}`}>
         {Array.from({ length: max }, (_, i) => i + 1).map((n) => <i key={n} className={n <= v ? "on" : ""} style={{ ["--sev" as string]: c }} />)}
@@ -76,19 +71,36 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
     const cls = m ? effectClassOf(m) : null;
     return (
       <>
-        {cls && <span className={"dd-cls" + (m && defends(m) ? "" : " off")}
-          title={`${cls}: ${effectChannel(cls)}`}>{cls.slice(0, 4).toLowerCase()}</span>}
+        {cls && <span className="dd-cls" title={`${cls}: ${effectChannel(cls)}`}>{cls.slice(0, 4).toLowerCase()}</span>}
         {s && <span className="status-dot" title={`Status: ${s}`} style={{ background: statusColor(s) }} />}
         {implBar(id)}
       </>
     );
   };
   const stepMeasures = (stepId: string) => measures.filter((m) => Array.isArray(m.values[coversF.key]) && (m.values[coversF.key] as string[]).includes(stepId));
-  // A step is DEFENDED only by measures that resist or watch it. A corrective or
-  // deterrent measure attached here is real work, but it does not stop the attacker
-  // reaching this step - so it must not make the step look handled.
-  const defends = (m: EntityRecord) => { const c = effectClassOf(m); return c === "Preventive" || c === "Detective"; };
-  const isDefended = (stepId: string) => stepMeasures(stepId).some(defends);
+  // What a step is defended TO, not whether somebody has been here. Presence was the old
+  // reading and it said green on a study of measures that are all still on paper: a
+  // planned control with implementation "none" is worth nothing, which the quantification
+  // and the tactic heatmap both already said while this table said "defended".
+  // Same arithmetic as `coverageOf`, down to leaving out measures that are set back.
+  const cal = study.calibration ?? DEFAULT_CALIBRATION;
+  const defending = (stepId: string) => stepMeasures(stepId).filter((m) => defendsStep(m) && !isSetBack(tax, m));
+  const defenceOf = (stepId: string) => stepCoverage(defending(stepId).map((m) => measureEfficacyOf(tax, m, cal)));
+  /** A measure whose lifecycle withholds part of its value - planned, recommended - is
+   *  drawn HATCHED, the same hatch the tactic tile wears for the same reason. One mark,
+   *  one meaning, in both places. The card said it in figures first ("63 % → 69 %"), then
+   *  in words ("1 still planned"); both were a second statement beside the chip that
+   *  already carried the status, and neither read on its own. */
+  const stillPlanned = (m: EntityRecord) => measureEfficacyInForce(tax, m, cal) - measureEfficacyOf(tax, m, cal) > 1e-9;
+  const chipClass = (id: string) => { const m = measures.find((x) => x.id === id); return m && stillPlanned(m) ? "pending" : ""; };
+  /** The four things a step can be, which is one more than the colours used to say. */
+  type StepState = "open" | "otherFactor" | "pending" | "defended";
+  const stateOf = (stepId: string): StepState => {
+    const here = stepMeasures(stepId);
+    if (defenceOf(stepId) > 0.001) return "defended";
+    if (here.some(defendsStep)) return "pending";     // recorded, none of it in force yet
+    return here.length ? "otherFactor" : "open";
+  };
   const assign = (stepId: string, ids: string[]) => {
     for (const m of measures) {
       const cur = Array.isArray(m.values[coversF.key]) ? (m.values[coversF.key] as string[]) : [];
@@ -117,6 +129,7 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
         <h3>{tr('ui.killchainmitigation.kill-chain-mitigation', 'Kill-chain mitigation')}</h3>
         <span className="badge">{ops.length}</span>
         <span className="spacer" />
+        <span className="hint hm-key-pending"><i /> {tr("ui.killchainmitigation.key-planned", "still planned")}</span>
         <span className="hint">{tr("ui.killchainmitigation.expand-a-scenario", "expand a scenario to assign measures to each step")}</span>
       </div>
       <div className="panel-body">
@@ -129,11 +142,17 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
               <tbody>
                 {ops.map((op) => {
                   const steps = stepsOf(op.id);
-                  const covered = steps.filter((s) => isDefended(s.id)).length;
+                  const states = steps.map((s) => stateOf(s.id));
+                  const covered = states.filter((s) => s === "defended").length;
+                  const pending = states.filter((s) => s === "pending").length;
                   const isOpen = open.has(op.id);
+                  // A chain whose measures are all still planned is not the same as one
+                  // nobody has treated, so it does not get the same colour.
                   const sc = steps.length === 0 ? "var(--fg-subtle)"
-                    : covered === 0 ? "var(--color-state-error)"
-                    : covered === steps.length ? "var(--color-state-success)" : "var(--color-state-warning)";
+                    : covered === steps.length ? "var(--color-state-success)"
+                    : covered > 0 ? "var(--color-state-warning)"
+                    : pending > 0 ? "var(--color-state-info, var(--primary))"
+                    : "var(--color-state-error)";
                   return (
                     <Fragment key={op.id}>
                       <tr className={"row-clickable" + (isOpen ? " expanded" : "")} onClick={() => toggle(op.id)}>
@@ -142,7 +161,10 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
                         </td>
                         <td>
                           <span className="badge" style={{ background: `color-mix(in oklch, ${sc} 20%, transparent)`, color: "var(--fg)" }}>
-                            {steps.length === 0 ? "no steps" : `${covered}/${steps.length} defended`}
+                            {steps.length === 0 ? tr("ui.killchainmitigation.no-steps", "no steps")
+                              : `${covered}/${steps.length} ${tr("ui.killchainmitigation.defended", "defended")}`}
+                            {pending > 0 && <span className="kcc-pending-n">{" "}
+                              {tr("ui.killchainmitigation.n-planned", "+{0} planned").replace("{0}", String(pending))}</span>}
                           </span>
                         </td>
                       </tr>
@@ -155,11 +177,12 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
                                 <div className="kcc-lane">
                                   {steps.map((s, i) => {
                                     const mit = stepMeasures(s.id);
-                                    const gap = !mit.some(defends);
-                                    const otherFactor = gap && mit.length > 0;   // measures here, but none of them stops him
+                                    const state = stateOf(s.id);
+                                    const gap = state !== "defended";
+                                    const otherFactor = state === "otherFactor";
                                     return (
                                       <Fragment key={s.id}>
-                                        <div className={"kcc-card" + (gap ? " gap" : "")}>
+                                        <div className={"kcc-card" + (state === "defended" ? "" : state === "pending" ? " pending" : " gap")}>
                                           <div className="kcc-top">
                                             <span className="kcc-idx">{i + 1}</span>
                                             {tacticF && s.values[tacticF.key] ? <span className="kcc-tactic">{String(s.values[tacticF.key])}</span> : null}
@@ -167,13 +190,21 @@ export function KillChainMitigation({ tax, study, color }: { tax: Taxonomy; stud
                                           <button className="kcc-name" onClick={() => setRec(s)}>{recordTitle(stepType, s)}</button>
                                           {techF && s.values[techF.key] ? <span className="kcc-tech mono">{String(s.values[techF.key])}</span> : null}
                                           <div className="kcc-mit">
-                                            <span className="hint" title={otherFactor ? "these measures act on the loss or on the number of attacks - none of them prevents or detects an attacker at this step" : undefined}>
-                                              {otherFactor ? "damage control only - nothing prevents or detects here" : gap ? "no mitigation" : "mitigations"}
+                                            <span className="hint" title={otherFactor
+                                              ? tr("ui.killchainmitigation.other-factor-why", "these measures act on the loss or on the number of attacks - none of them prevents or detects an attacker at this step")
+                                              : state === "pending"
+                                                ? tr("ui.killchainmitigation.pending-why", "a measure counts for how far it is rolled out and where it stands in its lifecycle - these are recorded here but not yet in force")
+                                                : undefined}>
+                                              {otherFactor ? tr("ui.killchainmitigation.damage-control-only", "damage control only - nothing prevents or detects here")
+                                                : state === "pending" ? tr("ui.killchainmitigation.planned-not-in-force", "planned - not in force yet")
+                                                : gap ? tr("ui.killchainmitigation.no-mitigation", "no mitigation")
+                                                : tr("ui.killchainmitigation.mitigations", "mitigations")}
+
                                             </span>
                                             <MultiSelect options={measureOpts} selected={mit.map((m) => m.id)} onChange={(ids) => assign(s.id, ids)}
                                               placeholder="+ measure" emptyHint="no security measures yet"
                                               onClickChip={(id) => { const m = measures.find((x) => x.id === id); if (m) setRec(m); }}
-                                              renderChipExtra={chipExtra}
+                                              renderChipExtra={chipExtra} chipClass={chipClass}
                                               action={measureTarget ? { label: "From a catalogue…", onPick: () => setPickFor(s.id) } : undefined} />
                                           </div>
                                         </div>

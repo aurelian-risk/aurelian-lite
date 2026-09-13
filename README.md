@@ -129,9 +129,10 @@ control that mitigates it.
   between machines, optionally under **strong AES-256 encryption**. It is the only way your data
   ever travels.
 
-> **How the numbers are produced** is written up in [docs/method.md](docs/method.md) - where each
-> factor comes from, how the chain is traversed, how the model was calibrated, and what it does
-> not claim.
+> **How the numbers are produced** is written up in [docs/method.md](docs/method.md) - the
+> attempt rate, the demand of the chain, the traversal with its gates and races, what each
+> class of measure moves, the shipped calibration with its source per table, and what the
+> model does not claim.
 
 ## Assisted extraction - a model that runs on your machine
 
@@ -228,7 +229,9 @@ Full details are in [`NOTICE`](NOTICE) (data sources and trademarks) and
 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) (software licenses).
 
 - **MITRE ATT&CK®** - a curated subset of ATT&CK tactic and technique identifiers
-  and names powers the offline kill-chain typeahead (labelled "TTP" in the UI).
+  and names powers the offline kill-chain typeahead (labelled "TTP" in the UI); the
+  Enterprise mitigation relationships (v19.2), reduced to those techniques, drive the
+  technique-fit checks.
   ATT&CK® content is © The MITRE Corporation, used under the
   [ATT&CK Terms of Use](https://attack.mitre.org/resources/legal-and-branding/terms-of-use/).
   MITRE ATT&CK® is a registered trademark of The MITRE Corporation.

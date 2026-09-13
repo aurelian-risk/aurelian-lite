@@ -241,5 +241,32 @@ ok("...and mermaid is nowhere in it", !/mermaid/i.test(md));
   ok("a register of dozens is set dense", /<table class="dense">/.test(reportHtml(tax, many)));
 }
 
+// ── what the number hangs on ────────────────────────────────────────────────
+// The report says where a figure is fragile, or it invites more confidence than it earns.
+{
+  const html = reportHtml(tax, study);
+  const n = (html.match(/What the mean annual loss hangs on/g) || []).length;
+  const quantified = (html.match(/Expected annual loss \(ALE\)/g) || []).length;
+  ok("every quantified scenario carries a tornado", n > 0 && n === quantified, `${n} of ${quantified}`);
+  ok("...and a sentence naming what the figure hangs on", (html.match(/The figure hangs on/g) || []).length === n);
+  ok("...whose bars carry the band walked and the two means it gave", /\d+%–\d+% → €[\d.,]+[kM]?–€[\d.,]+[kM]?/.test(html));
+  ok("...and the legend names the simulation's own noise", /within the simulation's own noise \(±€/.test(html));
+}
+
+// ── what each measure buys ──────────────────────────────────────────────────
+{
+  const html = reportHtml(tax, study);
+  ok("the report ranks what each measure buys", /### What each measure buys|What each measure buys<\/h3>/.test(html));
+  ok("...with today and once-complete side by side", /Avoids today<\/th><th class="num">Once complete/.test(html));
+  ok("...and says where the ranking comes from when nothing is priced", /No measure carries a cost; ranked by loss avoided/.test(html));
+}
+
+// ── links ───────────────────────────────────────────────────────────────────
+{
+  const html = reportHtml(tax, study);
+  ok("the link to the repository opens in a new tab - the report is the tab",
+    /<a href="https:\/\/github\.com\/aurelian-risk\/aurelian-lite" target="_blank" rel="noopener noreferrer">/.test(html));
+}
+
 console.log(`\n${pass}/${pass + fail} report assertions passed · ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -11,8 +11,8 @@ import type { EntityRecord, Study, Taxonomy } from "../domain/types";
 import { getType, isSetBack, recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
 import { useStore } from "../domain/store";
 import { DEFAULT_CALIBRATION, type Calibration } from "../domain/calibration";
-import { simulate, type QuantInputs, type QuantResult, type Range } from "../domain/montecarlo";
-import { deriveInputs, meanOf, measureEfficacyOf, type Derived, type Prov } from "../domain/quantModel";
+import { simulate, type ChainStep, type Pace, type QuantInputs, type QuantResult, type Range } from "../domain/montecarlo";
+import { deriveInputs, meanOf, measureEfficacyOf, measureStrengthOf, type Derived, type Prov } from "../domain/quantModel";
 import { effectClassOf, effectChannel } from "../domain/controls";
 import type { DemandBreakdown } from "../domain/demand";
 import { likelihoodCheck } from "../domain/frequency";
@@ -21,10 +21,13 @@ import { FactorTrace } from "./FactorTrace";
 import { EntityModal } from "./EntityModal";
 import { Icon, Overlay } from "./ui";
 import { copyText, quantLlmMarkdown } from "../domain/clipboard";
+import { carriers, sensitivityOf, type Sensitivity } from "../domain/sensitivity";
+import { measureWorth, type WorthResult } from "../domain/worth";
+import { logTicks } from "../domain/viz";
 
 const UNIT: Record<keyof QuantInputs, Unit> = {
   attemptRate: "rate", adversaryStrength: "prob", controlStrength: "prob",
-  directImpact: "money", cascadingLikelihood: "prob", cascadingImpact: "money",
+  directImpact: "money", cascadingLikelihood: "prob", cascadingImpact: "money", respondDays: "days",
 };
 export interface FConf { lo: number; hi: number; log: boolean }
 const FCONF: Record<keyof QuantInputs, FConf> = {
@@ -32,6 +35,7 @@ const FCONF: Record<keyof QuantInputs, FConf> = {
   adversaryStrength: { lo: 0, hi: 1, log: false }, controlStrength: { lo: 0, hi: 1, log: false },
   directImpact: { lo: 1e3, hi: 5e7, log: true }, cascadingLikelihood: { lo: 0, hi: 1, log: false },
   cascadingImpact: { lo: 1e3, hi: 5e7, log: true },
+  respondDays: { lo: 0.01, hi: 120, log: true },
 };
 
 export function QuantificationView({ tax, study, color }: { tax: Taxonomy; study: Study; color: string }) {
@@ -63,6 +67,7 @@ export function QuantificationView({ tax, study, color }: { tax: Taxonomy; study
   if (!opType || !allOps.length) return null;
 
   return (
+    <>
     <div className="panel ws-accent" style={{ ["--ws-color" as string]: color, marginBottom: 20 }}>
       <div className="panel-head">
         <h3>{tr('ui.quantification.quantitative-risk', 'Quantitative risk')}</h3>
@@ -112,6 +117,100 @@ export function QuantificationView({ tax, study, color }: { tax: Taxonomy; study
         })}
       </div>
     </div>
+    {ops.length > 0 && <WorthPanel tax={tax} study={study} ops={ops} color={color} />}
+    </>
+  );
+}
+
+// ── What each measure buys ────────────────────────────────────────────────────
+//
+// The ranking a budget meeting asks for: loss avoided per year by each measure attached
+// to the quantified scenarios, today and once the measure is complete, against what it
+// costs. Computed on demand - it is two simulations per measure per scenario - and the
+// rows are the headline's own arithmetic with one measure taken out or finished.
+function WorthPanel({ tax, study, ops, color }: { tax: Taxonomy; study: Study; ops: EntityRecord[]; color: string }) {
+  const [open, setOpen] = useState(false);
+  const [res, setRes] = useState<WorthResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [rec, setRec] = useState<EntityRecord | null>(null);
+  const cal = study.calibration ?? DEFAULT_CALIBRATION;
+  const key = JSON.stringify(study.entities) + "|" + JSON.stringify(study.quant) + "|" + ops.map((o) => o.id).join() + "|" + JSON.stringify(cal);
+  useEffect(() => { setRes(null); }, [key]);
+  useEffect(() => {
+    if (!open || res) return;
+    setBusy(true);
+    const t = window.setTimeout(() => { setRes(measureWorth(study, tax, ops, cal)); setBusy(false); }, 30);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, res, key]);
+  const mType = (m: EntityRecord) => getType(tax, m.type)!;
+  const anyCost = !!res?.rows.some((r) => r.costPerYear != null);
+  const state = (m: EntityRecord) => {
+    const t = mType(m);
+    const implF = t.fields.find((f) => f.key === "implementation_level"), statusF = t.fields.find((f) => f.key === "status");
+    const st = statusF ? String(m.values[statusF.key] ?? "") : "";
+    const lv = implF && typeof m.values[implF.key] === "number" ? scaleLabel(implF, m.values[implF.key] as number, t) : "";
+    return [st.toLowerCase(), lv].filter(Boolean).join(" · ");
+  };
+  return (
+    <div className="panel ws-accent qt-worth" style={{ ["--ws-color" as string]: color, marginBottom: 20 }}>
+      <button type="button" className="panel-head qt-worth-h" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span className={"caret" + (open ? " open" : "")}><Icon.chevron /></span>
+        <h3>What each measure buys</h3>
+        <span className="spacer" />
+        <span className="hint">loss avoided per year, today and once complete, against what it costs</span>
+      </button>
+      {open && (
+        <div className="panel-body qt-worth-b">
+          {!res ? <div className="hint" style={{ padding: "8px 0" }}>{busy ? "computing…" : ""}</div> : !res.rows.length ? (
+            <div className="hint" style={{ padding: "8px 0" }}>No measure is attached to a quantified scenario yet - put measures on the chain's steps or its assets.</div>
+          ) : (
+            <>
+              <p className="qt-worth-read">
+                {(() => {
+                  const top = res.rows[0];
+                  const nm = recordTitle(mType(top.measure), top.measure);
+                  const gain = top.complete ? top.avoided : top.avoidedIfComplete;
+                  return top.complete
+                    ? `${nm} is worth the most today: ${fmtVal(gain, "money")} a year of loss that would otherwise be carried.`
+                    : `Finishing ${nm} buys the most: ${fmtVal(gain, "money")} a year, against ${fmtVal(top.avoided, "money")} it buys as it stands.`;
+                })()}
+                {anyCost ? " Ranked by loss avoided per euro of yearly cost where a cost is given." : " No measure carries a cost yet; ranked by loss avoided. Enter costs on the measures to rank per euro."}
+              </p>
+              <div className="qt-worth-tbl-wrap">
+                <table className="tbl qt-worth-tbl">
+                  <thead><tr>
+                    <th>Measure</th><th>Class · state</th><th className="num">avoids today</th><th className="num">once complete</th>
+                    <th className="num">cost / yr</th><th className="num">per €, today</th><th className="num">per €, complete</th>
+                  </tr></thead>
+                  <tbody>
+                    {res.rows.map((r) => {
+                      const quiet = Math.max(r.avoided, r.avoidedIfComplete) <= 3 * res.noise;
+                      return (
+                        <tr key={r.measure.id} className={"row-clickable" + (quiet ? " qt-worth-quiet" : "")} onClick={() => setRec(r.measure)}
+                          title={quiet ? "within the simulation's own noise - not a finding about this measure" : "open the measure"}>
+                          <td>{recordTitle(mType(r.measure), r.measure)}</td>
+                          <td className="qt-worth-state">{String(r.measure.values.measure_type ?? "unclassified")} · {state(r.measure)}</td>
+                          <td className="num mono">{fmtVal(r.avoided, "money")}</td>
+                          <td className="num mono">{r.complete ? <span className="hint">complete</span> : fmtVal(r.avoidedIfComplete, "money")}</td>
+                          <td className="num mono">{r.costPerYear != null ? fmtVal(r.costPerYear, "money") : <span className="hint">—</span>}</td>
+                          <td className="num mono">{r.perEuro != null ? `${r.perEuro.toFixed(1)}×` : <span className="hint">—</span>}</td>
+                          <td className="num mono">{r.perEuroIfComplete != null && !r.complete ? `${r.perEuroIfComplete.toFixed(1)}×` : <span className="hint">—</span>}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="qb-foot">
+                <span>the study's quantified scenarios carry {fmtVal(res.base, "money")} a year · simulation noise ±{fmtVal(res.noise, "money")} · a one-off cost is spread over {res.horizonYears} years · {res.iterations.toLocaleString()} years per run</span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+      {rec && <EntityModal type={getType(tax, rec.type)!} tax={tax} study={study} record={rec} onClose={() => setRec(null)} />}
+    </div>
   );
 }
 
@@ -144,9 +243,20 @@ function QuantTree({ tax, study, op, color }: { tax: Taxonomy; study: Study; op:
     }, 400);
     return () => window.clearTimeout(t);
   }, [overrides, op.id, setQuantTuning]);
-  const inputs: QuantInputs = { ...derived.inputs, ...overrides };
-  const inputsWith: QuantInputs = { ...derivedWith.inputs, ...overrides };
-  const inputsWithout: QuantInputs = { ...derivedWithout.inputs, ...overrides };
+  // An override replaces the three points, not the reading: a money factor stays
+  // lognormal however the points were typed, and an override saved before the reading
+  // existed is read the way the derived factor is now.
+  const applyOv = (d: QuantInputs): QuantInputs => {
+    const out = { ...d };
+    for (const k of Object.keys(overrides) as (keyof QuantInputs)[]) {
+      const ov = overrides[k]; if (!ov) continue;
+      out[k] = { ...ov, ...(d[k].dist ? { dist: d[k].dist } : {}) };
+    }
+    return out;
+  };
+  const inputs: QuantInputs = applyOv(derived.inputs);
+  const inputsWith: QuantInputs = applyOv(derivedWith.inputs);
+  const inputsWithout: QuantInputs = applyOv(derivedWithout.inputs);
   const setOv = (k: keyof QuantInputs) => (r: Range) => setOverrides((p) => ({ ...p, [k]: r }));
   const resetOv = (k: keyof QuantInputs) => () => setOverrides((p) => { const n = { ...p }; delete n[k]; return n; });
 
@@ -163,8 +273,8 @@ function QuantTree({ tax, study, op, color }: { tax: Taxonomy; study: Study; op:
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
       const t0 = performance.now();
-      setResWith(simulate(inputsWith, ITER, derivedWith.chain));
-      setResWithout(simulate(inputsWithout, ITER, derivedWithout.chain));
+      setResWith(simulate(inputsWith, ITER, derivedWith.chain, undefined, cal.time));
+      setResWithout(simulate(inputsWithout, ITER, derivedWithout.chain, undefined, cal.time));
       setComputeMs(performance.now() - t0);
       setComputing(false);
     }, 120);
@@ -227,6 +337,7 @@ function QuantTree({ tax, study, op, color }: { tax: Taxonomy; study: Study; op:
       </div>
       {resWith && resWithout && <LossDistribution resultWith={resWith} resultWithout={resWithout} active={residual ? "with" : "without"} accent={color}
         derived={derivedWith} tax={tax} cal={cal} benefit={benefit} onTraceControls={() => setTrace("controlStrength")} />}
+      {resWith && <Tornado inputs={inputsWith} chain={derivedWith.chain} derived={derivedWith} tax={tax} pace={cal.time} />}
 
       <div className="qt-tree">
         <NodeRow op="×" title={tr('ui.quantification.loss-event-frequency', 'Loss event frequency')} value={fmtVal(lef, "rate")} />
@@ -253,7 +364,7 @@ function QuantTree({ tax, study, op, color }: { tax: Taxonomy; study: Study; op:
         {" · "}drag any curve to tune a factor - saved with the study · derived values come from the study inputs
       </div>
       {trace && <FactorTrace fkey={trace} range={inputs[trace]} vals={{
-        rate: M("attemptRate"), adv: M("adversaryStrength"), ctl: M("controlStrength"),
+        rate: M("attemptRate"), adv: M("adversaryStrength"), ctl: M("controlStrength"), respond: M("respondDays"),
         tef, vuln, lef, direct: primary, cascL: M("cascadingLikelihood"), cascI: M("cascadingImpact"),
         secondary, lm: primary + secondary, ale: nodes.ale,
       }} derived={derived} tax={tax} unit={UNIT[trace]} conf={FCONF[trace]} accent={color}
@@ -441,6 +552,7 @@ function BreakExplain({ what, result, derived, tax, cal, onClose }: {
                     recordTitle(getType(tax, m.type)!, m),
                     p1(measureEfficacyOf(tax, m, cal)),
                     <>{effectClassOf(m)} — {effectChannel(effectClassOf(m))}<br />
+                      {m.values.strength != null && <>strength ×{measureStrengthOf(tax, m, cal).toPrecision(2)} · </>}
                       rolled out {lvlOf(m)} (×{lvlW(m).toPrecision(2)}) · {String(m.values.status ?? "no status")} (×{stW(m).toPrecision(2)})
                       {" "}· most one measure can protect {p0(cal.effect.controlCeiling)}</>,
                   )}
@@ -519,12 +631,19 @@ function BreakExplain({ what, result, derived, tax, cal, onClose }: {
                 // NAME: a value the calibration does not know changes nothing, which is
                 // worth a line rather than a silence.
                 const sc = derived.frequency.sector;
-                return line("of which the sector",
+                const sz = derived.frequency.size;
+                const sizeLine = derived.frequency.own ? null : line("of which the size",
+                  sz.factor === 1 ? "×1 — medium" : `×${sz.factor.toPrecision(2)}`,
+                  sz.name ? <>{sz.name} — larger organisations are hit more often in every source that has a denominator</>
+                    : <>no size set, so the medium organisation the bundled rates describe</>);
+                if (derived.frequency.own) return line("of which the sector", "×1 — own record",
+                  <>the base rate comes from <b>your own record</b> (the calibration's "Your own record" table), which is already a record of this sector</>);
+                return <>{line("of which the sector",
                   sc.factor === 1 ? "×1 — no exception" : `×${sc.factor.toPrecision(2)}`,
                   !sc.name ? <>no sector set, so the published rates are used as they are</>
                     : !sc.known ? <><b>&ldquo;{sc.name}&rdquo; is not a sector this calibration knows</b> — it is matched by name, so nothing is applied</>
                       : <>{sc.name} — exceptions apply per actor class, and only where one is documented</>,
-                  sc.known ? "" : "bx-warn");
+                  sc.known ? "" : "bx-warn")}{sizeLine}</>;
               })()}
               {line("× the share that gets through", p1(result.vuln), <>measured over the simulation, not set anywhere</>)}
               {line(<b>loss events per year</b>, result.lef.toPrecision(2),
@@ -570,10 +689,8 @@ function LossDistribution({ resultWith, resultWithout, active, accent, derived, 
   const mWith = resultWith.ale.mean, mWithout = resultWithout.ale.mean;
   const warn = "var(--color-state-warning)";
   const withEmph = active === "with";
-  // €-ticks (1-2-5 per decade) within the range - the log-axis reference points.
-  const ticks: number[] = [];
-  for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++)
-    for (const mant of [1, 2, 5]) { const t = mant * Math.pow(10, e); if (t >= lo * 0.999 && t <= hi * 1.001) ticks.push(t); }
+  // €-ticks within the range - the log-axis reference points, thinned to what fits.
+  const ticks = logTicks(lo, hi, 9);
 
   return (
     <div className="qt-dist">
@@ -680,11 +797,106 @@ function ChainBreak({ result, derived, tax, cal, accent, benefit, onTrace }: {
         {row(result.vuln, "reach the objective - these become loss events", "through", "@through")}
       </div>
       <div className="qb-foot">
-        {result.detected > 0.002 && <span>Of those, {Math.round(result.detected * 100)} were stopped by detection and response rather than by resistance.</span>}
+        {result.detected > 0.002 && <span>Of those, {Math.round(result.detected * 100)} were caught in time - seen at a watched step, with the alert and the response ahead of the objective{result.raceMargin != null && result.raceMargin > 0 ? `, typically with ${fmtVal(result.raceMargin, "days")} to spare` : ""}.</span>}
+        {result.seenLate > 0.002 && <span className="qb-late"> {Math.round(result.seenLate * 100)} were seen and still reached the objective: the alert came, the objective came first{result.raceMargin != null && result.raceMargin < 0 ? ` - typically ${fmtVal(-result.raceMargin, "days")} too late` : ""}.</span>}
         <button type="button" className="qt-break-trace" onClick={onTrace}>
           controls cut the mean loss by {fmtVal(benefit, "money")} · trace →
         </button>
       </div>
+    </div>
+  );
+}
+
+// ── Which assumption carries the number ──────────────────────────────────────
+//
+// One factor at a time is pinned to the ends of its band and the mean annual loss
+// re-simulated; the swing, sorted, is a tornado. The factor tree says HOW the number was
+// derived, this says WHERE it is fragile - the honest picture of a model that works with
+// judgements, and the answer to "four defensible ratings multiplied into what?".
+// Computed on demand, not with the headline: it is thirty simulations, and most readers
+// of the tree never ask the question.
+const FACTOR_TITLE: Record<keyof QuantInputs, string> = {
+  attemptRate: "Attempts per year", adversaryStrength: "Attacker capability", controlStrength: "What an attempt has to beat",
+  directImpact: "Direct impact", cascadingLikelihood: "Cascading likelihood", cascadingImpact: "Cascading impact",
+  respondDays: "Time to act on an alert",
+};
+function Tornado({ inputs, chain, derived, tax, pace }: { inputs: QuantInputs; chain: ChainStep[] | undefined; derived: Derived; tax: Taxonomy; pace: Pace }) {
+  const [open, setOpen] = useState(false);
+  const [sens, setSens] = useState<Sensitivity | null>(null);
+  const [busy, setBusy] = useState(false);
+  const key = JSON.stringify(inputs) + "|" + JSON.stringify(chain);
+  // A change to any input voids the tornado: it is recomputed when next looked at, not
+  // eagerly - the headline result already costs a run on every keystroke.
+  useEffect(() => { setSens(null); }, [key]);
+  useEffect(() => {
+    if (!open || sens) return;
+    setBusy(true);
+    const t = window.setTimeout(() => { setSens(sensitivityOf(inputs, chain, undefined, undefined, pace)); setBusy(false); }, 30);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, sens, key]);
+
+  const titleOf = (k: string): { name: string; unit: Unit } => {
+    if (k.startsWith("step:")) {
+      const sc = derived.coverage.steps.find((s) => s.step.id === k.slice(5));
+      return { name: `gate at ${sc ? recordTitle(getType(tax, sc.step.type)!, sc.step) : "step"}`, unit: "prob" };
+    }
+    return { name: FACTOR_TITLE[k as keyof QuantInputs], unit: UNIT[k as keyof QuantInputs] };
+  };
+
+  return (
+    <div className="qt-torn">
+      <button type="button" className="qt-torn-h" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span className={"caret" + (open ? " open" : "")}><Icon.chevron /></span>
+        <span className="qt-shift-lbl">What this number hangs on</span>
+        <span className="qb-scale">each factor walked over its own band, the rest held</span>
+      </button>
+      {open && !sens && <div className="hint" style={{ padding: "6px 0 10px" }}>{busy ? "computing…" : ""}</div>}
+      {open && sens && (() => {
+        const carry = carriers(sens);
+        const lo = Math.min(sens.base, ...sens.swings.map((w) => Math.min(w.low, w.high)));
+        const hi = Math.max(sens.base, ...sens.swings.map((w) => Math.max(w.low, w.high)));
+        const span = Math.max(1e-9, hi - lo);
+        const X = (v: number) => ((v - lo) / span) * 100;
+        const named = carry.map((w) => titleOf(w.key).name);
+        const next = sens.swings[carry.length];
+        const nextShare = next && sens.swings[0].swing > 0 ? Math.round((next.swing / sens.swings[0].swing) * 100) : 0;
+        const list = named.length === 1 ? named[0] : `${named.slice(0, -1).join(", ")} and ${named[named.length - 1]}`;
+        return (
+          <>
+            <p className="qt-torn-read">
+              {named.length === 0
+                ? "No factor moves the mean by more than the simulation's own noise: the number is spread over its inputs rather than hanging on one."
+                : !next
+                  ? `The mean hangs on ${list}; nothing else moves it by more than the simulation's own noise.`
+                  : `The mean hangs on ${list}; the next factor, ${titleOf(next.key).name.replace(/^gate at /, "the gate at ")}, moves it ${nextShare}% as far.`}
+            </p>
+            <div className="qt-torn-rows" role="img" aria-label="swing of the mean annual loss per factor">
+              {sens.swings.map((w) => {
+                const t = titleOf(w.key);
+                const below = Math.min(w.low, w.high), above = Math.max(w.low, w.high);
+                const quiet = w.swing <= 3 * sens.noise;
+                return (
+                  <div key={w.key} className={"qt-torn-row" + (quiet ? " quiet" : "")}
+                    title={`${t.name}: ${fmtVal(w.band.min, t.unit)} → ${fmtVal(w.low, "money")} · ${fmtVal(w.band.max, t.unit)} → ${fmtVal(w.high, "money")}`}>
+                    <span className="qt-torn-name">{t.name}</span>
+                    <span className="qt-torn-band mono">{fmtVal(w.band.min, t.unit)}–{fmtVal(w.band.max, t.unit)}</span>
+                    <span className="qt-torn-bar">
+                      <i className="qt-torn-base" style={{ left: `${X(sens.base)}%` }} />
+                      {below < sens.base && <i className="qt-torn-seg less" style={{ left: `${X(below)}%`, width: `${X(Math.min(above, sens.base)) - X(below)}%` }} />}
+                      {above > sens.base && <i className="qt-torn-seg more" style={{ left: `${X(Math.max(below, sens.base))}%`, width: `${X(above) - X(Math.max(below, sens.base))}%` }} />}
+                    </span>
+                    <span className="qt-torn-v mono">{fmtVal(below, "money")} – {fmtVal(above, "money")}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="qb-foot">
+              <span>mean {fmtVal(sens.base, "money")} at the derived values · simulation noise ±{fmtVal(sens.noise, "money")} · {sens.swings.length * 2 + 2} runs of {sens.iterations.toLocaleString()} years</span>
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

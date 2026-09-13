@@ -10,13 +10,20 @@
 import { pathToFileURL } from "node:url";
 
 const need = (n) => { const v = process.env[n]; if (!v) { console.error(`set ${n}`); process.exit(2); } return v; };
-const { chainOf, coverageOf, deriveInputs } = await import(pathToFileURL(need("MOD_Q")).href);
-const { simulate } = await import(pathToFileURL(need("MOD_MC")).href);
+const { chainOf, coverageOf, deriveInputs, measureEfficacyOf, stepDefence, stepPotential } = await import(pathToFileURL(need("MOD_Q")).href);
+const { simulate, draw, lognormalOf } = await import(pathToFileURL(need("MOD_MC")).href);
 const { DEFAULT_TAXONOMY } = await import(pathToFileURL(need("MOD_TAX")).href);
 const { treatmentEffect, residualPos } = await import(pathToFileURL(need("MOD_T")).href);
-const { DEFAULT_CALIBRATION } = await import(pathToFileURL(need("MOD_CAL")).href);
+const { DEFAULT_CALIBRATION, baseRateOf, ownRateOf, reconcileCalibration } = await import(pathToFileURL(need("MOD_CAL")).href);
 const { demandOf } = await import(pathToFileURL(need("MOD_D")).href);
 const { attemptsPerYear, likelihoodCheck } = await import(pathToFileURL(need("MOD_F")).href);
+const { sensitivityOf, carriers } = await import(pathToFileURL(need("MOD_SE")).href);
+const { DEFAULT_TAXONOMY: TAX } = await import(pathToFileURL(need("MOD_P")).href);
+const FRAMEWORKS = await import(pathToFileURL(need("MOD_FW")).href);
+const { measureWorth, costPerYearOf, isComplete } = await import(pathToFileURL(need("MOD_W")).href);
+const AM = await import(pathToFileURL(need("MOD_AM")).href);
+const { lintStudy } = await import(pathToFileURL(need("MOD_LINT")).href);
+const { makeSampleStudy } = await import(pathToFileURL(need("MOD_S")).href);
 
 /** A calibration with one table swapped out. Used to pin the demand explicitly in the
  *  COMPARISON cases below - those exist to test the arithmetic, not the derivation. */
@@ -33,7 +40,8 @@ const near = (a, b, eps = 1e-9) => Math.abs(a - b) < eps;
 const tax = DEFAULT_TAXONOMY;
 const ts = "2026-01-01T00:00:00.000Z";
 const rec = (id, type, values) => ({ id, type, values, createdAt: ts, updatedAt: ts });
-const study = (entities) => ({ id: "s", name: "t", organization: "", scope: "", createdAt: ts, updatedAt: ts, entities });
+const study = (entities, extra = {}) => ({ id: "s", name: "t", organization: "", scope: "", createdAt: ts, updatedAt: ts, entities, ...extra });
+const PACE = DEFAULT_CALIBRATION.time;
 
 const OP = rec("op", "operational_scenario", { name: "op", strategic_scenario: "ss", likelihood: 3, difficulty: 2 });
 /** A step of the chain. `preds` are step ids, `cov` = implementation level of a covering measure (0 = undefended). */
@@ -242,14 +250,20 @@ const plain = vulnOf(undefined);
   const preventive = derive(measure("Preventive", { covers: ["b"] }));
   ok("only a preventive control builds a barrier", !!preventive.chain.find((s) => s.id === "b").gate);
 
-  // Detection is worth what the response makes of it.
-  const seenOnly = derive(measure("Detective", { covers: ["b"] })).chain.find((s) => s.id === "b").interrupt;
-  const bothSt = study([...world, OP, ...chainOf3,
-    rec("m", "security_measure", { name: "m", measure_type: "Detective", status: "Implemented", implementation_level: 4, covers: ["b"] }),
-    rec("m2", "security_measure", { name: "m2", measure_type: "Corrective", status: "Implemented", implementation_level: 4, protects: ["sa"] })]);
-  const withResponse = deriveInputs(bothSt, tax, OP, true).chain.find((s) => s.id === "b").interrupt;
-  ok("detection is worth far more once someone can respond to it", withResponse > seenOnly * 2,
-    `${seenOnly.toFixed(3)} -> ${withResponse.toFixed(3)}`);
+  // Detection is worth what the response makes of it - and the response is a time, the
+  // study's readiness, not a proxy read off the backups.
+  const seenSt = study([...world, OP, ...chainOf3, measure("Detective", { covers: ["b"] })]);
+  const seen = deriveInputs(seenSt, tax, OP, true);
+  ok("a watched step carries an alert time and a duration, and the study a response time",
+    !!seen.chain.find((s) => s.id === "b").detect && seen.chain.every((s) => s.duration.mode > 0) && seen.inputs.respondDays.mode > 0);
+  ok("readiness not set reads as a plan on paper, and says so", seen.prov.respondDays.estimated === true
+    && seen.inputs.respondDays.mode === DEFAULT_CALIBRATION.time.respondDays["Plan on paper"].mode);
+  const fast = deriveInputs({ ...seenSt, readiness: "24x7 response with authority to contain" }, tax, OP, true);
+  const none = deriveInputs({ ...seenSt, readiness: "No response capability" }, tax, OP, true);
+  ok("a readier organisation acts faster", fast.inputs.respondDays.mode < seen.inputs.respondDays.mode && seen.inputs.respondDays.mode < none.inputs.respondDays.mode);
+  const vulnOf2 = (d) => simulate(d.inputs, 40000, d.chain, undefined, PACE).vuln;
+  ok("detection is worth far more once someone can respond to it in time", vulnOf2(fast) < vulnOf2(none) * 0.7,
+    `${vulnOf2(none).toFixed(3)} -> ${vulnOf2(fast).toFixed(3)}`);
 
   // An interruption has to show up as a stop, and be reported as a catch.
   const det = derive(measure("Detective", { covers: ["b"] }));
@@ -333,7 +347,7 @@ const plain = vulnOf(undefined);
 {
   const world = (id, type, values) => rec(id, type, values);
   /** A `n`-step chain, the first `g` steps covered by one measure each. */
-  const situation = ({ cap, bar, n, g, lvl = 4, status = "Implemented", cls = "Preventive", responds = false }) => {
+  const situation = ({ cap, bar, n, g, lvl = 4, status = "Implemented", cls = "Preventive", readiness, strength }) => {
     const op = world("op", "operational_scenario", { name: "op", strategic_scenario: "ss", likelihood: 3, difficulty: 2 });
     const ents = [
       world("ba", "business_asset", { name: "ba", criticality: 4 }),
@@ -342,10 +356,9 @@ const plain = vulnOf(undefined);
       world("ss", "strategic_scenario", { name: "ss", risk_origin: "ro", feared_event: "fe", likelihood: 3, gravity: 3 }), op,
     ];
     for (let i = 0; i < n; i++) ents.push(world(`s${i}`, "kill_chain_step", { name: `s${i}`, operational_scenario: "op", step_order: i + 1, predecessors: i ? [`s${i - 1}`] : [] }));
-    for (let i = 0; i < g; i++) ents.push(world(`m${i}`, "security_measure", { name: `m${i}`, measure_type: cls, status, implementation_level: lvl, covers: [`s${i}`] }));
-    if (responds) ents.push(world("mr", "security_measure", { name: "mr", measure_type: "Corrective", status: "Implemented", implementation_level: 4, covers: [`s${n - 1}`] }));
-    const d = deriveInputs(study(ents), tax, op, true, withDemand(bar));
-    return simulate(d.inputs, 40000, d.chain).vuln;
+    for (let i = 0; i < g; i++) ents.push(world(`m${i}`, "security_measure", { name: `m${i}`, measure_type: cls, status, implementation_level: lvl, covers: [`s${i}`], ...(strength ? { strength } : {}) }));
+    const d = deriveInputs(study(ents, readiness ? { readiness } : {}), tax, op, true, withDemand(bar));
+    return simulate(d.inputs, 40000, d.chain, undefined, PACE).vuln;
   };
   const band = (name, v, lo, hi) => ok(name, v >= lo && v <= hi, `${(v * 100).toFixed(1)}% not in ${lo * 100}-${hi * 100}%`);
 
@@ -358,10 +371,22 @@ const plain = vulnOf(undefined);
   // Watching without blocking: intrusions are seen and often broken off, but a
   // determined actor still finishes often enough - which is why monitoring alone is
   // never called a defence.
-  band("monitoring without barriers helps, but is not a wall",
-    situation({ cap: 3, bar: 0.30, n: 5, g: 3, cls: "Detective", responds: true }), 0.30, 0.70);
-  band("detection nobody can act on is worth far less",
-    situation({ cap: 3, bar: 0.30, n: 5, g: 3, cls: "Detective" }), 0.55, 0.90);
+  // Watching without blocking is a race (docs/detection-time-race.md). A typical
+  // posture - a SIEM with rules, a plan on paper - catches part of what it sees against
+  // a crew that finishes in days; Sophos 2024/25 put attacks stopped before encryption
+  // near a fifth. Telemetry with an exercised response catches most, never all; a
+  // response that has to be organised on the day loses nearly every race.
+  band("monitoring without barriers, a SIEM and a plan on paper: helps, but is not a wall",
+    situation({ cap: 3, bar: 0.30, n: 5, g: 3, cls: "Detective", strength: 2, readiness: "Plan on paper" }), 0.25, 0.60);
+  band("telemetry and an exercised response catch most, not all",
+    situation({ cap: 3, bar: 0.30, n: 5, g: 3, cls: "Detective", readiness: "Exercised plan" }), 0.02, 0.25);
+  band("detection with no response capability is worth far less",
+    situation({ cap: 3, bar: 0.30, n: 5, g: 3, cls: "Detective", readiness: "No response capability" }), 0.40, 0.95);
+  ok("...and the order holds: readier catches more",
+    situation({ cap: 3, bar: 0.30, n: 5, g: 3, cls: "Detective", readiness: "24x7 response with authority to contain" })
+    < situation({ cap: 3, bar: 0.30, n: 5, g: 3, cls: "Detective", readiness: "Exercised plan" })
+    && situation({ cap: 3, bar: 0.30, n: 5, g: 3, cls: "Detective", readiness: "Exercised plan" })
+    < situation({ cap: 3, bar: 0.30, n: 5, g: 3, cls: "Detective", readiness: "No response capability" }));
 
   // Security is never finished: no amount of control removes a capable adversary.
   const hardened = situation({ cap: 4, bar: 0.50, n: 5, g: 5 });
@@ -537,6 +562,391 @@ const plain = vulnOf(undefined);
     entryTechnique: "T1190 Exploit Public-Facing Application" }), F);
   ok("the multipliers together stay inside the cap", worst.total <= F.cap);
   band("...and the busiest plausible case is still a handful a year, not weekly", worst.total, 1, 12);
+}
+
+// ── recorded, but not in force ───────────────────────────────────────────────
+//
+// A measure that is only planned is worth nothing, and that zero used to be the whole
+// story: the tactic heatmap drew it exactly like a step nobody had treated, while the
+// mitigation table called the step defended because SOMETHING pointed at it. Both views
+// now read the pair below, so they cannot say different things about the same step.
+{
+  const s1 = step("s1", 1);
+  const planned = (id, level, status) => rec(id, "security_measure",
+    { name: id, measure_type: "Preventive", status, implementation_level: level, covers: ["s1"] });
+
+  const covOf = (extra) => coverageOf(study([OP, s1, ...extra]), tax, OP).steps[0];
+
+  const bare = covOf([]);
+  ok("a step nobody has treated is undefended", stepDefence(bare) === 0);
+  ok("...and has nothing pending either", stepPotential(tax, bare) === 0);
+
+  const onPaper = covOf([planned("m1", 1, "Planned")]);       // level 1 = "none"
+  ok("a measure that is only planned defends nothing today", stepDefence(onPaper) === 0);
+  ok("...but the step is not the same as an untreated one", stepPotential(tax, onPaper) > 0.5,
+    String(stepPotential(tax, onPaper)));
+
+  const working = covOf([planned("m2", 3, "Implemented")]);
+  ok("a measure in force defends the step", stepDefence(working) > 0);
+  ok("...and adds nothing pending, though it is short of the ceiling",
+    Math.abs(stepPotential(tax, working) - stepDefence(working)) < 1e-9,
+    `${stepPotential(tax, working)} vs ${stepDefence(working)}`);
+
+  const both = covOf([planned("m3", 3, "Implemented"), planned("m4", 1, "Planned")]);
+  ok("a planned measure beside a working one shows as the room it would add",
+    stepPotential(tax, both) > stepDefence(both) && stepDefence(both) > 0,
+    `${stepDefence(both)} → ${stepPotential(tax, both)}`);
+
+  // The lifecycle is what gets lifted, and it is lifted wherever it withholds something -
+  // not only where it withholds everything. This is the case the first cut was blind to:
+  // a control that is half rolled out and still only planned is working AND pending.
+  const halfPlanned = covOf([planned("m6", 2, "Planned")]);
+  ok("a planned measure that is partly rolled out defends something today",
+    stepDefence(halfPlanned) > 0.1 && stepDefence(halfPlanned) < 0.2, String(stepDefence(halfPlanned)));
+  ok("...and is still marked as withheld, at twice the figure",
+    Math.abs(stepPotential(tax, halfPlanned) - 2 * stepDefence(halfPlanned)) < 1e-9,
+    `${stepDefence(halfPlanned)} → ${stepPotential(tax, halfPlanned)}`);
+  const rec2 = covOf([planned("m7", 3, "Recommended")]);
+  ok("a recommended measure shows the far bigger part it withholds",
+    stepPotential(tax, rec2) / stepDefence(rec2) > 6, `${stepDefence(rec2)} → ${stepPotential(tax, rec2)}`);
+
+  // Class discipline holds here too, or the figure would promise defence from a backup.
+  const backup = covOf([rec("m5", "security_measure",
+    { name: "m5", measure_type: "Corrective", status: "Planned", implementation_level: 1, covers: ["s1"] })]);
+  ok("a planned CORRECTIVE measure promises no defence", stepPotential(tax, backup) === 0);
+}
+
+// ── the organisation's own record ───────────────────────────────────────────
+{
+  const F = DEFAULT_CALIBRATION.frequency;
+  const withRecord = (years, organisations, counts) => ({ ...F, history: { years, organisations, counts } });
+  ok("no record: the bundled rate stands", ownRateOf(F, "Cybercriminals") === null
+    && baseRateOf(F, "Cybercriminals", "Healthcare") === baseRateOf(withRecord(0, 1, { Cybercriminals: 9 }), "Cybercriminals", "Healthcare"));
+  const r = withRecord(5, 1, { Cybercriminals: 3 });
+  ok("three operations in five years read as (3 + ½) ÷ 5", Math.abs(ownRateOf(r, "Cybercriminals") - 0.7) < 1e-12, String(ownRateOf(r, "Cybercriminals")));
+  ok("...and replace the bundled rate for that class", baseRateOf(r, "Cybercriminals", "") === 0.7);
+  ok("...with the sector exception no longer applied", baseRateOf(r, "Cybercriminals", "Healthcare") === 0.7
+    && baseRateOf(F, "Cybercriminals", "Healthcare") !== F.baseRate.Cybercriminals);
+  ok("a class the record says nothing about keeps the bundled rate", ownRateOf(r, "Insider") === null
+    && baseRateOf(r, "Insider", "Healthcare") === baseRateOf(F, "Insider", "Healthcare"));
+  ok("zero seen in three years is one in six, not never", Math.abs(ownRateOf(withRecord(3, 1, { Insider: 0 }), "Insider") - 1 / 6) < 1e-12);
+  ok("a pooled record divides by its organisations", Math.abs(ownRateOf(withRecord(2, 10, { Opportunist: 39.5 }), "Opportunist") - 2) < 1e-12);
+  ok("the attempt rate says the base is the record's", attemptsPerYear({ actor: "Cybercriminals", sector: "Healthcare", activity: 0.5, resources: 0.5, relevance: 0.5, pull: "relevance" }, r).own === true
+    && attemptsPerYear({ actor: "Cybercriminals", sector: "Healthcare", activity: 0.5, resources: 0.5, relevance: 0.5, pull: "relevance" }, r).sector.factor === 1
+    && attemptsPerYear({ actor: "Cybercriminals", sector: "Healthcare", activity: 0.5, resources: 0.5, relevance: 0.5, pull: "relevance" }, F).own === false);
+  ok("a stored calibration from before the record picks it up empty",
+    reconcileCalibration({ frequency: { baseRate: { Opportunist: 2 } } }).frequency.history.years === 0);
+}
+
+// ── a money band read as a lognormal ────────────────────────────────────────
+{
+  let seed = 12345; const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  const r = { min: 4.5e4, mode: 6e5, max: 8e6, dist: "lognormal" };   // the bundled severity-3 band
+  const xs = Array.from({ length: 40000 }, () => draw(rand, r)).sort((a, b) => a - b);
+  const q = (p) => xs[Math.floor(p * xs.length)];
+  ok("the median of the draws is the band's middle point", Math.abs(q(0.5) / r.mode - 1) < 0.05, String(q(0.5)));
+  ok("one draw in twenty falls above the band's top", Math.abs(xs.filter((x) => x > r.max).length / xs.length - 0.05) < 0.01,
+    String(xs.filter((x) => x > r.max).length / xs.length));
+  ok("...and one in twenty below its bottom", Math.abs(xs.filter((x) => x < r.min).length / xs.length - 0.05) < 0.01);
+  const { sigma } = lognormalOf(r);
+  ok("the spread within a band is that of one scenario, not a population", sigma > 1.0 && sigma < 1.8, String(sigma));
+  ok("the bundled bands are symmetric on the log scale, so their points are the percentiles they claim",
+    DEFAULT_CALIBRATION.magnitude.loss.every((b) => Math.abs(Math.log(b.min * b.max) - 2 * Math.log(b.mode)) < 0.05));
+  const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
+  ok("the mean sits well above the median - the tail is there", mean > 1.5 * r.mode, `${mean} vs ${r.mode}`);
+  ok("a PERT band is still bounded", Array.from({ length: 5000 }, () => draw(rand, { min: 1, mode: 2, max: 3 })).every((x) => x >= 1 && x <= 3));
+  ok("the bundled loss bands are lognormal and ordered", DEFAULT_CALIBRATION.magnitude.loss.every((b) => b.dist === "lognormal")
+    && DEFAULT_CALIBRATION.magnitude.loss.every((b, i, a) => i === 0 || b.mode > a[i - 1].mode));
+  ok("the top band's P95 clears IRIS's 95th percentile of 32M", DEFAULT_CALIBRATION.magnitude.loss[3].max >= 3.2e7);
+}
+
+// ── organisation size ───────────────────────────────────────────────────────
+{
+  const F = DEFAULT_CALIBRATION.frequency;
+  const facts = (size) => ({ actor: "Cybercriminals", sector: "", activity: 0.5, resources: 0.5, relevance: 0.5, pull: "relevance", size });
+  ok("unset size is the medium organisation the rates were derived for",
+    baseRateOf(F, "Cybercriminals", "", undefined) === F.baseRate.Cybercriminals && attemptsPerYear(facts(undefined), F).size.factor === 1);
+  ok("medium is the unit", baseRateOf(F, "Cybercriminals", "", "Medium (50-249)") === F.baseRate.Cybercriminals);
+  ok("small is hit less often, large and very large more, in that order",
+    baseRateOf(F, "Cybercriminals", "", "Small (10-49)") < F.baseRate.Cybercriminals
+    && baseRateOf(F, "Cybercriminals", "", "Large (250-999)") > F.baseRate.Cybercriminals
+    && baseRateOf(F, "Cybercriminals", "", "Very large (1000+)") > baseRateOf(F, "Cybercriminals", "", "Large (250-999)"));
+  ok("the Eurostat steps: small 0.73, large 1.6", Math.abs(F.size["Small (10-49)"] - 0.73) < 1e-9 && Math.abs(F.size["Large (250-999)"] - 1.6) < 1e-9);
+  ok("size and sector multiply, and are reported apart", (() => {
+    const b = attemptsPerYear({ ...facts("Large (250-999)"), sector: "Healthcare" }, F);
+    return Math.abs(b.base - F.baseRate.Cybercriminals * 1.25 * 1.6) < 1e-9 && b.size.factor === 1.6 && Math.abs(b.sector.factor - 1.25) < 1e-9;
+  })());
+  ok("a size this calibration has no row for changes nothing", baseRateOf(F, "Cybercriminals", "", "Gigantic") === F.baseRate.Cybercriminals);
+  const own = { ...F, history: { years: 4, organisations: 1, counts: { Cybercriminals: 2 } } };
+  ok("an own record is not scaled by size - it is already of this organisation",
+    baseRateOf(own, "Cybercriminals", "Healthcare", "Very large (1000+)") === 2.5 / 4 && attemptsPerYear({ ...facts("Very large (1000+)"), sector: "Healthcare" }, own).size.factor === 1);
+}
+
+// ── a measure's strength ────────────────────────────────────────────────────
+{
+  const ts = "2026-01-01T00:00:00.000Z";
+  const rec = (id, type, values) => ({ id, type, values, createdAt: ts, updatedAt: ts });
+  const M = (strength) => rec("m", "security_measure", { name: "m", measure_type: "Preventive", status: "Implemented", implementation_level: 4, ...(strength ? { strength } : {}) });
+  const eff = (m) => measureEfficacyOf(tax, m, DEFAULT_CALIBRATION);
+  ok("an unrated measure reaches the ceiling - what every measure did before the rating", eff(M(undefined)) === DEFAULT_CALIBRATION.effect.controlCeiling);
+  ok("very strong is the ceiling too", eff(M(4)) === DEFAULT_CALIBRATION.effect.controlCeiling);
+  ok("weaker ratings reach less of it, in order", eff(M(1)) < eff(M(2)) && eff(M(2)) < eff(M(3)) && eff(M(3)) < eff(M(4)));
+  ok("weak is well below half of the ceiling's worth", eff(M(1)) <= 0.45 * eff(M(4)));
+  ok("strength multiplies with roll-out and lifecycle rather than replacing them",
+    Math.abs(measureEfficacyOf(tax, { ...M(2), values: { ...M(2).values, implementation_level: 2, status: "Planned" } }, DEFAULT_CALIBRATION)
+      - 0.65 * (1 / 3) * DEFAULT_CALIBRATION.effect.controlCeiling * 0.5) < 1e-9);
+  // The library seeds it, with the evidence beside it.
+  const lib = FRAMEWORKS.MEASURE_LIBRARY;
+  const mfa = lib.items.find((it) => it.ref_id === "IAM-01"), training = lib.items.find((it) => it.ref_id === "PPL-01");
+  ok("every library measure carries a strength and its evidence", lib.items.every((it) => it.strength >= 1 && it.strength <= 4 && it.evidence));
+  ok("MFA is rated above awareness training", mfa.strength === 4 && training.strength === 1);
+  ok("...and the seeded measure carries the rating", FRAMEWORKS.measureValues(lib, mfa).strength === 4);
+  ok("a framework item seeds no rating - it says what to do, not how well it works",
+    FRAMEWORKS.measureValues(FRAMEWORKS.NIS2, FRAMEWORKS.NIS2.items[0]).strength === undefined);
+}
+
+// ── correlated control failure: gates on one cause ──────────────────────────
+//
+// Two gates that depend on the same thing are drawn with one position per attempt. Each
+// gate alone must behave exactly as before (the marginal is unchanged); together they
+// must be worth ONE gate when they are the same gate, and somewhere between one and two
+// otherwise. Independence would say two, and that is the overestimate this removes.
+{
+  const inp = {
+    attemptRate: R(4, 5, 6), adversaryStrength: R(0.2, 0.55, 0.9), controlStrength: R(0.1, 0.15, 0.2),
+    directImpact: R(1e5, 1e5, 1e5), cascadingLikelihood: R(0, 0, 0), cascadingImpact: R(0, 0, 0),
+  };
+  const gate = R(0.45, 0.55, 0.65);
+  const one = [{ id: "a", preds: [], join: "all", gate, interrupt: 0, terminal: false },
+    { id: "z", preds: [0], join: "all", gate: null, interrupt: 0, terminal: true }];
+  const two = (group) => [{ id: "a", preds: [], join: "all", gate, interrupt: 0, terminal: false, ...(group ? { group } : {}) },
+    { id: "b", preds: [0], join: "all", gate, interrupt: 0, terminal: false, ...(group ? { group } : {}) },
+    { id: "z", preds: [1], join: "all", gate: null, interrupt: 0, terminal: true }];
+  const v = (chain) => simulate(inp, 40000, chain).vuln;
+  const vOne = v(one), vTwoInd = v(two(null)), vTwoSame = v(two("idp"));
+  ok("two independent gates stop more than one", vTwoInd < vOne * 0.9, `${vTwoInd.toFixed(3)} vs ${vOne.toFixed(3)}`);
+  ok("two identical gates on one cause are worth one gate", Math.abs(vTwoSame - vOne) < 0.02, `${vTwoSame.toFixed(3)} vs ${vOne.toFixed(3)}`);
+  ok("...and the ordering holds: same cause > independent", vTwoSame > vTwoInd);
+  // A single gate in a group is the plain gate: the marginal does not move.
+  const oneGrouped = [{ ...one[0], group: "idp" }, one[1]];
+  ok("a lone gate in a group behaves as it did", Math.abs(v(oneGrouped) - vOne) < 0.02, `${v(oneGrouped).toFixed(3)} vs ${vOne.toFixed(3)}`);
+  // Two different groups are independent of each other.
+  const twoGroups = [{ ...two("x")[0] }, { ...two("y")[1] }, two(null)[2]];
+  ok("gates on different causes are independent", Math.abs(v(twoGroups) - vTwoInd) < 0.02, `${v(twoGroups).toFixed(3)} vs ${vTwoInd.toFixed(3)}`);
+  // Detection shares the cause too: two watched steps on one SIEM catch what one catches.
+  const watch = (group) => [{ id: "a", preds: [], join: "all", gate: null, interrupt: 0.4, terminal: false, ...(group ? { group } : {}) },
+    { id: "b", preds: [0], join: "all", gate: null, interrupt: 0.4, terminal: false, ...(group ? { group } : {}) },
+    { id: "z", preds: [1], join: "all", gate: null, interrupt: 0, terminal: true }];
+  const dInd = simulate(inp, 40000, watch(null)).detected, dSame = simulate(inp, 40000, watch("siem")).detected;
+  ok("two watched steps on one cause catch what one catches, not what two would", dSame < dInd && Math.abs(dSame / dInd - 0.4 / (1 - 0.6 * 0.6)) < 0.08,
+    `${dSame.toFixed(3)} vs ${dInd.toFixed(3)}`);
+}
+{
+  // The cause is read off the strongest defending measure, normalised.
+  const ts = "2026-01-01T00:00:00.000Z";
+  const rec = (id, type, values) => ({ id, type, values, createdAt: ts, updatedAt: ts });
+  const synth = (ents) => ({ id: "s", name: "t", organization: "", scope: "", createdAt: ts, updatedAt: ts, entities: ents });
+  const OP = rec("op", "operational_scenario", { name: "op", strategic_scenario: "ss", likelihood: 3, difficulty: 2 });
+  const S1 = rec("s1", "kill_chain_step", { name: "s1", operational_scenario: "op", step_order: 1 });
+  const S2 = rec("s2", "kill_chain_step", { name: "s2", operational_scenario: "op", step_order: 2 });
+  const M = (id, covers, extra) => rec(id, "security_measure", { name: id, measure_type: "Preventive", status: "Implemented", implementation_level: 4, covers, ...extra });
+  const study = synth([OP, S1, S2, M("m1", ["s1"], { fails_with: " Identity Provider " }), M("m2", ["s2"], { fails_with: "identity provider" }),
+    M("m3", ["s2"], { fails_with: "siem", implementation_level: 2 })]);
+  const cov = coverageOf(study, tax, OP);
+  const chain = chainOf(tax, cov, 0.3);
+  ok("a cause is normalised, so two spellings are one cause", chain[0].group === "identity provider" && chain[1].group === "identity provider");
+  ok("...and the strongest defending measure decides where several name one", chain[1].group !== "siem");
+  const plain = chainOf(tax, coverageOf(synth([OP, S1, S2, M("m1", ["s1"], {}), M("m2", ["s2"], {})]), tax, OP), 0.3);
+  ok("a measure that names nothing ties nothing", plain.every((st) => !st.group));
+}
+
+// ── the output, held against the loss-event sources (sources §9.6) ──────────
+//
+// Inputs are attempts, the traversal makes loss events of them, and the sources with a
+// denominator measure loss events: Eurostat 2024 (50-249 persons) 4.3% unavailability
+// due to attack, 2.3% data destruction, 2.2% disclosure - 0.05-0.08 loss events a year
+// all together; IRIS 2025 9.3% a year for a typical firm, about half of it criminal.
+// A medium organisation with ordinary controls, attacked by cybercriminals, should land
+// in that band. One scenario against one band is a check, not a validation.
+{
+  const study = makeSampleStudy();
+  const opType = TAX.entityTypes.find((t) => t.fields.some((f) => f.key === "difficulty"));
+  const op = study.entities.find((e) => e.type === opType.key && /ransomware/i.test(String(e.values.name)));
+  const d = deriveInputs(study, TAX, op, true);
+  const r = simulate(d.inputs, 40000, d.chain);
+  ok("the sample's ransomware scenario, medium organisation, lands where the loss-event sources put it",
+    r.lef >= 0.02 && r.lef <= 0.15, `${r.lef.toFixed(3)} loss events/yr`);
+  const dWo = deriveInputs(study, TAX, op, false);
+  const rWo = simulate(dWo.inputs, 40000, dWo.chain);
+  ok("...and without its controls it lands above that band", rWo.lef > r.lef && rWo.lef > 0.1, `${rWo.lef.toFixed(3)}`);
+  ok("...with a mean loss per event in the tier's band: IRIS typical 0.3-2M, extreme 7-62M",
+    r.ale.mean / Math.max(r.lef, 1e-9) > 3e5 && r.ale.mean / Math.max(r.lef, 1e-9) < 8e6, `${(r.ale.mean / r.lef).toFixed(0)} per event`);
+}
+
+// ── what each measure buys ──────────────────────────────────────────────────
+{
+  const study = makeSampleStudy();
+  const opType = TAX.entityTypes.find((t) => t.fields.some((f) => f.key === "difficulty"));
+  const ops = study.entities.filter((e) => e.type === opType.key);
+  const w = measureWorth(study, TAX, ops, DEFAULT_CALIBRATION, 8000);
+  const by = Object.fromEntries(w.rows.map((r) => [String(r.measure.values.name), r]));
+  ok("every measure attached to a quantified scenario has a row", w.rows.length === 8, String(w.rows.length));
+  ok("a complete measure avoids something today and has nothing left to buy",
+    by["Offline immutable backups"].complete && by["Offline immutable backups"].avoided > 3 * w.noise
+    && by["Offline immutable backups"].avoidedIfComplete === by["Offline immutable backups"].avoided);
+  ok("a planned measure with nothing rolled out avoids nothing today...", by["Decommission the legacy maintenance gateway"].avoided === 0);
+  ok("...and would buy something once complete", by["Decommission the legacy maintenance gateway"].avoidedIfComplete > 3 * w.noise);
+  ok("a partly rolled-out planned measure buys more complete than as it stands",
+    by["MFA on remote maintenance access"].avoidedIfComplete > by["MFA on remote maintenance access"].avoided);
+  ok("without costs the rows rank by what finishing them buys",
+    w.rows.every((r, i) => i === 0 || w.rows[i - 1].avoidedIfComplete >= r.avoidedIfComplete) && w.rows.every((r) => r.perEuro === null));
+  ok("the same study gives the same ranking", JSON.stringify(measureWorth(study, TAX, ops, DEFAULT_CALIBRATION, 8000).rows.map((r) => r.measure.id))
+    === JSON.stringify(w.rows.map((r) => r.measure.id)));
+  // Costs: yearly plus the one-off spread over the write-off period, and the ranking per euro.
+  const m = { id: "x", type: "security_measure", values: { name: "x", cost_once: 30000, cost_yearly: 5000 } };
+  ok("cost per year is the yearly plus the one-off over the period", costPerYearOf(m, 3) === 15000);
+  ok("no cost is null, not zero", costPerYearOf({ ...m, values: { name: "x" } }, 3) === null);
+  const priced = { ...study, entities: study.entities.map((e) => e.values.name === "Egress monitoring & DLP" ? { ...e, values: { ...e.values, cost_yearly: 1000 } }
+    : e.values.name === "Offline immutable backups" ? { ...e, values: { ...e.values, cost_yearly: 1e6 } } : e) };
+  const wp = measureWorth(priced, TAX, ops, DEFAULT_CALIBRATION, 8000);
+  ok("with costs, a cheap measure that buys a little outranks a dear one that buys a lot",
+    wp.rows.findIndex((r) => r.measure.values.name === "Egress monitoring & DLP") < wp.rows.findIndex((r) => r.measure.values.name === "Offline immutable backups")
+    && wp.rows[0].perEuroIfComplete != null);
+  ok("an unpriced measure ranks after every priced one", wp.rows.filter((r) => r.costPerYear == null).every((r) => wp.rows.indexOf(r) >= 2));
+  ok("isComplete reads implemented and fully rolled out", isComplete(TAX, study.entities.find((e) => e.values.name === "Offline immutable backups"))
+    && !isComplete(TAX, study.entities.find((e) => e.values.name === "MFA on remote maintenance access")));
+}
+
+// ── technique fit, from ATT&CK's mitigates relationships ────────────────────
+{
+  ok("every bundled technique is known to the mapping", ["T1566", "T1003", "T1021", "T1562", "T1082"].every(AM.isBundled));
+  ok("MFA is a mitigation of remote services and valid accounts...", AM.mitigates(["M1032"], "T1021") === true && AM.mitigates(["M1032"], "T1078") === true);
+  ok("...and not of phishing or credential dumping", AM.mitigates(["M1032"], "T1566") === false && AM.mitigates(["M1032"], "T1003") === false);
+  ok("a sub-technique folds onto its technique", AM.mitigates(["M1032"], "T1021.001") === true);
+  ok("no mitigation named, or an unknown technique, is no question", AM.mitigates([], "T1566") === null && AM.mitigates(["M1032"], "T9999") === null && AM.mitigates(["M1032"], null) === null);
+  ok("ids are read out of free text, once each", JSON.stringify(AM.mitigationIds("M1032 Multi-factor Authentication, m1032, M1030")) === JSON.stringify(["M1032", "M1030"]));
+  ok("defence evasion and discovery have no preventive mitigation", !(AM.TECHNIQUE_MITIGATIONS.T1562) && !(AM.TECHNIQUE_MITIGATIONS.T1082));
+  ok("'Do Not Mitigate' and 'Pre-compromise' are not mitigations here", !("M1055" in AM.ATTACK_MITIGATIONS) && !("M1056" in AM.ATTACK_MITIGATIONS));
+  // The library maps its controls; the sample uses them and passes the check.
+  const lib = FRAMEWORKS.MEASURE_LIBRARY;
+  ok("the library's MFA is M1032 and its segmentation M1030",
+    lib.items.find((i) => i.ref_id === "IAM-01").mitigations.join() === "M1032" && lib.items.find((i) => i.ref_id === "NET-01").mitigations.join() === "M1030");
+  ok("...and the seeded measure carries the ids as text", FRAMEWORKS.measureValues(lib, lib.items.find((i) => i.ref_id === "END-01")).mitigations === "M1040, M1049");
+  const study = makeSampleStudy();
+  const checks = lintStudy(TAX, study);
+  const misfit = checks.find((c) => c.id === "measure-technique-misfit");
+  ok("the sample's measures sit where their technique answers to them", misfit && misfit.affected.length === 0, misfit?.affected.map((m) => m.values.name).join());
+  // Put MFA back on the phishing step and the check says so.
+  const moved = { ...study, entities: study.entities.map((e) => e.values.name === "MFA on remote maintenance access"
+    ? { ...e, values: { ...e.values, covers: [study.entities.find((s) => s.values.name === "Phishing the maintenance provider").id] } } : e) };
+  const m2 = lintStudy(TAX, moved).find((c) => c.id === "measure-technique-misfit");
+  ok("MFA on the phishing step is a misfit", m2.affected.length === 1 && m2.affected[0].values.name === "MFA on remote maintenance access");
+  // A measure that names no mitigation is not judged.
+  const blank = { ...moved, entities: moved.entities.map((e) => e.values.name === "MFA on remote maintenance access" ? { ...e, values: { ...e.values, mitigations: "" } } : e) };
+  ok("a measure naming no mitigation is not judged", lintStudy(TAX, blank).find((c) => c.id === "measure-technique-misfit").affected.length === 0);
+}
+
+// ── detection as a time race (docs/detection-time-race.md §6) ──────────────
+{
+  const LNr = (min, mode, max) => ({ min, mode, max, dist: "lognormal" });
+  const inp = {
+    attemptRate: R(4, 5, 6), adversaryStrength: R(0.5, 0.55, 0.6), controlStrength: R(0.1, 0.15, 0.2),
+    directImpact: R(1e5, 1e5, 1e5), cascadingLikelihood: R(0, 0, 0), cascadingImpact: R(0, 0, 0),
+    respondDays: LNr(0.5, 1, 2),
+  };
+  const day = LNr(0.5, 1, 2);
+  const step = (id, preds, extra = {}) => ({ id, preds, join: "all", gate: null, interrupt: 0, detect: null, duration: day, terminal: false, ...extra });
+  const chain = (...steps) => { steps[steps.length - 1].terminal = true; return steps; };
+  const run = (ch, over = {}) => simulate({ ...inp, ...over }, 40000, ch, 0x1234, { capabilitySpeed: [1, 1, 1, 1] });
+  // 1. No watched step: the race never runs, and the result is the plain chain.
+  const plain = chain(step("a", []), step("b", [0]), step("z", [1]));
+  ok("1. with no watched step the race never runs", run(plain).detected === 0 && run(plain).seenLate === 0 && run(plain).raceMargin === null);
+  // 2. Defender infinitely fast: every watched attempt is caught - the race reduces to det.
+  const watched = (detect, interrupt = 0.6) => chain(step("a", []), step("b", [0], { interrupt, detect }), step("c", [1]), step("z", [2]));
+  const instant = run(watched(LNr(0, 0, 0)), { respondDays: R(0, 0, 0) });
+  ok("2. an infinitely fast defender catches every attempt it sees", Math.abs(instant.detected - 0.6) < 0.03 && instant.seenLate < 0.005, `${instant.detected.toFixed(3)} caught, ${instant.seenLate.toFixed(3)} late`);
+  // 3. Defender infinitely slow: nothing is caught, however good the detection.
+  const slow = run(watched(LNr(0, 0, 0)), { respondDays: R(1e6, 1e6, 1e6) });
+  ok("3. an infinitely slow defender catches nothing, however good the detection", slow.detected === 0 && Math.abs(slow.seenLate - 0.6) < 0.03, `${slow.detected} caught, ${slow.seenLate.toFixed(3)} late`);
+  // 4. Two watched steps on one cause share the detection draw (already pinned above for
+  //    the interrupt; here for the alert time): a slow SIEM is slow at both.
+  const twoSame = chain(step("a", [], { interrupt: 0.6, detect: LNr(0.5, 10, 40), group: "siem" }), step("b", [0], { interrupt: 0.6, detect: LNr(0.5, 10, 40), group: "siem" }), step("c", [1]), step("z", [2]));
+  const twoInd = chain(step("a", [], { interrupt: 0.6, detect: LNr(0.5, 10, 40) }), step("b", [0], { interrupt: 0.6, detect: LNr(0.5, 10, 40) }), step("c", [1]), step("z", [2]));
+  ok("4. two watched steps on one cause share the alert time - independent ones catch more", run(twoInd).detected > run(twoSame).detected);
+  // 8. Decomposition invariance of the clock: splitting a step in two halves of the
+  //    duration leaves the attacker's time to the objective, and so the catch rate.
+  const half = LNr(0.25, 0.5, 1);
+  const whole = chain(step("a", [], { interrupt: 0.6, detect: LNr(0.1, 0.2, 0.4) }), step("b", [0], { duration: LNr(1, 2, 4) }), step("z", [1]));
+  const split = chain(step("a", [], { interrupt: 0.6, detect: LNr(0.1, 0.2, 0.4) }), step("b1", [0]), step("b2", [1]), step("z", [2]));
+  split[1].duration = day; split[2].duration = day;   // 1 + 1 against 2
+  ok("8. splitting a step does not change the attacker's time to the objective", Math.abs(run(whole).detected - run(split).detected) < 0.03,
+    `${run(whole).detected.toFixed(3)} vs ${run(split).detected.toFixed(3)}`);
+  // The margin is reported in the direction it happened.
+  ok("the margin is positive when caught, negative when seen and late", instant.raceMargin > 0 && slow.raceMargin < 0);
+  // 5-7. The reference postures, on a ransomware-shaped chain with the bundled bands:
+  //    a SIEM and a plan on paper catch part of what they see, telemetry and a 24x7
+  //    response most, and the patient espionage actor is found - late - where watched.
+  const world = (id, type, values) => rec(id, type, values);
+  const posture = ({ readiness, strength, cap = 3, tactics = ["Initial Access", "Persistence", "Credential Access", "Lateral Movement", "Impact"], g = 3 }) => {
+    const op = world("op", "operational_scenario", { name: "op", strategic_scenario: "ss", likelihood: 3, difficulty: 2 });
+    const ents = [world("ba", "business_asset", { name: "ba", criticality: 4 }), world("fe", "feared_event", { name: "fe", business_asset: "ba", severity: 3 }),
+      world("ro", "risk_origin", { name: "ro", capability: cap, resources: 3, activity: 3, relevance: 3 }),
+      world("ss", "strategic_scenario", { name: "ss", risk_origin: "ro", feared_event: "fe", likelihood: 3, gravity: 3 }), op];
+    tactics.forEach((t, i) => ents.push(world(`s${i}`, "kill_chain_step", { name: `s${i}`, operational_scenario: "op", step_order: i + 1, tactic: t, predecessors: i ? [`s${i - 1}`] : [] })));
+    for (let i = 0; i < g; i++) ents.push(world(`m${i}`, "security_measure", { name: `m${i}`, measure_type: "Detective", status: "Implemented", implementation_level: 4, strength, covers: [`s${i}`] }));
+    const d = deriveInputs(study(ents, { readiness }), tax, op, true);
+    const r = simulate(d.inputs, 40000, d.chain, undefined, PACE);
+    return { caughtOfSeen: r.detected / Math.max(1e-9, r.detected + r.seenLate), vuln: r.vuln, margin: r.raceMargin };
+  };
+  const typical = posture({ readiness: "Plan on paper", strength: 2 });
+  ok("5. ransomware, a SIEM and a plan on paper: part of what is seen is caught, not most", typical.caughtOfSeen > 0.15 && typical.caughtOfSeen < 0.55, typical.caughtOfSeen.toFixed(2));
+  const good = posture({ readiness: "24x7 response with authority to contain", strength: 3 });
+  ok("6. telemetry and a 24x7 response: most of what is seen is caught", good.caughtOfSeen > 0.75, good.caughtOfSeen.toFixed(2));
+  const spy = posture({ readiness: "Plan on paper", strength: 2, cap: 4, g: 4,
+    tactics: ["Reconnaissance", "Initial Access", "Persistence", "Discovery", "Discovery", "Collection", "Exfiltration"] });
+  ok("7. a patient espionage actor is found where watched - the race is long", spy.caughtOfSeen > typical.caughtOfSeen, `${spy.caughtOfSeen.toFixed(2)} vs ${typical.caughtOfSeen.toFixed(2)}`);
+}
+
+// ── sensitivity: which assumption carries the number ────────────────────────
+{
+  const inp = {
+    attemptRate: R(0.5, 2, 6),
+    adversaryStrength: R(0.3, 0.55, 0.8),
+    controlStrength: R(0.35, 0.45, 0.55),
+    directImpact: R(6e5, 8e5, 1.1e6),     // narrow on purpose: the rate's 12x band is the widest
+    cascadingLikelihood: R(0.1, 0.25, 0.4),
+    cascadingImpact: R(5e4, 2e5, 6e5),
+    respondDays: { min: 1, mode: 4, max: 20, dist: "lognormal" },
+  };
+  const s = sensitivityOf(inp, undefined, 8000);
+  ok("the base is the plain simulation's mean", Math.abs(s.base - simulate(inp, 8000).ale.mean) < 1e-9);
+  ok("every factor with a band gets a swing", s.swings.length === 7, String(s.swings.length));
+  ok("the swings come sorted, largest first", s.swings.every((w, i) => i === 0 || s.swings[i - 1].swing >= w.swing));
+  const byKey = Object.fromEntries(s.swings.map((w) => [w.key, w]));
+  ok("the widest band - the attempt rate's - is the top carrier", s.swings[0].key === "attemptRate", s.swings[0].key);
+  ok("more attempts mean more loss - the rate is not inverse", !byKey.attemptRate.inverse);
+  ok("a stronger control means less loss - the control IS inverse", byKey.controlStrength.inverse);
+  ok("the low end of the rate gives less loss than the high end", byKey.attemptRate.low < byKey.attemptRate.high);
+  ok("the noise is small against the top swing", s.noise * 3 < s.swings[0].swing, `${s.noise} vs ${s.swings[0].swing}`);
+  ok("the carriers are the swings that are a third of the top and clear of the noise",
+    carriers(s).length === s.swings.filter((w) => w.swing > 3 * s.noise && w.swing >= s.swings[0].swing / 3).length
+    && carriers(s).length >= 1 && carriers(s).length < s.swings.length, String(carriers(s).length));
+  ok("the same inputs give the same tornado", JSON.stringify(sensitivityOf(inp, undefined, 8000)) === JSON.stringify(s));
+
+  // A point estimate has no band to walk, and must not appear as a factor of zero swing.
+  const pinned = { ...inp, cascadingImpact: R(2e5, 2e5, 2e5) };
+  const sp = sensitivityOf(pinned, undefined, 8000);
+  ok("a factor without a band does not appear", sp.swings.length === 6 && !sp.swings.some((w) => w.key === "cascadingImpact"));
+
+  // Gates on the chain are factors too, named by their step.
+  const chain = [
+    { id: "s1", preds: [], join: "all", gate: R(0.4, 0.5, 0.6), interrupt: 0, terminal: false },
+    { id: "s2", preds: [0], join: "all", gate: null, interrupt: 0, terminal: true },
+  ];
+  const sc = sensitivityOf(inp, chain, 8000);
+  ok("a gated step is a factor, an undefended one is not",
+    sc.swings.filter((w) => w.key.startsWith("step:")).map((w) => w.key).join() === "step:s1");
+  ok("a stronger gate means less loss", sc.swings.find((w) => w.key === "step:s1").inverse);
 }
 
 console.log(`\n${pass}/${pass + fail} quantification assertions passed · ${fail} failed`);

@@ -47,6 +47,14 @@ export function effectClassOf(m: EntityRecord): EffectClass {
   return declaredClass(m) ?? DEFAULT_EFFECT_CLASS;
 }
 
+/** The two classes that defend a STEP: one keeps the attacker out of it, the other
+ *  catches him there. A corrective or deterrent measure attached to a step is real work,
+ *  but it acts on what the attack costs or on how often it is tried - it does not stop
+ *  him reaching this step, so it must never make the step read as handled. Written once
+ *  here because three views were each carrying their own copy of the pair. */
+export const DEFENDING_CLASSES: EffectClass[] = ["Preventive", "Detective"];
+export const defendsStep = (m: EntityRecord): boolean => DEFENDING_CLASSES.includes(effectClassOf(m));
+
 /** Whether a taxonomy models effect classes at all (a custom one may not). */
 export function hasEffectField(tax: Taxonomy, typeKey: string): boolean {
   const t = tax.entityTypes.find((x) => x.key === typeKey);

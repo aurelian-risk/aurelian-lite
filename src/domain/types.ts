@@ -171,6 +171,15 @@ export interface Study {
   /** Selects the base-rate column of the calibration: actor classes go after some
    *  sectors far more than others. Free of a value = no sector adjustment. */
   sector?: string;
+  /** Multiplies the base rate: every source with a denominator finds larger organisations
+   *  hit more often, and more strongly than any sector effect. Headcount classes as
+   *  Eurostat counts them; free of a value = medium, which is what the bundled rates
+   *  were derived for. See calibration-sources.md §9.3. */
+  size?: string;
+  /** How fast the organisation acts on an alert - the defender's side of the detection
+   *  race (docs/detection-time-race.md). One of calibration's READINESS; unset reads as
+   *  "Plan on paper". */
+  readiness?: string;
   /** The parameters the quantification runs on. Part of the study, so it is exported,
    *  imported and shared with it - no separate file and no separate mechanism.
    *  Absent = the defaults. */

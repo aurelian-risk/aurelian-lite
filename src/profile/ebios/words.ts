@@ -134,6 +134,14 @@ export const WORDS: Record<string, Overlay> = {
     "field.protects.relation": "schützt",
     "field.fulfills.label": "Erfüllt Anforderungen",
     "field.fulfills.relation": "erfüllt",
+    "field.cost_once.label": "Kosten einmalig",
+    "field.cost_once.help": "Anschaffung, Projekt und Einführung, verteilt über den in der Kalibrierung gesetzten Abschreibungszeitraum.",
+    "field.cost_yearly.label": "Kosten jährlich",
+    "field.cost_yearly.help": "Lizenzen, Betrieb, Personalzeit je Jahr.",
+    "field.mitigations.label": "ATT&CK-Mitigations",
+    "field.mitigations.help": "Die ATT&CK-Mitigation-IDs, die diese Maßnahme umsetzt, z. B. M1032 (Multi-factor Authentication), M1030 (Network Segmentation). Die Bibliothek setzt sie. Eine Prüfung hält sie gegen die Techniken der abgedeckten Schritte und sagt, wo ATT&CK keine Wirkung kennt.",
+    "field.fails_with.label": "Fällt aus mit",
+    "field.fails_with.help": "Wovon diese Maßnahme abhängt, wovon auch andere Maßnahmen abhängen – der Identitätsanbieter, das SIEM, ein Administrator, ein Netzsegment. Maßnahmen, die dasselbe nennen, fallen in der Quantifizierung gemeinsam aus: zwei Gates auf einer Ursache sind ein Gate wert, nicht zwei.",
     "field.decision.label": "Entscheidung",
     "field.owner.label": "Verantwortlich",
     "field.deadline.label": "Frist / Zieldatum",
@@ -182,6 +190,9 @@ export const WORDS: Record<string, Overlay> = {
     "field.likelihood.scale": ["gering", "möglich", "wahrscheinlich", "nahezu sicher"],
     "field.difficulty.scale": ["trivial", "gering", "mittel", "hoch"],
     "field.implementation_level.scale": ["keine", "teilweise", "weitgehend", "vollständig"],
+    "field.strength.label": "Stärke",
+    "field.strength.scale": ["schwach", "mäßig", "stark", "sehr stark"],
+    "field.strength.help": "Wie viel des Maximums diese Maßnahme erreicht, wenn sie voll in Kraft ist. MFA gegen Phishing ist sehr stark (Google: blockt 66 % der gezielten Angriffe), Awareness-Training allein ist schwach. Die Bibliothek setzt den Wert aus veröffentlichten Belegen; nicht gesetzt zählt als sehr stark.",
 
     // ── the readings of stored option values ──
     // The VALUE is untouched in every one of these. Only the reading changes.

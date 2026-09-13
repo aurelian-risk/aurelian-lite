@@ -61,7 +61,7 @@ export function treatmentEffect(study: Study, tax: Taxonomy, scenario: EntityRec
   let freq = 0, mag = 0;
   for (const op of ops) {
     const on = deriveInputs(study, tax, op, true, cal), off = deriveInputs(study, tax, op, false, cal);
-    freq += rel(simulate(off.inputs, MATRIX_ITER, off.chain).lef, simulate(on.inputs, MATRIX_ITER, on.chain).lef);
+    freq += rel(simulate(off.inputs, MATRIX_ITER, off.chain, undefined, cal.time).lef, simulate(on.inputs, MATRIX_ITER, on.chain, undefined, cal.time).lef);
     mag += rel(magnitudeOf(off.inputs), magnitudeOf(on.inputs));
   }
   return { frequency: freq / ops.length, magnitude: mag / ops.length };

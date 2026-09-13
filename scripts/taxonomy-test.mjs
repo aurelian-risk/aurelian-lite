@@ -151,5 +151,30 @@ ok("the default is left as this check found it", defField.vocabulary === hadVoca
     `${plain.length} plain enum field(s)`);
 }
 
+// ── A field the default has since added ──────────────────────────────────
+// Schema 4 added the measure's "fails_with"; the engine reads it by key, so a stored
+// study has to be able to enter it. Appended, and only where the stored type still
+// carries most of the default's fields - a rebuilt type is the user's.
+{
+  const withField = DEFAULT_TAXONOMY.entityTypes.find((t) => t.fields.some((f) => f.key === "fails_with"));
+  if (!withField) ok("the default taxonomy has a type with fails_with to test with", false);
+  else {
+    const drop = (tax, key) => { const t = tax.entityTypes.find((x) => x.key === withField.key); t.fields = t.fields.filter((f) => f.key !== key); return tax; };
+    const before = drop(Object.assign(clone(DEFAULT_TAXONOMY), { schemaVersion: TAXONOMY_SCHEMA_VERSION - 1 }), "fails_with");
+    const after = reconcileTaxonomy(before);
+    const fields = after.entityTypes.find((t) => t.key === withField.key).fields;
+    ok("a stored type gains the field the default has since added", fields.some((f) => f.key === "fails_with"));
+    ok("...appended at the end, nothing reordered", fields[fields.length - 1].key === "fails_with"
+      && fields.slice(0, -1).map((f) => f.key).join() === before.entityTypes.find((t) => t.key === withField.key).fields.map((f) => f.key).join());
+    ok("...carrying the default's label and help", fields[fields.length - 1].help === withField.fields.find((f) => f.key === "fails_with").help);
+    // A type the user rebuilt keeps its shape: fewer than half the default's fields left.
+    const rebuilt = Object.assign(clone(DEFAULT_TAXONOMY), { schemaVersion: TAXONOMY_SCHEMA_VERSION - 1 });
+    const rt = rebuilt.entityTypes.find((x) => x.key === withField.key);
+    rt.fields = rt.fields.slice(0, 2);
+    ok("a type rebuilt by the user is left alone", reconcileTaxonomy(rebuilt).entityTypes.find((x) => x.key === withField.key).fields.length === 2);
+    ok("an up-to-date taxonomy is returned unchanged", reconcileTaxonomy(DEFAULT_TAXONOMY) === DEFAULT_TAXONOMY);
+  }
+}
+
 console.log(`\n${pass}/${pass + fail} taxonomy-migration assertions passed · ${fail} failed`);
 process.exit(fail ? 1 : 0);
