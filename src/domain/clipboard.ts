@@ -5,6 +5,7 @@
 import type { EntityRecord, EntityTypeDef, FieldDef, FieldValue, Study, Taxonomy } from "./types";
 import { t as tr, tn } from "./i18n";
 import { columnFields, fieldLabel, getType, groupDescription, groupLabel, isSetBack, optionLabel, recordTitle, scaleLabel, scaleMax, typeLabel, typeLabelPlural } from "./taxonomy";
+import { band, logTicks, type Band } from "./viz";
 import { spreadColumn } from "./graph";
 import { PRODUCT } from "../profile";
 import { deriveInputs, meanOf } from "./quantModel";
@@ -13,6 +14,8 @@ import { simulate, type QuantInputs, type QuantResult } from "./montecarlo";
 import { CALIBRATION_DOC, DEFAULT_CALIBRATION } from "./calibration";
 import { effectClassOf } from "./controls";
 import { likelihoodCheck } from "./frequency";
+import { carriers, sensitivityOf, type Sensitivity } from "./sensitivity";
+import { measureWorth } from "./worth";
 
 function fieldSpec(f: FieldDef, tax: Taxonomy): string {
   const parts: string[] = [f.type];
@@ -122,7 +125,10 @@ export function riskMatrixSvg(tax: Taxonomy, study: Study, opts?: { posFn?: (e: 
   if (!items.length) return null;
   const pos = opts?.posFn ?? ((e: EntityRecord) => ({ x: Number(e.values[xF.key]) || 1, y: Number(e.values[yF.key]) || 1 }));
   const at = (x: number, y: number) => items.filter((e) => { const p = pos(e); return p.x === x && p.y === y; });
-  const colorFor = (r: number) => r < 0.3 ? "#2fa36f" : r < 0.55 ? "#e0a13a" : r < 0.8 ? "#dd7a33" : "#d1495b";
+  // The same bands as the screen, in the report's own palette. Its edges used to be its
+  // own (.3/.55/.8), which is how the report and the matrix on screen could paint one
+  // scenario two colours - and the screen's second band was a blue the report never had.
+  const colorFor = (r: number) => HEX_BAND[band(1 - r)];
 
   // Wider cells + a per-label chip so long scenario names stay readable, and a
   // self-contained light card background so dark text is legible on ANY report
@@ -160,10 +166,15 @@ export function riskMatrixSvg(tax: Taxonomy, study: Study, opts?: { posFn?: (e: 
 
 // Shared hex palette for embedded report SVGs (theme-independent light cards).
 const HEX = { green: "#2fa36f", amber: "#e0a13a", orange: "#dd7a33", red: "#d1495b", ink: "#1c2430", muted: "#5a6675", card: "#f7f8fb", edge: "#d7dbe3", track: "#e5e8ee" };
+/** The four bands of domain/viz, in the palette this file can actually ship: a report
+ *  travels without the stylesheet, so it cannot use the tokens - but the EDGES are the
+ *  same ones, read from the same function. */
+const HEX_BAND: Record<Band, string> = { good: HEX.green, fair: HEX.amber, poor: HEX.orange, bad: HEX.red };
+
 /** Good→bad colour on a scale value, respecting polarity (positive = high is good). */
 function barColor(v: number, max: number, positive = false): string {
-  const r = (v - 1) / Math.max(1, max - 1), bad = positive ? 1 - r : r;
-  return bad < 0.25 ? HEX.green : bad < 0.5 ? HEX.amber : bad < 0.75 ? HEX.orange : HEX.red;
+  const r = (v - 1) / Math.max(1, max - 1);
+  return HEX_BAND[band(positive ? r : 1 - r)];
 }
 
 /** Colour-coded horizontal bar chart of ALL scale fields of one record (attacker
@@ -439,6 +450,7 @@ const fmtMoney = (v: number): string => {
   return `€${Math.round(v)}`;
 };
 const fmtPct = (v: number) => `${Math.round(v * 100)}%`;
+const fmtDays = (v: number) => (v < 1 ? `${(v * 24).toFixed(v * 24 >= 10 ? 0 : 1)} h` : v < 10 ? `${v.toFixed(1)} d` : `${Math.round(v)} d`);
 const fmtRate = (v: number) => `${v >= 10 ? Math.round(v) : v.toFixed(2)}/yr`;
 
 /** Loss-exceedance curve as an inline SVG (offline): P(annual loss ≥ x), comparing
@@ -447,6 +459,39 @@ const fmtRate = (v: number) => `${v >= 10 ? Math.round(v) : v.toFixed(2)}/yr`;
  *  to the objective. The same three outcomes the app's chain-defence ring shows, and the
  *  same traversal produced them - a reader who sees both must not have to reconcile two
  *  accounts of the same run. */
+/** The tornado: one row per factor, a bar from the mean at the low end of its band to
+ *  the mean at the high end, the base as a hairline. Below the base in green, above in
+ *  red - the same two poles as the outcome bar - names and figures in ink. Rows the
+ *  simulation's own noise would explain are drawn faint. */
+function tornadoSvg(s: Sensitivity, nameOf: (key: string) => string, bandOf: (key: string, v: number) => string): string {
+  const rows = s.swings;
+  const W = 640, PAD = 12, NAME = 196, VAL = 214, RH = 22, TOP = 30, BOT = 26;
+  const H = TOP + rows.length * RH + BOT;
+  const lo = Math.min(s.base, ...rows.map((w) => Math.min(w.low, w.high)));
+  const hi = Math.max(s.base, ...rows.map((w) => Math.max(w.low, w.high)));
+  const bx = NAME, bw = W - NAME - VAL - 10, span = Math.max(1e-9, hi - lo);
+  const X = (v: number) => bx + ((v - lo) / span) * bw;
+  const trunc = (t: string, n: number) => (t.length > n ? t.slice(0, n - 1).trimEnd() + "…" : t);
+  const p: string[] = [`<svg xmlns="http://www.w3.org/2000/svg" width="${W + PAD * 2}" height="${H + PAD * 2}" viewBox="0 0 ${W + PAD * 2} ${H + PAD * 2}" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif">`];
+  p.push(`<rect x="0.5" y="0.5" width="${W + PAD * 2 - 1}" height="${H + PAD * 2 - 1}" rx="14" fill="${HEX.card}" stroke="${HEX.edge}"/>`);
+  p.push(`<g transform="translate(${PAD} ${PAD})">`);
+  p.push(`<text x="0" y="14" font-size="11" font-weight="600" fill="${HEX.ink}">What the mean annual loss hangs on</text>`);
+  p.push(`<text x="${W}" y="14" font-size="10" fill="${HEX.muted}" text-anchor="end">each factor walked over its band, the rest held · mean ${esc(fmtMoney(s.base))}</text>`);
+  p.push(`<line x1="${X(s.base)}" y1="${TOP - 4}" x2="${X(s.base)}" y2="${TOP + rows.length * RH}" stroke="${HEX.muted}" stroke-width="1" stroke-dasharray="2 3"/>`);
+  rows.forEach((w, i) => {
+    const y = TOP + i * RH, quiet = w.swing <= 3 * s.noise, op = quiet ? 0.4 : 1;
+    const below = Math.min(w.low, w.high), above = Math.max(w.low, w.high);
+    p.push(`<text x="0" y="${y + 14}" font-size="10.5" fill="${HEX.ink}" opacity="${op}">${esc(trunc(nameOf(w.key), 30))}</text>`);
+    p.push(`<rect x="${bx}" y="${y + 5}" width="${bw}" height="12" rx="3" fill="${HEX.track}"/>`);
+    if (below < s.base) p.push(`<rect x="${X(below)}" y="${y + 7}" width="${Math.max(1, X(Math.min(above, s.base)) - X(below))}" height="8" rx="2" fill="${HEX.green}" opacity="${op}"/>`);
+    if (above > s.base) p.push(`<rect x="${X(Math.max(below, s.base))}" y="${y + 7}" width="${Math.max(1, X(above) - X(Math.max(below, s.base)))}" height="8" rx="2" fill="${HEX.red}" opacity="${op}"/>`);
+    p.push(`<text x="${W}" y="${y + 14}" font-size="10" fill="${HEX.muted}" text-anchor="end" opacity="${op}">${esc(bandOf(w.key, w.band.min))}–${esc(bandOf(w.key, w.band.max))} → ${esc(fmtMoney(below))}–${esc(fmtMoney(above))}</text>`);
+  });
+  p.push(`<text x="0" y="${H - 6}" font-size="9.5" fill="${HEX.muted}">green: the band's end that lowers the mean · red: the end that raises it · faint: within the simulation's own noise (±${esc(fmtMoney(s.noise))})</text>`);
+  p.push("</g></svg>");
+  return p.join("");
+}
+
 function outcomeBarSvg(r: QuantResult): string {
   const W = 640, H = 108, PAD = 12, BX = 14, BY = 40, BW = W - 28, BH = 30;
   const through = clamp01(r.vuln);
@@ -515,9 +560,7 @@ function lossCurveSvg(rW: QuantResult, rWo: QuantResult, refP: number): string {
   };
   const bands = [[0.5, "1 in 2"], [0.2, "1 in 5"], [0.1, "1 in 10"], [0.05, "1 in 20"],
     [0.02, "1 in 50"], [0.01, "1 in 100"], [0.005, "1 in 200"], [0.002, "1 in 500"]] as [number, string][];
-  const ticks: number[] = [];
-  for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++)
-    for (const m of [1, 3]) { const t = m * Math.pow(10, e); if (t >= lo * 0.999 && t <= hi * 1.001) ticks.push(t); }
+  const ticks = logTicks(lo, hi, 10);
 
   const p: string[] = [`<svg xmlns="http://www.w3.org/2000/svg" width="${W + PAD * 2}" height="${H + PAD * 2}" viewBox="0 0 ${W + PAD * 2} ${H + PAD * 2}" font-family="ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif">`];
   p.push(`<rect x="0.5" y="0.5" width="${W + PAD * 2 - 1}" height="${H + PAD * 2 - 1}" rx="14" fill="${HEX.card}" stroke="${HEX.edge}"/>`);
@@ -587,11 +630,15 @@ function quantSection(tax: Taxonomy, study: Study): string[] | null {
   const L: string[] = ["---\n", "## Quantitative risk\n",
     "_Monte-Carlo simulation (loss event frequency × loss magnitude), derived from the qualitative model. Annual loss shown with vs. without the current controls._\n"];
   const row = (k: string, a: string, b: string) => `<tr><td>${esc(k)}</td><td class="num">${a}</td><td class="num">${b}</td></tr>`;
+  // The study's own calibration, as the screen uses it. The report read the shipped
+  // defaults here until 2026-09, so an edited table changed every figure on screen and
+  // none in the report.
+  const cal = study.calibration ?? DEFAULT_CALIBRATION;
   for (const op of ops) {
     const ov = study.quant?.[op.id]?.overrides as Partial<QuantInputs> | undefined;
-    const dW = deriveInputs(study, tax, op, true), dWo = deriveInputs(study, tax, op, false);
+    const dW = deriveInputs(study, tax, op, true, cal), dWo = deriveInputs(study, tax, op, false, cal);
     const inW: QuantInputs = { ...dW.inputs, ...ov }, inWo: QuantInputs = { ...dWo.inputs, ...ov };
-    const rW = simulate(inW, 40000, dW.chain), rWo = simulate(inWo, 40000, dWo.chain);
+    const rW = simulate(inW, 40000, dW.chain, undefined, cal.time), rWo = simulate(inWo, 40000, dWo.chain, undefined, cal.time);
     const lm = meanOf(inW.directImpact) + meanOf(inW.cascadingLikelihood) * meanOf(inW.cascadingImpact);
     const benefit = rWo.ale.mean - rW.ale.mean;
     const benefitPct = rWo.ale.mean > 0 ? Math.round((benefit / rWo.ale.mean) * 100) : 0;
@@ -614,7 +661,8 @@ function quantSection(tax: Taxonomy, study: Study): string[] | null {
     const stopped = Math.round((1 - rW.vuln) * 100);
     const atStart = Math.round(rW.blockedAtBaseline * 100);
     L.push(`**${stopped}% of attempts are stopped**, ${atStart}% of them by what the attack itself demands, before any specific measure. `
-      + `${Math.round(rW.detected * 100)}% are caught in the act and answered before the objective is reached - a different capability from "they could not get in", and counted separately for that reason.`);
+      + `${Math.round(rW.detected * 100)}% are caught in time - seen at a watched step, with the alert and the response ahead of the objective - a different capability from "they could not get in", and counted separately for that reason.`
+      + (rW.seenLate > 0.002 ? ` **${Math.round(rW.seenLate * 100)}% were seen and still reached the objective**: the alert came, the objective came first${rW.raceMargin != null && rW.raceMargin < 0 ? `, typically ${fmtDays(-rW.raceMargin)} too late` : ""}. Detection that cannot win the race is not defence; the response time is the lever.` : ""));
     // Where on the chain the attempts died. This is the part an averaged figure hides:
     // one step carrying every stop is a choke point, and an even spread is defence in depth.
     const deaths = rW.breaks.filter((b) => b.p >= 0.005).sort((a, b) => b.p - a.p).slice(0, 6);
@@ -643,9 +691,50 @@ function quantSection(tax: Taxonomy, study: Study): string[] | null {
           + (badWo != null ? `, against **${fmtMoney(badWo)}** with no controls` : "") + "."
         : "Even the rarest year modelled here costs nothing; the percentiles above give the figures."));
     L.push("");
+    // Which assumption the figure hangs on. A report that gives a number without saying
+    // where it is fragile invites more confidence than the number earns.
+    const sens = sensitivityOf(inW, dW.chain);
+    if (sens.swings.length) {
+      const stepName = (id: string) => { const st = study.entities.find((e) => e.id === id); const t = st && getType(tax, st.type); return st && t ? recordTitle(t, st) : id.slice(0, 8); };
+      const nameOf = (k: string) => k.startsWith("step:") ? `gate at ${stepName(k.slice(5))}` : FACTOR_NAME[k as keyof QuantInputs];
+      const bandOf = (k: string, v: number) => k.startsWith("step:") || k === "adversaryStrength" || k === "controlStrength" || k === "cascadingLikelihood"
+        ? fmtPct(v) : k === "attemptRate" ? fmtRate(v) : k === "respondDays" ? `${v < 1 ? (v * 24).toFixed(1) + " h" : v.toFixed(1) + " d"}` : fmtMoney(v);
+      const carry = carriers(sens).map((w) => nameOf(w.key));
+      const next = sens.swings[carry.length];
+      L.push(`<div align="center">${tornadoSvg(sens, nameOf, bandOf)}</div>`);
+      L.push("");
+      L.push(carry.length === 0
+        ? "No single factor moves the mean by more than the simulation's own noise."
+        : `**The figure hangs on ${carry.length === 1 ? carry[0] : carry.slice(0, -1).join(", ") + " and " + carry[carry.length - 1]}.** `
+          + (next ? `The next factor, ${nameOf(next.key)}, moves it ${Math.round((next.swing / sens.swings[0].swing) * 100)}% as far. ` : "")
+          + "Each factor was walked over its own band with the rest held at their derived values - the question answered is what matters within what this study already calls plausible, not what would happen in a different world.");
+      L.push("");
+    }
+  }
+  // What each measure buys, across the quantified scenarios: the ranking a budget
+  // meeting asks for, from the same engine with one measure taken out or finished.
+  const worth = measureWorth(study, tax, ops, cal);
+  if (worth.rows.length) {
+    const anyCost = worth.rows.some((r) => r.costPerYear != null);
+    L.push("### What each measure buys", "");
+    L.push(`_Mean annual loss avoided by each measure across the quantified scenarios — today, and once the measure is implemented and fully rolled out. The scenario is re-simulated with the measure taken out and with it finished; the difference is what it buys. ${anyCost ? `Ranked by loss avoided per euro of yearly cost where a cost is given (a one-off cost spread over ${worth.horizonYears} years).` : "No measure carries a cost; ranked by loss avoided."} A figure inside the simulation's own noise (±${fmtMoney(worth.noise)}) is not a finding about the measure._`, "");
+    L.push(`<table class="qt-tbl"><thead><tr><th>Measure</th><th>Class · state</th><th class="num">Avoids today</th><th class="num">Once complete</th><th class="num">Cost / yr</th><th class="num">Per €</th></tr></thead><tbody>`
+      + worth.rows.map((r) => {
+        const t = getType(tax, r.measure.type)!;
+        const implF = t.fields.find((f) => f.key === "implementation_level");
+        const lv = implF && typeof r.measure.values[implF.key] === "number" ? scaleLabel(implF, r.measure.values[implF.key] as number) : "";
+        const st = [String(r.measure.values.measure_type ?? "unclassified"), String(r.measure.values.status ?? "").toLowerCase(), lv].filter(Boolean).join(" · ");
+        const per = r.complete ? r.perEuro : r.perEuroIfComplete;
+        return `<tr><td>${esc(recordTitle(t, r.measure))}</td><td>${esc(st)}</td><td class="num">${esc(fmtMoney(r.avoided))}</td><td class="num">${r.complete ? "complete" : esc(fmtMoney(r.avoidedIfComplete))}</td><td class="num">${r.costPerYear != null ? esc(fmtMoney(r.costPerYear)) : "—"}</td><td class="num">${per != null ? `${per.toFixed(1)}×` : "—"}</td></tr>`;
+      }).join("") + "</tbody></table>", "");
   }
   return L;
 }
+const FACTOR_NAME: Record<keyof QuantInputs, string> = {
+  attemptRate: "Attempts per year", adversaryStrength: "Attacker capability", controlStrength: "What an attempt has to beat",
+  directImpact: "Direct impact", cascadingLikelihood: "Cascading likelihood", cascadingImpact: "Cascading impact",
+  respondDays: "Time to act on an alert",
+};
 
 /** Risk-treatment plan + residual risk matrix (inherent -> residual after the
  *  applied measures). Null when no treatments exist. */
@@ -1017,7 +1106,9 @@ function mdToHtml(md: string): string {
   const inline = (s: string) => esc(s)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+    // An external link leaves the report otherwise - and the report is the tab.
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, t: string, h: string) =>
+      /^https?:/i.test(h) ? `<a href="${h}" target="_blank" rel="noopener noreferrer">${t}</a>` : `<a href="${h}">${t}</a>`)
     .replace(/_([^_\n]+)_/g, "<em>$1</em>");
   // Inside an entity card, an attribute list item ("**Label:** value") is rendered
   // as a field chip: an uppercase caption plus an elevated value. A trailing (n/m)
@@ -1360,14 +1451,22 @@ export function quantLlmMarkdown(tax: Taxonomy, study: Study): string {
   P("## 2. Parameters in force", "",
     `These are settings, not measurements. Each is graded: **measured** = published figure`,
     `with the derivation documented, **derived** = published figure plus a stated`,
-    `assumption, **judgement** = no published figure answers the question.`,
+    `assumption, **judgement** = no published figure answers the question, **own** = the`,
+    `organisation's own record, entered by the analyst.`,
     study.calibration ? "\n**This study uses an edited parameterisation** (changed from the shipped defaults)." : "\nThis study uses the shipped defaults unchanged.", "");
   const f = cal.frequency, d = cal.demand;
   const g = (k: string) => CALIBRATION_DOC[k]?.grade ?? "judgement";
   P(`### Base rate, attacks/yr per organisation — *${g("frequency.baseRate")}*`);
   P(Object.entries(f.baseRate).map(([k, v]) => `${k} ${v}`).join(" · ") + ` · anything else ${f.baseRateDefault}`);
+  if (f.history && f.history.years > 0) {
+    P("", `### The organisation's own record — *own*`);
+    P(`${f.history.years} years × ${f.history.organisations} organisation(s); rate = (count + ½) ÷ exposure, replaces the bundled rate AND the sector exception for that class: `
+      + Object.entries(f.history.counts).map(([k, n]) => `${k} ${n} seen → ${((n + 0.5) / (f.history.years * f.history.organisations)).toPrecision(2)}/yr`).join(" · "));
+  }
   P("", `### Sector exceptions — *${g("frequency.sector")}*`);
   P(f.sector.map((r) => `${r.actor}×${r.sector} ×${r.factor}`).join(" · ") || "none");
+  P("", `### Organisation size — *${g("frequency.size")}*`);
+  P(Object.entries(f.size ?? {}).map(([k, v]) => `${k} ×${v}`).join(" · ") + ` · this study: ${study.size ?? "not set (medium)"}`);
   P("", `### Frequency multipliers — *tempo/throughput/pull: ${g("frequency.tempo")}, reachability: ${g("frequency.reachability")}*`);
   P(`tempo (by activity): ${f.tempo.join(" · ")}`);
   P(`throughput (by resources): ${f.throughput.join(" · ")}`);
@@ -1405,7 +1504,7 @@ export function quantLlmMarkdown(tax: Taxonomy, study: Study): string {
     const ov = study.quant?.[op.id]?.overrides as Partial<QuantInputs> | undefined;
     const dW = deriveInputs(study, tax, op, true, cal), dWo = deriveInputs(study, tax, op, false, cal);
     const inW: QuantInputs = { ...dW.inputs, ...ov }, inWo: QuantInputs = { ...dWo.inputs, ...ov };
-    const rW = simulate(inW, 40000, dW.chain), rWo = simulate(inWo, 40000, dWo.chain);
+    const rW = simulate(inW, 40000, dW.chain, undefined, cal.time), rWo = simulate(inWo, 40000, dWo.chain, undefined, cal.time);
     const rs = dW.refs.riskSource, fe = dW.refs.fearedEvent, strat = dW.refs.strategic;
     const lab = (rec: EntityRecord | undefined, key: string) => {
       if (!rec) return "—";
@@ -1422,7 +1521,7 @@ export function quantLlmMarkdown(tax: Taxonomy, study: Study): string {
 
     const fr = dW.frequency;
     P(`**Attempts per year: ${n2(fr.total)}**`,
-      `base ${n2(fr.base)} × tempo ${n2(fr.tempo)} × throughput ${n2(fr.throughput)} × target pull ${n2(fr.pull)} × reachability ${n2(fr.reachability)}${fr.capped ? " — CAPPED, the multipliers together exceeded the plausible ceiling" : ""}`, "");
+      `base ${n2(fr.base)}${fr.own ? " (own record)" : ""} × tempo ${n2(fr.tempo)} × throughput ${n2(fr.throughput)} × target pull ${n2(fr.pull)} × reachability ${n2(fr.reachability)}${fr.capped ? " — CAPPED, the multipliers together exceeded the plausible ceiling" : ""}`, "");
 
     if (dW.demand) {
       const dm = dW.demand;
@@ -1436,17 +1535,20 @@ export function quantLlmMarkdown(tax: Taxonomy, study: Study): string {
     }
 
     P("**Chain**", "");
-    P("| # | step | tactic | technique | join | blocks | detected | measures |");
-    P("|---|---|---|---|---|---|---|---|");
+    P(`_Detection is a race: an attempt seen at a watched step is caught only if the alert plus the organisation's response (${fmtDays(inW.respondDays.mode)} median, from its readiness "${study.readiness ?? "not set - read as Plan on paper"}") come before the attacker's remaining time to the objective, summed from the steps still ahead._`, "");
+    if ((dW.chain ?? []).some((cs) => cs.group))
+      P("_Steps that name the same cause under \"fails with\" are drawn together: the attacker who finds the shared weakness passes every gate built on it, so two such gates count as one._", "");
+    P("| # | step | tactic | technique | join | blocks | watched | attacker days here | alert in | fails with | measures |");
+    P("|---|---|---|---|---|---|---|---|---|---|---|");
     (dW.chain ?? []).forEach((cs, i) => {
       const sc = dW.coverage.steps.find((x) => x.step.id === cs.id);
       const st = sc?.step;
-      const ms = (sc?.measures ?? []).map((m) => `${recordTitle(getType(tax, m.type)!, m)} [${effectClassOf(m)}, ${String(m.values.status ?? "?")}, level ${String(m.values.implementation_level ?? "?")}]`).join("; ");
-      P(`| ${i + 1}${cs.terminal ? " (objective)" : ""} | ${st ? recordTitle(getType(tax, st.type)!, st) : cs.id} | ${String(st?.values.tactic ?? "—")} | ${String(st?.values.technique ?? "—")} | ${cs.preds.length > 1 ? cs.join : "—"} | ${cs.gate ? pc(cs.gate.mode) : "—"} | ${cs.interrupt > 0 ? pc(cs.interrupt) : "—"} | ${ms || "none"} |`);
+      const ms = (sc?.measures ?? []).map((m) => `${recordTitle(getType(tax, m.type)!, m)} [${effectClassOf(m)}, ${String(m.values.status ?? "?")}, level ${String(m.values.implementation_level ?? "?")}${m.values.strength != null ? `, strength ${String(m.values.strength)}/4` : ""}]`).join("; ");
+      P(`| ${i + 1}${cs.terminal ? " (objective)" : ""} | ${st ? recordTitle(getType(tax, st.type)!, st) : cs.id} | ${String(st?.values.tactic ?? "—")} | ${String(st?.values.technique ?? "—")} | ${cs.preds.length > 1 ? cs.join : "—"} | ${cs.gate ? pc(cs.gate.mode) : "—"} | ${cs.interrupt > 0 ? pc(cs.interrupt) : "—"} | ${fmtDays(cs.duration.mode)} | ${cs.detect ? fmtDays(cs.detect.mode) : "—"} | ${cs.group ?? "—"} | ${ms || "none"} |`);
     });
     P("");
 
-    P("**Factors fed to the simulation** (min / most likely / max)", "");
+    P("**Factors fed to the simulation** (min / most likely / max; a money factor is lognormal and its three points are the 5th percentile, the median and the 95th)", "");
     P("| factor | residual | inherent | where it comes from |");
     P("|---|---|---|---|");
     for (const k of Object.keys(inW) as (keyof QuantInputs)[]) {

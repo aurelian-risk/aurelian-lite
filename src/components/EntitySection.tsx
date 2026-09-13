@@ -6,7 +6,7 @@ import { columnFields, fieldLabel, fieldRelation, getType, isSetBack, optionLabe
 import { foldScope, getFolds, getHiddenColumns, setFolds, setHiddenColumns } from "../domain/viewstate";
 import { scopeChange, deleteChange } from "../domain/scope";
 import { deletedRefs } from "../domain/audit";
-import { TOOLBAR_MIN_ROWS } from "../domain/tablefilter";
+import { isCatalogTarget } from "../domain/catalog";
 import { TableTools, useTableFilter } from "./TableTools";
 import { useStore } from "../domain/store";
 import { ChangeHistoryModal, IntegrityBadge } from "./ChangeHistoryModal";
@@ -30,7 +30,7 @@ const BACKREF_PREVIEW = 12;
 const COL_WIDTH: Record<FieldType, number> = {
   number: 80,
   boolean: 96,
-  enum: 124,
+  enum: 150,       // "Maintenance / IT support" whole; at 124 it read "Maintena…"
   scale: 148,      // bars plus the longest scale label
   text: 156,
   textarea: 156,   // never a column today (columnFields drops it), sized for completeness
@@ -44,11 +44,6 @@ const COL_WIDTH: Record<FieldType, number> = {
 const NAME_MIN = 320;
 const tableMinWidth = (cols: FieldDef[]) =>
   NAME_MIN + cols.reduce((w, c) => w + COL_WIDTH[c.type], 0);
-/** A table whose columns alone ask for more than this offers the choice of which to show,
- *  however few rows it has - at 1280px, the commonest window, a panel is 958px wide, and
- *  no arrangement of eight columns fits in it. Rows are a different problem, solved by the
- *  search and the facets; this one is about width. */
-const WIDE_TABLE = 960;
 
 function FieldValueView({ field, type, value, tax, study, recordId, onOpen, onToggle, toggleBlocked }:
   /** `type` is not decoration: a field key is not unique across types, so a reading looked
@@ -133,9 +128,15 @@ function FieldValueView({ field, type, value, tax, study, recordId, onOpen, onTo
   }
 }
 
-export function EntitySection({ type, study, tax, color, draggableRows, renderDetailExtra, headerExtra, hideAdd }:
+/** A row someone asked to be shown - from the study-wide search, where a hit names a
+ *  record that may sit behind a fold, a filter or three screens of charts. `n` makes a
+ *  second request for the same record a new one. */
+export interface Reveal { id: string; n: number }
+
+export function EntitySection({ type, study, tax, color, draggableRows, renderDetailExtra, headerExtra, hideAdd, reveal }:
   { type: EntityTypeDef; study: Study; tax: Taxonomy; color: string;
-    draggableRows?: boolean; renderDetailExtra?: (r: EntityRecord) => ReactNode; headerExtra?: ReactNode; hideAdd?: boolean }) {
+    draggableRows?: boolean; renderDetailExtra?: (r: EntityRecord) => ReactNode; headerExtra?: ReactNode; hideAdd?: boolean;
+    reveal?: Reveal | null }) {
   const deleteEntity = useStore((s) => s.deleteEntity);
   const updateEntity = useStore((s) => s.updateEntity);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -169,9 +170,17 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
   useEffect(() => { setHiddenCols(getHiddenColumns(tableScope)); }, [tableScope]);
   const cols = allCols.filter((c) => !hiddenCols.has(c.key));
   const setColumns = (next: Set<string>) => { setHiddenCols(next); setHiddenColumns(tableScope, next); };
-  // Worth showing once a table is long enough to be hard to read - or wide enough that it
-  // cannot be read in one piece whatever its length.
-  const showTools = items.length >= TOOLBAR_MIN_ROWS || tableMinWidth(allCols) > WIDE_TABLE;
+  // Search, facets and grouping belong to the two tables a catalogue fills, and to no
+  // other. A row count decided it before, and the reader could not see the rule: the same
+  // table carried a search box at nine rows and none at seven, and a two-row table got one
+  // because it happened to be wide. Measured before the change (harness/table-tools.mjs):
+  // seven tables offered one, five of them with four rows or fewer.
+  const findable = isCatalogTarget(tax, type.key);
+  // The column choice is offered on every table that has columns to choose between. It
+  // used to hang on the table's width (wider than 960px of columns), and the reader could
+  // not see the rule: the stakeholder table had the button, the business-asset table beside
+  // it did not, and "why?" was the only possible reaction. One rule everyone can see.
+  const showTools = findable || allCols.length > 2;
   const clearAll = f.clearAll;
   const toggleGroup = (k: string) => setCollapsed((c) => {
     const n = new Set(c); n.has(k) ? n.delete(k) : n.add(k);
@@ -183,6 +192,36 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
   // unconditionally would put a seam on every table, including the ones that fit.
   const body = useRef<HTMLDivElement>(null);
   const [pinned, setPinned] = useState(false);
+
+  // Bringing a record into view is done in two steps, because the row has to EXIST before
+  // it can be scrolled to: first whatever hides it is undone - a filter that leaves it
+  // out, a fold that holds it - and the row is opened; then, once React has drawn it, it
+  // is scrolled to and marked for a moment so the eye lands on it among its neighbours.
+  // The mark is state, not a class added by hand: the row's className is React's, and the
+  // render that opens the row would write over anything put there from outside.
+  const [arrived, setArrived] = useState<string | null>(null);
+  const revealed = useRef<number>(0);
+  const arriveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!reveal || !items.some((r) => r.id === reveal.id)) return;
+    if (!shown.some((r) => r.id === reveal.id)) clearAll();
+    const g = groups.find((gr) => gr.items.some((r) => r.id === reveal.id));
+    if (g && groupField && collapsed.has(g.key)) toggleGroup(g.key);
+    setExpanded(reveal.id);
+  // The row is looked up by what the reveal names; the list states are read once, when it changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal]);
+  useEffect(() => {
+    if (!reveal || revealed.current === reveal.n) return;
+    const tr = body.current?.querySelector<HTMLElement>(`tr[data-id="${CSS.escape(reveal.id)}"]`);
+    if (!tr) return;
+    revealed.current = reveal.n;
+    tr.scrollIntoView({ block: "center", behavior: "smooth" });
+    setArrived(reveal.id);
+    if (arriveTimer.current) clearTimeout(arriveTimer.current);
+    arriveTimer.current = setTimeout(() => setArrived(null), 2400);
+  });
+  useEffect(() => () => { if (arriveTimer.current) clearTimeout(arriveTimer.current); }, []);
 
   const refTargets = (typeKey: string) => study.entities.filter((e) => e.type === typeKey);
   const missingReq = type.fields.find((f) => f.type === "ref" && f.required && refTargets(f.refType ?? "").length === 0);
@@ -240,7 +279,7 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
           before the reader presses a button that would refuse them. */}
       {addBlocked && <div style={{ padding: "12px 16px 0" }}><div className="guide">{addBlocked}</div></div>}
 
-      {showTools && <TableTools type={type} f={f} columns={{
+      {showTools && <TableTools type={type} f={f} find={findable} columns={{
         fields: allCols, hidden: hiddenCols,
         toggle: (key) => { const n = new Set(hiddenCols); n.has(key) ? n.delete(key) : n.add(key); setColumns(n); },
         showAll: () => setColumns(new Set()),
@@ -295,7 +334,8 @@ export function EntitySection({ type, study, tax, color, draggableRows, renderDe
                 const isOpen = expanded === r.id;
                 return (
                   <Fragment key={r.id}>
-                    <tr className={"row-clickable" + (isOpen ? " expanded" : "") + (draggableRows ? " row-drag" : "")}
+                    <tr className={"row-clickable" + (isOpen ? " expanded" : "") + (draggableRows ? " row-drag" : "") + (arrived === r.id ? " row-revealed" : "")}
+                      data-id={r.id}
                       draggable={draggableRows || undefined}
                       onDragStart={draggableRows ? (e) => { e.dataTransfer.setData("text/plain", r.id); e.dataTransfer.effectAllowed = "move"; } : undefined}
                       onClick={() => setExpanded(isOpen ? null : r.id)}>

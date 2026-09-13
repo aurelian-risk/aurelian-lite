@@ -5,11 +5,11 @@
 // Optional qualitative presets fill a calibrated range as a quick start. Emits a Range.
 import { useRef } from "react";
 import { t as tr } from "../domain/i18n";
-import { PERT_LAMBDA, type Range } from "../domain/montecarlo";
+import { lognormalOf, PERT_LAMBDA, type Range } from "../domain/montecarlo";
 
 const LAM_MAX = 12, LAM_MIN = 0.2;
 
-export type Unit = "money" | "rate" | "prob";
+export type Unit = "money" | "rate" | "prob" | "days";
 
 const clamp = (x: number, lo: number, hi: number) => (x < lo ? lo : x > hi ? hi : x);
 
@@ -29,6 +29,12 @@ export function fmtVal(v: number, unit: Unit): string {
     if (v >= 1) return `${v.toFixed(1)}/yr`;
     if (v < 0.001) return "<0.001/yr";
     return `${Number(v.toPrecision(2))}/yr`;   // two significant digits, no trailing zeros
+  }
+  if (unit === "days") {
+    if (v < 1 / 24) return `${Math.max(1, Math.round(v * 24 * 60))} min`;
+    if (v < 1) return `${(v * 24).toFixed(v * 24 >= 10 ? 0 : 1)} h`;
+    if (v < 10) return `${v.toFixed(1)} d`;
+    return `${Math.round(v)} d`;
   }
   // money, compact
   const a = Math.abs(v);
@@ -109,7 +115,16 @@ export function DistInput({ label, sub, value, onChange, unit, lo, hi, log = fal
   const tMode = span > 0 ? (mode - min) / span : 0.5;
   const peakVal = betaPdf(tMode) || 1;                          // normalise by the mode's density
   const peakFrac = clamp(lam / LAM_MAX, 0.14, 1);              // how tall to draw the apex
+  // A lognormal range draws its own curve: a Gaussian in log space, centred on the
+  // median, that does not stop at the outer points - the picture has to show the tail
+  // the reading promises, or the handles would look like the bounds they are not.
+  const ln = value.dist === "lognormal" && min > 0 && max > min ? lognormalOf(value) : null;
   const dens = (v: number) => {
+    if (ln) {
+      if (v <= 0) return 0;
+      const z = (Math.log(v) - ln.mu) / ln.sigma;
+      return Math.exp(-0.5 * z * z) * 0.85;
+    }
     if (span <= 0 || v < min || v > max) return 0;
     return (betaPdf((v - min) / span) / peakVal) * peakFrac;
   };
@@ -123,7 +138,9 @@ export function DistInput({ label, sub, value, onChange, unit, lo, hi, log = fal
     <div className="di">
       <div className="di-head">
         <span className="di-label">{label}{sub && <span className="di-sub"> · {sub}</span>}</span>
-        <span className="di-read mono">{fmtVal(min, unit)} · <b>{fmtVal(mode, unit)}</b> · {fmtVal(max, unit)}</span>
+        <span className="di-read mono" title={value.dist === "lognormal"
+          ? "5th percentile · median · 95th percentile of a lognormal - one draw in twenty falls outside"
+          : "minimum · most likely · maximum"}>{fmtVal(min, unit)} · <b>{fmtVal(mode, unit)}</b> · {fmtVal(max, unit)}{value.dist === "lognormal" && <span className="di-dist"> P5·P50·P95</span>}</span>
       </div>
       {presets && (
         <div className="di-presets">

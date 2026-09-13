@@ -7,7 +7,7 @@
 import type { Study } from "../domain/types";
 import { t as tr } from "../domain/i18n";
 import { useStore } from "../domain/store";
-import { DEFAULT_CALIBRATION, knownSector, SECTORS, SECTOR_NOTES } from "../domain/calibration";
+import { DEFAULT_CALIBRATION, knownSector, READINESS, SECTORS, SECTOR_NOTES, SIZES, sizeFactorOf } from "../domain/calibration";
 
 export function SectorSection({ study, color }: { study: Study; color: string }) {
   const updateStudy = useStore((s) => s.updateStudy);
@@ -26,11 +26,28 @@ export function SectorSection({ study, color }: { study: Study; color: string })
         <h3>{tr('ui.sectorsection.sector', 'Sector')}</h3>
         <span className="spacer" />
         <span className="hint">{tr("ui.sector.selects-the-exceptions", "selects the attack-rate exceptions applied to this study")}</span>
-        <select className="btn sm" value={sector}
+        <select className="btn sm sect-pick" value={sector}
           onChange={(e) => updateStudy(study.id, { sector: e.target.value || undefined })}>
           <option value="">{tr('ui.sectorsection.not-set', 'Not set')}</option>
           {!known && <option value={sector}>{sector} — not in this calibration</option>}
           {SECTORS.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        {/* Size beside sector: the two dimensions of the base rate, and the size is the
+            stronger of the two in every source that has a denominator. */}
+        <span className="hint" style={{ marginLeft: 10 }}>{tr("ui.sector.size", "size")}</span>
+        <select className="btn sm size-pick" value={study.size ?? ""} title={tr("ui.sector.size-title", "Headcount class - multiplies the attack rate; unset means medium")}
+          onChange={(e) => updateStudy(study.id, { size: e.target.value || undefined })}>
+          <option value="">{tr("ui.sector.size-unset", "Medium (unset)")}</option>
+          {SIZES.map((z) => <option key={z} value={z}>{z}{cal.frequency.size[z] && cal.frequency.size[z] !== 1 ? ` ×${cal.frequency.size[z]}` : ""}</option>)}
+        </select>
+        {/* Response readiness: the defender's side of the detection race, a fact about the
+            organisation and not about any step - so it lives here with sector and size. */}
+        <span className="hint" style={{ marginLeft: 10 }}>{tr("ui.sector.readiness", "response")}</span>
+        <select className="btn sm readiness-pick" value={study.readiness ?? ""}
+          title={tr("ui.sector.readiness-title", "How fast the organisation acts on an alert - the defender's side of the detection race; unset reads as a plan on paper")}
+          onChange={(e) => updateStudy(study.id, { readiness: e.target.value || undefined })}>
+          <option value="">{tr("ui.sector.readiness-unset", "Plan on paper (unset)")}</option>
+          {READINESS.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </div>
       <div className="panel-body sect-body">
@@ -47,6 +64,7 @@ export function SectorSection({ study, color }: { study: Study; color: string })
               {rows.length
                 ? rows.map((r) => `${r.actor} ×${r.factor}`).join(" · ")
                 : "none"}
+              {study.size && sizeFactorOf(cal.frequency, study.size) !== 1 && ` · ${tr("ui.sector.every-class", "every class")} ×${sizeFactorOf(cal.frequency, study.size)} (${study.size})`}
             </p>
           </>
         ) : (

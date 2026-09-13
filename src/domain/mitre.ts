@@ -28,6 +28,14 @@ export const MITRE_TECHNIQUES: Technique[] = [
   { id: "T1133", name: "External Remote Services", tactic: "Initial Access" },
   { id: "T1078", name: "Valid Accounts", tactic: "Initial Access" },
   { id: "T1195", name: "Supply Chain Compromise", tactic: "Initial Access" },
+  // The rest of the tactic, so an entry technique can be chosen from the whole of it: the
+  // calibration keys reachability and entry cost by the entry technique, and a table that
+  // can only be extended with what is listed here would stop at five.
+  { id: "T1199", name: "Trusted Relationship", tactic: "Initial Access" },
+  { id: "T1189", name: "Drive-by Compromise", tactic: "Initial Access" },
+  { id: "T1091", name: "Replication Through Removable Media", tactic: "Initial Access" },
+  { id: "T1200", name: "Hardware Additions", tactic: "Initial Access" },
+  { id: "T1659", name: "Content Injection", tactic: "Initial Access" },
   // Execution
   { id: "T1059", name: "Command and Scripting Interpreter", tactic: "Execution" },
   { id: "T1204", name: "User Execution", tactic: "Execution" },

@@ -259,7 +259,7 @@ export interface StoreState {
   mergeStudies: (studies: Study[]) => number;
 
   createStudy: (name: string, organization?: string, scope?: string) => ID;
-  updateStudy: (id: ID, patch: Partial<Pick<Study, "name" | "organization" | "scope" | "sector">>) => void;
+  updateStudy: (id: ID, patch: Partial<Pick<Study, "name" | "organization" | "scope" | "sector" | "size" | "readiness">>) => void;
   deleteStudy: (id: ID) => void;
   /** Re-seed the product's sample study in the language now being read. Returns how many
    *  were replaced. */
@@ -376,7 +376,7 @@ export const useStore = create<StoreState>((set, get) => ({
       // a change to it that left no trace was a change to every risk figure that left no
       // trace. Name, organisation and scope are printed in the report and belong for the
       // same reason. Nothing is written when nothing actually changed.
-      const before = { name: s.name, organization: s.organization, scope: s.scope, sector: s.sector ?? "" };
+      const before = { name: s.name, organization: s.organization, scope: s.scope, sector: s.sector ?? "", size: s.size ?? "", readiness: s.readiness ?? "" };
       const after = { ...before, ...Object.fromEntries(
         Object.entries(patch).map(([k, v]) => [k, v ?? ""])) } as typeof before;
       const changes = diffValues(before as unknown as Record<string, FieldValue>,

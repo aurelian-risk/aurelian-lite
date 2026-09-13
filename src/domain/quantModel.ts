@@ -8,9 +8,9 @@ import type { EntityRecord, Study, Taxonomy } from "./types";
 import { tn } from "./i18n";
 import { getType, isSetBack, scaleLabel, scaleMax } from "./taxonomy";
 import { stepFields } from "./killchain";
-import { effectClassOf, type EffectClass } from "./controls";
-import { PERT_LAMBDA, type ChainStep, type QuantInputs, type Range } from "./montecarlo";
-import { DEFAULT_CALIBRATION, type Calibration } from "./calibration";
+import { effectClassOf, type EffectClass, defendsStep } from "./controls";
+import { lognormalOf, PERT_LAMBDA, type ChainStep, type QuantInputs, type Range } from "./montecarlo";
+import { DEFAULT_CALIBRATION, READINESS_DEFAULT, type Calibration } from "./calibration";
 import { demandOf, type DemandBreakdown, type DemandStep } from "./demand";
 import { attemptsPerYear, RATE_SPREAD, type FrequencyBreakdown, type Pull } from "./frequency";
 
@@ -31,16 +31,64 @@ export interface StepCov {
  *  `implementation_level` already carries how far a control is rolled out, so the
  *  status must not discount the same thing twice - it says where the control is in its
  *  lifecycle, not how complete it is. */
+/** How much of the ceiling a measure reaches when fully in force, from its `strength`
+ *  rating. Unset = 1: every measure was an MFA-class control before the rating existed,
+ *  and a study recorded then must not move because a field was added. */
+export function measureStrengthOf(tax: Taxonomy, m: EntityRecord, cal: Calibration = DEFAULT_CALIBRATION): number {
+  const f = getType(tax, m.type)?.fields.find((x) => x.key === "strength");
+  if (!f || !Number.isFinite(Number(m.values.strength))) return 1;
+  return c01(sampleNum(cal.effect.strengthWeight ?? [1], scaleRatio(tax, m, "strength", 1)));
+}
+
 export function measureEfficacyOf(tax: Taxonomy, m: EntityRecord, cal: Calibration = DEFAULT_CALIBRATION): number {
   const mt = getType(tax, m.type);
   const implF = mt?.fields.find((f) => f.key === "implementation_level");
   const statusF = mt?.fields.find((f) => f.key === "status");
   const lvl = implF ? sampleNum(cal.effect.levelWeight, scaleRatio(tax, m, implF.key, 1)) : 1;
   const sw = cal.effect.statusWeight[statusF ? String(m.values[statusF.key] ?? "") : ""] ?? 1;
-  return c01(lvl) * cal.effect.controlCeiling * sw;
+  return measureStrengthOf(tax, m, cal) * c01(lvl) * cal.effect.controlCeiling * sw;
+}
+
+/** The same measure once its LIFECYCLE is done with: status read as implemented, the
+ *  rolled-out level kept as recorded. A record that says nothing is rolled out yet
+ *  ("none") is read at the top instead, because for that one there is no other reading
+ *  of "in force".
+ *
+ *  This is the figure behind "0% → 49%": the withheld part, and nothing else. The level
+ *  is deliberately NOT lifted where it is set, or a control at "substantial" would be
+ *  reported as pending in every study - it is working, it is simply not everywhere. */
+export function measureEfficacyInForce(tax: Taxonomy, m: EntityRecord, cal: Calibration = DEFAULT_CALIBRATION): number {
+  const mt = getType(tax, m.type);
+  const implF = mt?.fields.find((f) => f.key === "implementation_level");
+  const lvl = implF ? sampleNum(cal.effect.levelWeight, scaleRatio(tax, m, implF.key, 1)) : 1;
+  return measureStrengthOf(tax, m, cal) * c01(lvl > 0 ? lvl : 1) * cal.effect.controlCeiling;
 }
 /** Defense-in-depth step coverage from the layers' efficacies: 1 - product(1-eff). */
 export const stepCoverage = (effs: number[]) => 1 - effs.reduce((p, e) => p * (1 - e), 1);
+/** How far a step is DEFENDED: resisted or watched. Recovery is not defence - a backup
+ *  does not stop an attacker reaching the step, it pays for it afterwards. */
+export const stepDefence = (st: StepCov) => 1 - (1 - st.prevention) * (1 - st.detection);
+/** What the step's defence would be once every measure on it is in force - the same
+ *  combination, each measure read through `measureEfficacyInForce`.
+ *
+ *  A study whose measures are entered as planned computes to a defence the model has
+ *  discounted for the lifecycle: half of it for "Planned", 85% of it for "Recommended",
+ *  all of it where the rollout is "none". On screen that discount is indistinguishable
+ *  from a step nobody has treated - flat, weak colour either way. The difference is a
+ *  fact about the study, and the views draw it from the pair (defence, potential).
+ *
+ *  It is the LIFECYCLE that is lifted, never the rolled-out level: a control at
+ *  "substantial" is working, and counting its room to the ceiling here would mark every
+ *  step of every study as pending. */
+/** How much a lifecycle has to withhold before it is worth marking, in points of
+ *  defence. A step already held by an implemented control gains two points when a second,
+ *  planned one is added; saying so puts an arrow on almost every step and buys the reader
+ *  nothing. Three points is the smallest lift that changes what anyone would do. */
+export const PENDING_GAP = 0.03;
+
+export function stepPotential(tax: Taxonomy, st: StepCov, cal: Calibration = DEFAULT_CALIBRATION): number {
+  return stepCoverage(st.measures.filter(defendsStep).map((m) => measureEfficacyInForce(tax, m, cal)));
+}
 export interface Coverage { mitigated: number; total: number; impl: number; value: number; steps: StepCov[] }
 export interface Refs { op: EntityRecord; strategic?: EntityRecord; riskSource?: EntityRecord; fearedEvent?: EntityRecord }
 /** One effect class's contribution to ONE factor. The tree shows the factors and where
@@ -86,6 +134,11 @@ const R = (min: number, mode: number, max: number): Range => ({ min, mode, max }
 // PERT mean: (min + lambda*mode + max) / (lambda + 2). Matches the sampler so the
 // tree's shown values line up with the simulation.
 export const meanOf = (r: Range) => {
+  if (r.dist === "lognormal") {
+    if (!(r.max > r.min) || !(r.min > 0)) return r.mode;
+    const { mu, sigma } = lognormalOf(r);
+    return Math.exp(mu + (sigma * sigma) / 2);
+  }
   const l = Math.max(0, r.lambda == null ? PERT_LAMBDA : r.lambda);
   return (r.min + l * r.mode + r.max) / (l + 2);
 };
@@ -98,7 +151,14 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const sampleRange = (anchors: Range[], r: number): Range => {
   const p = c01(r) * (anchors.length - 1), i = Math.min(anchors.length - 2, Math.floor(p)), t = p - i;
   const a = anchors[i], b = anchors[i + 1];
-  return { min: lerp(a.min, b.min, t), mode: lerp(a.mode, b.mode, t), max: lerp(a.max, b.max, t) };
+  // Money bands are read on a log scale, so a severity between two anchors is placed
+  // geometrically between them - the arithmetic midpoint of 200K and 2M is 1.1M, which
+  // is nearly the upper band and nothing like "halfway" in the sense the scale means.
+  const dist = a.dist ?? b.dist;
+  const mix = dist === "lognormal" && a.min > 0 && b.min > 0
+    ? (x: number, y: number) => Math.exp(lerp(Math.log(x), Math.log(y), t))
+    : (x: number, y: number) => lerp(x, y, t);
+  return { min: mix(a.min, b.min), mode: mix(a.mode, b.mode), max: mix(a.max, b.max), ...(dist ? { dist } : {}) };
 };
 const sampleNum = (anchors: number[], r: number): number => {
   const p = c01(r) * (anchors.length - 1), i = Math.min(anchors.length - 2, Math.floor(p)), t = p - i;
@@ -134,7 +194,7 @@ const around = (mode: number, spread: number): Range =>
 /** Structural detection of the step and measure types - a step is the type that points
  *  at a parent and carries an order; a measure is the type that multirefs steps. Shared
  *  by the coverage figure and the chain model so both read the same taxonomy. */
-function chainTypes(tax: Taxonomy) {
+export function chainTypes(tax: Taxonomy) {
   const stepType = tax.entityTypes.find((t) => t.fields.some((f) => f.type === "ref" && f.refType) && t.fields.some((f) => f.type === "number"));
   const parentF = stepType?.fields.find((f) => f.type === "ref" && f.refType);
   const measureType = tax.entityTypes.find((t) => t.key !== stepType?.key && t.fields.some((f) => f.type === "multiref" && f.refType === stepType?.key));
@@ -187,7 +247,29 @@ export function coverageOf(study: Study, tax: Taxonomy, op: EntityRecord, cal: C
  *
  *  Returns undefined when the scenario has no steps: the caller then falls back to the
  *  plain baseline comparison, which is also the path for taxonomies without kill chains. */
-export function chainOf(tax: Taxonomy, cov: Coverage, ctlBase: number, readiness: number, cal: Calibration = DEFAULT_CALIBRATION): ChainStep[] | undefined {
+/** The detection band of a step: how fast its strongest detective measure raises an
+ *  alert, from that measure's strength rating (unrated = very strong, as everywhere). */
+function detectBandOf(tax: Taxonomy, sc: StepCov, cal: Calibration): Range | null {
+  let best: { eff: number; band: Range } | null = null;
+  const bands = cal.time.detectDays;
+  for (const m of sc.measures) {
+    if (effectClassOf(m) !== "Detective" || isSetBack(tax, m)) continue;
+    const eff = measureEfficacyOf(tax, m, cal);
+    if (eff <= 0) continue;
+    const r = scaleRatio(tax, m, "strength", 1);
+    const band = bands[Math.min(bands.length - 1, Math.round(r * (bands.length - 1)))];
+    if (!best || eff > best.eff) best = { eff, band };
+  }
+  return best?.band ?? null;
+}
+
+/** Days an attacker of typical capability spends on a step, from its tactic. */
+function durationOf(sc: StepCov, cal: Calibration): Range {
+  const tactic = String(sc.step.values.tactic ?? "");
+  return cal.time.stepDays[tactic] ?? cal.time.stepDaysDefault;
+}
+
+export function chainOf(tax: Taxonomy, cov: Coverage, ctlBase: number, cal: Calibration = DEFAULT_CALIBRATION): ChainStep[] | undefined {
   if (!cov.steps.length) return undefined;
   const { stepType } = chainTypes(tax);
   const sf = stepType ? stepFields(stepType) : null;
@@ -255,18 +337,43 @@ export function chainOf(tax: Taxonomy, cov: Coverage, ctlBase: number, readiness
     gate: n.sc.prevention > 0 ? around(c01(ctlBase + cal.effect.prevention * n.sc.prevention), cal.demand.spread) : null,
     // Detection buys an interruption, and only as far as somebody responds to it. On the
     // objective itself there is nothing left to interrupt - that value goes to magnitude.
-    interrupt: isPred.has(n.sc.step.id) ? c01(cal.effect.detection * n.sc.detection * readiness) : 0,
+    // Watched = the detective measures' combined efficacy; whether the alert is in time
+    // is the race, run in the engine with `detect`, `duration` and the inputs' response
+    // time. On the objective there is nothing left to interrupt.
+    interrupt: isPred.has(n.sc.step.id) ? c01(n.sc.detection) : 0,
+    detect: isPred.has(n.sc.step.id) ? detectBandOf(tax, n.sc, cal) : null,
+    duration: durationOf(n.sc, cal),
     terminal: !isPred.has(n.sc.step.id),
+    ...(causeOf(tax, n.sc, cal) ? { group: causeOf(tax, n.sc, cal) } : {}),
   }));
   if (!chain.some((s) => s.terminal)) chain[chain.length - 1].terminal = true;   // degenerate data
   return chain;
+}
+
+/** The common cause a step's defence rests on: what its strongest defending measure
+ *  says it fails with, normalised so "Identity Provider" and "identity provider" are one
+ *  cause. Where the step's measures name different causes the strongest decides - the
+ *  gate is mostly that measure. A measure that names nothing ties nothing together, and
+ *  one measure covering several steps is still drawn per step: different techniques
+ *  meet a control differently, and naming a cause is how the analyst says otherwise. */
+export function causeOf(tax: Taxonomy, sc: StepCov, cal: Calibration = DEFAULT_CALIBRATION): string | undefined {
+  let best: { eff: number; cause: string } | null = null;
+  for (const m of sc.measures) {
+    if (!defendsStep(m) || isSetBack(tax, m)) continue;
+    const raw = m.values.fails_with;
+    const cause = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+    if (!cause) continue;
+    const eff = measureEfficacyOf(tax, m, cal);
+    if (!best || eff > best.eff) best = { eff, cause };
+  }
+  return best?.cause;
 }
 
 /** Every measure attached to this scenario, whether it is anchored ON the chain (it
  *  covers one of the steps) or AT the assets the chain goes after (it protects one of
  *  them). Deterrence, avoidance and recovery act on the scenario as a whole rather than
  *  on one step, so they are collected here rather than per step. */
-function linkedMeasures(study: Study, tax: Taxonomy, cov: Coverage): EntityRecord[] {
+export function linkedMeasures(study: Study, tax: Taxonomy, cov: Coverage): EntityRecord[] {
   const { stepType, parentF, measureType, coversF } = chainTypes(tax);
   if (!stepType || !measureType || !coversF) return [];
   const stepIds = new Set(cov.steps.map((s) => s.step.id));
@@ -284,7 +391,7 @@ function linkedMeasures(study: Study, tax: Taxonomy, cov: Coverage): EntityRecor
 }
 
 /** Scale a three-point estimate by a factor, keeping its shape. */
-const scaleRange = (r: Range, f: number): Range => ({ min: r.min * f, mode: r.mode * f, max: r.max * f, lambda: r.lambda });
+const scaleRange = (r: Range, f: number): Range => ({ min: r.min * f, mode: r.mode * f, max: r.max * f, lambda: r.lambda, ...(r.dist ? { dist: r.dist } : {}) });
 
 /** Follow a single ref on a record to its target entity. */
 function refOne(study: Study, rec: EntityRecord | undefined, key: string): EntityRecord | undefined {
@@ -365,8 +472,10 @@ export function deriveInputs(study: Study, tax: Taxonomy, op: EntityRecord, with
   const classEff = (cls: EffectClass) =>
     stepCoverage(linked.filter((m) => effectClassOf(m) === cls).map((m) => measureEfficacyOf(tax, m, cal)));
   const deter = classEff("Deterrent"), avoid = classEff("Avoidance"), corr = classEff("Corrective");
-  // Detection is worth what the response makes of it.
-  const readiness = cal.effect.responseFloor + (1 - cal.effect.responseFloor) * corr;
+  // How fast the organisation acts on an alert: its response readiness, a fact about the
+  // study. Unset reads as a plan on paper, and the provenance says so.
+  const readinessName = study.readiness && cal.time.respondDays[study.readiness] ? study.readiness : READINESS_DEFAULT;
+  const respond = cal.time.respondDays[readinessName] ?? cal.time.respondDays[READINESS_DEFAULT];
 
   // How often the scenario is attempted. ONE derived quantity - the old split into
   // contact frequency and probability of action was not identifiable from real data,
@@ -375,6 +484,7 @@ export function deriveInputs(study: Study, tax: Taxonomy, op: EntityRecord, with
   const freq = attemptsPerYear({
     actor: String(rs?.values.category ?? ""),
     sector: study.sector ?? "",
+    size: study.size,
     activity: scaleRatio(tax, rs, "activity"),
     resources: scaleRatio(tax, rs, "resources"),
     relevance: scaleRatio(tax, rs, "relevance"),
@@ -390,7 +500,7 @@ export function deriveInputs(study: Study, tax: Taxonomy, op: EntityRecord, with
   const demand = cov.steps.length ? demandOf(dSteps, cal.demand) : undefined;
   const ctlBase = demand ? demand.total : sampleNum(cal.demand.difficultyFallback, diffR);
   const control = around(ctlBase, cal.demand.spread);
-  const chain = withControls ? chainOf(tax, cov, ctlBase, readiness, cal) : undefined;
+  const chain = withControls ? chainOf(tax, cov, ctlBase, cal) : undefined;
   const gated = chain?.filter((s) => s.gate).length ?? 0;
   const watched = chain?.filter((s) => s.interrupt > 0).length ?? 0;
   // Detection sitting ON the objective cannot prevent anything - it shortens the event.
@@ -409,6 +519,7 @@ export function deriveInputs(study: Study, tax: Taxonomy, op: EntityRecord, with
     directImpact: cut(sampleRange(cal.magnitude.loss, sevR), (1 - cal.effect.recoverableShare * corr) * (1 - cal.effect.lateDetection * termDet)),
     cascadingLikelihood: cut(sampleRange(cal.magnitude.cascadeLikelihood, sevR), 1 - cal.effect.containment * corr),
     cascadingImpact: sampleRange(cal.magnitude.cascadeLoss, sevR),
+    respondDays: { ...respond },
   };
   const rsName = rs ? String(rs.values.name ?? "risk source") : "risk source";
   const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -418,9 +529,9 @@ export function deriveInputs(study: Study, tax: Taxonomy, op: EntityRecord, with
   const prov: Record<keyof QuantInputs, Prov> = {
     attemptRate: { icon: avoid > 0 || deter > 0 ? "🛡" : "◆",
       source: avoid > 0 || deter > 0 ? `${actorLabel} - fewer attempts` : actorLabel,
-      label: avoid > 0 || deter > 0
+      label: (avoid > 0 || deter > 0
         ? `${pullWord} · attempts cut ${pct(1 - fewer)}`
-        : `${pullWord} · base ${freq.base.toPrecision(2)}/yr` },
+        : `${pullWord} · base ${freq.base.toPrecision(2)}/yr`) + (freq.own ? " · own record" : "") },
     adversaryStrength: { icon: "⚔", source: rsName, label: scaleFieldLabel(tax, rs, "capability") },
     controlStrength: { icon: "🛡", source: demand ? "chain demand + measures" : "scenario difficulty",
       label: demand
@@ -433,6 +544,8 @@ export function deriveInputs(study: Study, tax: Taxonomy, op: EntityRecord, with
       ? { icon: "🛡", source: "containment", label: `follow-on cut ${pct(cal.effect.containment * corr)}` }
       : { icon: "✎", source: "follow-on", label: "estimate", estimated: true },
     cascadingImpact: { icon: "✎", source: "follow-on", label: "estimate", estimated: true },
+    respondDays: { icon: "⏱", source: study.readiness ? "response readiness" : "response readiness - not set",
+      label: study.readiness ? readinessName : `read as "${READINESS_DEFAULT}"`, estimated: !study.readiness },
   };
   // Which class moved which factor. Built from the SAME terms the inputs above were built
   // from - not recomputed here, or the tree and the numbers could drift apart, which is
@@ -450,7 +563,7 @@ export function deriveInputs(study: Study, tax: Taxonomy, op: EntityRecord, with
     put("controlStrength", { cls: "Preventive", strength: classEff("Preventive"), steps: gated,
       what: gated ? `${tn("quant.gatedSteps", gated, "{0} step", "{0} steps")} an attacker has to get past` : "measures recorded, but none of them blocks a step" });
     put("controlStrength", { cls: "Detective", strength: classEff("Detective"), steps: watched,
-      what: watched ? `${tn("quant.watchedSteps", watched, "{0} step", "{0} steps")} where he can be caught and the chain broken` : "measures recorded, but no step is watched" });
+      what: watched ? `${tn("quant.watchedSteps", watched, "{0} step", "{0} steps")} where he can be caught - if the alert and the response come before the objective` : "measures recorded, but no step is watched" });
     put("directImpact", { cls: "Corrective", strength: corr, factor: 1 - cal.effect.recoverableShare * corr,
       what: "part of the loss is recovered rather than borne" });
     put("directImpact", { cls: "Detective", strength: termDet, factor: 1 - cal.effect.lateDetection * termDet,

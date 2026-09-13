@@ -11,7 +11,7 @@ import type { EntityRecord, Taxonomy } from "../domain/types";
 import { fieldLabel, getType, recordTitle, scaleLabel, scaleMax } from "../domain/taxonomy";
 import type { Derived } from "../domain/quantModel";
 import { effectClassOf, effectChannel } from "../domain/controls";
-import type { QuantInputs, Range } from "../domain/montecarlo";
+import type { ChainStep, QuantInputs, Range } from "../domain/montecarlo";
 import type { FConf } from "./QuantificationView";
 import { DistInput, fmtVal, type Unit } from "./DistInput";
 import { Icon, Overlay, ScaleBars } from "./ui";
@@ -19,11 +19,11 @@ import { Icon, Overlay, ScaleBars } from "./ui";
 type FKey = keyof QuantInputs;
 // Every value needed to spell out the calculation with real numbers.
 export interface Vals {
-  rate: number; adv: number; ctl: number;
+  rate: number; adv: number; ctl: number; respond: number;
   tef: number; vuln: number; lef: number;
   direct: number; cascL: number; cascI: number; secondary: number; lm: number; ale: number;
 }
-interface Meta { title: string; kind: "attempts" | "capability" | "control" | "money" | "prob" }
+interface Meta { title: string; kind: "attempts" | "capability" | "control" | "money" | "prob" | "respond" }
 const META: Record<FKey, Meta> = {
   attemptRate: { title: "Attempts per year", kind: "attempts" },
   adversaryStrength: { title: "Attacker capability", kind: "capability" },
@@ -31,6 +31,7 @@ const META: Record<FKey, Meta> = {
   directImpact: { title: "Direct impact", kind: "money" },
   cascadingLikelihood: { title: "Cascading likelihood", kind: "prob" },
   cascadingImpact: { title: "Cascading impact", kind: "money" },
+  respondDays: { title: "Time to act on an alert", kind: "respond" },
 };
 
 // The chain of result nodes each factor flows through, up to the annual loss.
@@ -42,6 +43,7 @@ const PATH: Record<FKey, Node[]> = {
   directImpact: ["lm", "ale"],
   cascadingLikelihood: ["secondary", "lm", "ale"],
   cascadingImpact: ["secondary", "lm", "ale"],
+  respondDays: ["vuln", "lef", "ale"],
 };
 const NODE_NAME: Record<Node, string> = { tef: "Attempts per year", vuln: "Vulnerability", lef: "Loss event frequency", secondary: "Secondary risk", lm: "Loss magnitude", ale: "Annual loss" };
 const NODE_UNIT: Record<Node, Unit> = { tef: "rate", vuln: "prob", lef: "rate", secondary: "money", lm: "money", ale: "money" };
@@ -49,8 +51,18 @@ const NODE_UNIT: Record<Node, Unit> = { tef: "rate", vuln: "prob", lef: "rate", 
 // header, the start node and the equations consistent.
 const FVAL: Record<FKey, keyof Vals> = {
   attemptRate: "rate", adversaryStrength: "adv", controlStrength: "ctl",
-  directImpact: "direct", cascadingLikelihood: "cascL", cascadingImpact: "cascI",
+  directImpact: "direct", cascadingLikelihood: "cascL", cascadingImpact: "cascI", respondDays: "respond",
 };
+
+/** Median days from finishing step `i` to reaching the objective by the fastest route,
+ *  the way the engine reads it at the medians of the bands. */
+function remainingDays(chain: ChainStep[], i: number): number {
+  const succ: number[][] = chain.map(() => []);
+  chain.forEach((s, k) => s.preds.forEach((p) => succ[p].push(k)));
+  const rem = new Array<number>(chain.length).fill(0);
+  for (let k = chain.length - 1; k >= 0; k--) rem[k] = succ[k].length ? Math.min(...succ[k].map((t) => chain[t].duration.mode + rem[t])) : 0;
+  return rem[i];
+}
 
 // A term in an equation: a named quantity with its value.
 type EqTerm = { label: string; value: number; unit: Unit };
@@ -99,7 +111,7 @@ export function FactorTrace({ fkey, range, vals, derived, tax, unit, conf, accen
     const f = derived.frequency;
     const x = (n: number) => `×${n.toPrecision(2)}`;
     const rows: { label: string; value: string; from: string }[] = [
-      { label: "Base rate", value: `${f.base.toPrecision(2)}/yr`, from: "actor class × sector" },
+      { label: "Base rate", value: `${f.base.toPrecision(2)}/yr`, from: f.own ? "your own record - sector and size are already in it" : "actor class × sector × size" },
       { label: "Tempo", value: x(f.tempo), from: "how active this actor is" },
       { label: "Throughput", value: x(f.throughput), from: "how much it can run at once" },
       { label: "Target pull", value: x(f.pull), from: "whether it declared an objective on what this chain goes after" },
@@ -197,7 +209,15 @@ export function FactorTrace({ fkey, range, vals, derived, tax, unit, conf, accen
                 </span>
                 <span className="ft-step-c">
                   {cs.gate && <b className="ok">blocks {Math.round(cs.gate.mode * 100)}%</b>}
-                  {cs.interrupt > 0 && <b className="watch">detected {Math.round(cs.interrupt * 100)}%</b>}
+                  {cs.interrupt > 0 && <b className="watch">watched {Math.round(cs.interrupt * 100)}%</b>}
+                  {cs.interrupt > 0 && cs.detect && (() => {
+                    // The race at this step, at the medians: the attacker's fastest route
+                    // from here to the objective against the alert plus the response.
+                    const rest = remainingDays(chain ?? [], i);
+                    const resp = derived.inputs.respondDays.mode;
+                    const def = cs.detect.mode + resp;
+                    return <em className="ft-race">{rest > def ? "in time at the medians" : "too late at the medians"} · attacker {fmtVal(rest, "days")} to the objective by the fastest route, alert {fmtVal(cs.detect.mode, "days")} + response {fmtVal(resp, "days")}</em>;
+                  })()}
                   {!cs.gate && cs.interrupt === 0 && (
                     <span className="bad">{cs.terminal && sc?.detection ? "detected only once the damage is done" : "nothing here - the attacker walks through"}</span>
                   )}
@@ -213,6 +233,13 @@ export function FactorTrace({ fkey, range, vals, derived, tax, unit, conf, accen
           </div>
         )}
       </>
+    );
+  } else if (m.kind === "respond") {
+    source = (
+      <p className="ft-calc">
+        {tr('ui.factortrace.respond', 'How long this organisation takes from an alert to containment - read from its response readiness in the scope workshop, as a band of days drawn per attempt. It is the defender\'s side of the race at every watched step of every scenario: an attempt is caught only if this time plus the alert time is shorter than what the attacker still needs to reach the objective. The strongest lever a detective posture has.')}
+        {derived.prov.respondDays.estimated && <> <b>{tr('ui.factortrace.respond-unset', 'Readiness is not set; the medium level is read.')}</b></>}
+      </p>
     );
   } else {
     const s = scaleOf(tax, fe, "severity");

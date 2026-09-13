@@ -16,6 +16,11 @@ export const CALIBRATION_VERSION = 1;
 
 /** Sectors the base rates distinguish. Kept short: a longer list would suggest a
  *  precision the underlying evidence does not have. */
+/** Organisation size by headcount, in Eurostat's classes. The bundled base rates were
+ *  derived for a medium organisation, so that is the unit factor and the default. */
+export const SIZES = ["Small (10-49)", "Medium (50-249)", "Large (250-999)", "Very large (1000+)"] as const;
+export const SIZE_DEFAULT = "Medium (50-249)";
+
 export const SECTORS = [
   "Healthcare", "Public sector", "Energy & utilities", "Finance & insurance",
   "Manufacturing", "Transport & logistics", "Retail & consumer",
@@ -46,13 +51,37 @@ export const SECTOR_NOTES: Record<string, string> = {
  *  than it attacks an average organisation. */
 export interface SectorRow { actor: string; sector: string; factor: number }
 
+/** The organisation's own incident record, where there is one. The base rate is the
+ *  weakest load-bearing number in the calibration (two credible surveys differ by a
+ *  factor of six), and the one figure that beats every published survey is what this
+ *  organisation actually saw. An entry here replaces the bundled rate for that actor
+ *  class - and the sector exception with it, because a record of this organisation is
+ *  already a record of its sector. */
+export interface OwnHistory {
+  /** Years the record covers. Zero = no record, every actor keeps the bundled rate. */
+  years: number;
+  /** Organisations the record covers: 1 for your own, more for a group or a peer set
+   *  whose incidents were pooled. Exposure is years × organisations. */
+  organisations: number;
+  /** Serious operations observed per actor class over the WHOLE record - the same unit
+   *  as the base rate (operations, not phishing mails or scans). An actor class without
+   *  an entry keeps the bundled rate; a zero is an observation and is read as one. */
+  counts: Record<string, number>;
+}
+
 export interface FrequencyCalibration {
   /** Serious operations per year an actor of this class mounts against one
    *  organisation. THE one quantity that needs evidence - everything else is a ratio. */
   baseRate: Record<string, number>;
   baseRateDefault: number;
+  /** What this organisation saw itself. See `OwnHistory`; read by `ownRateOf`. */
+  history: OwnHistory;
   /** Sector exceptions, as editable rows. Absent pairing = no adjustment. */
   sector: SectorRow[];
+  /** Multiplier on the base rate by the study's size class. Medium = 1: the bundled
+   *  rates were derived for it. Not applied to an own record - that is already a record
+   *  of an organisation of this size. */
+  size: Record<string, number>;
   /** Is this particular actor more or less active than typical? By `activity` rating. */
   tempo: number[];
   /** A well-resourced actor runs more operations in parallel. By `resources` rating.
@@ -123,7 +152,7 @@ export interface DemandCalibration {
 }
 
 /** A three-point estimate as the calibration stores it. */
-export interface Band { min: number; mode: number; max: number; lambda?: number }
+export interface Band { min: number; mode: number; max: number; lambda?: number; dist?: "pert" | "lognormal" }
 
 export interface MagnitudeCalibration {
   /** Direct loss per event, by feared-event severity. Currency. */
@@ -151,6 +180,8 @@ export interface EffectCalibration {
   /** How far a step's own preventive coverage lifts the bar above the demand. */
   prevention: number;
   /** How much of a detective control converts into actually breaking off an intrusion. */
+  /** RETIRED with the time race (docs/detection-time-race.md): kept in the shape so a
+   *  stored calibration still reconciles; nothing reads it. */
   detection: number;
   /** Deterrence works on the decision to attack: fewer attempts are started. */
   deterrence: number;
@@ -165,6 +196,7 @@ export interface EffectCalibration {
   lateDetection: number;
   /** Detection is worth what the response makes of it; the floor grants that SOME
    *  reaction always happens, even where none was planned. */
+  /** RETIRED with the time race; see `detection`. */
   responseFloor: number;
   /** A single control never fully blocks a step; layers stack towards this. */
   controlCeiling: number;
@@ -175,6 +207,33 @@ export interface EffectCalibration {
    *  the value of level 1 depend on how long the scale happened to be. Now explicit,
    *  and read like every other band, so a 1..N scale is placed proportionally. */
   levelWeight: number[];
+  /** What a measure of each strength is worth against the ceiling, by the `strength`
+   *  rating: weak / moderate / strong / very strong. The top is 1 - the ceiling itself,
+   *  and what every measure was assumed to reach before the rating existed. */
+  strengthWeight: number[];
+  /** Years a one-off cost is spread over when a measure's worth is set against its cost. */
+  costHorizonYears: number;
+}
+
+/** How fast the two sides are. Detection is a race (docs/detection-time-race.md): an
+ *  attempt seen at a watched step is caught in time iff the defender's time to detect
+ *  and act is shorter than the attacker's remaining time to the objective. Every entry
+ *  is in DAYS, drawn per attempt; the bands are lognormal, points read P5/median/P95. */
+export interface TimeCalibration {
+  /** How long an attacker of typical capability spends on a step, by the step's tactic.
+   *  A tactic without a row takes `stepDaysDefault`. */
+  stepDays: Record<string, Band>;
+  stepDaysDefault: Band;
+  /** Multiplier on the attacker's time by capability, anchored at the rating levels and
+   *  read at the attempt's own capability draw: the top of the population is fast. */
+  capabilitySpeed: number[];
+  /** Time from the attacker's action at a watched step to an alert somebody sees, by
+   *  the detective measure's strength rating (weak … very strong). Whether the step is
+   *  watched at all is the measure's efficacy; this is how fast, once it is. */
+  detectDays: Band[];
+  /** Time from the alert to containment, by the organisation's response readiness -
+   *  a property of the study, not of a step. */
+  respondDays: Record<string, Band>;
 }
 
 export interface Calibration {
@@ -184,7 +243,12 @@ export interface Calibration {
   adversary: AdversaryCalibration;
   effect: EffectCalibration;
   magnitude: MagnitudeCalibration;
+  time: TimeCalibration;
 }
+
+/** The organisation's response readiness, on the study beside sector and size. */
+export const READINESS = ["No response capability", "Plan on paper", "Exercised plan", "24x7 response with authority to contain"] as const;
+export const READINESS_DEFAULT = "Plan on paper";
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -206,14 +270,25 @@ const FREQUENCY: FrequencyCalibration = {
     "Terrorist": 0.01,
   },
   baseRateDefault: 0.2,
+  history: { years: 0, organisations: 1, counts: {} },
+  // Eurostat 2024 (EU-27, incidents with a consequence due to attack): 10-49 3.15%,
+  // 50-249 4.34%, 250+ 7.05% - so 0.73 and 1.62 against medium, and IRIS 2025 puts the
+  // step from $100M-1B to $1B-10B at 1.5 and the tiers above at 3-4. See sources §9.3.
+  size: { "Small (10-49)": 0.73, "Medium (50-249)": 1.0, "Large (250-999)": 1.6, "Very large (1000+)": 2.5 },
   // MUCH flatter than raw victim counts suggest. Leak-site tallies put manufacturing far
   // above healthcare, but those are counts, and a sector with more organisations in it
   // produces more victims regardless of risk. Measured as incidence among comparable
   // organisations the gap nearly closes.
+  // Two sources since 2026-09: Sophos ransomware incidence (§3) and IRIS 2025 relative
+  // loss-event probability by sector (§9.4). Where they agree the row is confirmed;
+  // where they disagree it sits halfway.
   sector: [
-    { actor: "Cybercriminals", sector: "Healthcare", factor: 1.15 },
-    { actor: "Cybercriminals", sector: "Finance & insurance", factor: 1.1 },
-    { actor: "Cybercriminals", sector: "Manufacturing", factor: 1.1 },
+    { actor: "Cybercriminals", sector: "Healthcare", factor: 1.25 },
+    { actor: "Cybercriminals", sector: "Finance & insurance", factor: 1.25 },
+    { actor: "Cybercriminals", sector: "Manufacturing", factor: 1.05 },
+    { actor: "Cybercriminals", sector: "Education & research", factor: 1.4 },
+    { actor: "Cybercriminals", sector: "Technology & telecom", factor: 1.3 },
+    { actor: "Cybercriminals", sector: "Energy & utilities", factor: 0.8 },
     // The exception: political targeting is consistently reported as concentrated, but
     // no normalised incidence figure exists for it. These stay judgement.
     { actor: "Hacktivist", sector: "Public sector", factor: 2.0 },
@@ -302,11 +377,19 @@ const ADVERSARY: AdversaryCalibration = {
 };
 
 const MAGNITUDE: MagnitudeCalibration = {
+  // Lognormal since 2026-09: the points are P5 / median / P95. Medians follow the typical
+  // losses IRIS 2025 and NetDiligence 2025 report by revenue tier and sector; the P95s
+  // follow their 95th percentiles - a ratio of 10-70 between median and P95, which is
+  // what measured loss distributions look like and what a bounded band could not say.
+  // The top band's mean is now ~8M against IBM's 4.44M mean. Sources §9.5.
+  // Each band is symmetric on the log scale (min = median² / max), so the two outer
+  // points ARE the 5th and 95th percentiles of the one sigma the band gets - an
+  // asymmetric band would put sigma between its two sides and neither point exactly.
   loss: [
-    { min: 5e3, mode: 2e4, max: 8e4 },
-    { min: 5e4, mode: 2e5, max: 8e5 },
-    { min: 2e5, mode: 1e6, max: 4e6 },
-    { min: 1e6, mode: 4.4e6, max: 2e7 },   // IBM Cost of a Data Breach 2025 global average
+    { min: 2.7e3, mode: 2e4, max: 1.5e5, dist: "lognormal" },
+    { min: 2e4, mode: 2e5, max: 2e6, dist: "lognormal" },
+    { min: 4.5e4, mode: 6e5, max: 8e6, dist: "lognormal" },     // IRIS median 603K, healthcare 557K; NetDiligence healthcare SME 566K
+    { min: 1.56e5, mode: 2.5e6, max: 4e7, dist: "lognormal" },  // IRIS $1B-10B typical 2M / extreme 62M; 2024 median 2.9M; 95th 32M
   ],
   cascadeLikelihood: [
     { min: 0.10, mode: 0.20, max: 0.35 },
@@ -315,10 +398,10 @@ const MAGNITUDE: MagnitudeCalibration = {
     { min: 0.45, mode: 0.65, max: 0.85 },
   ],
   cascadeLoss: [
-    { min: 2e3, mode: 1e4, max: 4e4 },
-    { min: 2e4, mode: 1e5, max: 4e5 },
-    { min: 1e5, mode: 5e5, max: 2e6 },
-    { min: 5e5, mode: 2.5e6, max: 1e7 },
+    { min: 1.25e3, mode: 1e4, max: 8e4, dist: "lognormal" },
+    { min: 1.25e4, mode: 1e5, max: 8e5, dist: "lognormal" },
+    { min: 6.25e4, mode: 5e5, max: 4e6, dist: "lognormal" },
+    { min: 3.13e5, mode: 2.5e6, max: 2e7, dist: "lognormal" },
   ],
 };
 
@@ -337,11 +420,61 @@ const EFFECT: EffectCalibration = {
   // to be 0.25 - an artefact of dividing the level by the top of the scale - which made
   // a measure whose implementation is explicitly "none" block a fifth of its step.
   levelWeight: [0, 1 / 3, 2 / 3, 1],
+  // Against the ceiling. Very strong = the MFA-class control the ceiling was set from;
+  // weak = a control whose published effect is small (awareness training on its own,
+  // an inventory). The spacing is judgement; the assignments in the library are not.
+  strengthWeight: [0.4, 0.65, 0.85, 1],
+  costHorizonYears: 3,
+};
+
+const LN = (min: number, mode: number, max: number): Band => ({ min, mode, max, dist: "lognormal" });
+const TIME: TimeCalibration = {
+  // Days per step, by tactic. M-Trends 2026: median dwell 14 days over all intrusions,
+  // 9 when found internally, 25 when told from outside; hand-off from initial access to
+  // the operating group in 22 seconds; espionage 122 days. Ransomware operations run
+  // their chain in days. These apportion a ransomware dwell of a week or two over the
+  // tactics a chain typically walks - the sources give dwell per intrusion, not per
+  // tactic, so the apportioning is the stated assumption. Sources §11.
+  stepDays: {
+    "Reconnaissance": LN(0.5, 3, 20),
+    "Resource Development": LN(0.5, 3, 20),
+    "Initial Access": LN(0.02, 0.5, 5),        // the mail is opened or it is not; hand-off in seconds
+    "Execution": LN(0.01, 0.2, 2),
+    "Persistence": LN(0.05, 0.5, 5),
+    "Privilege Escalation": LN(0.1, 1, 7),
+    "Defense Evasion": LN(0.05, 0.5, 5),
+    "Credential Access": LN(0.1, 1, 7),
+    "Discovery": LN(0.1, 1, 7),
+    "Lateral Movement": LN(0.2, 2, 14),
+    "Collection": LN(0.2, 2, 14),
+    "Command and Control": LN(0.05, 0.5, 5),
+    "Exfiltration": LN(0.2, 2, 14),
+    "Impact": LN(0.05, 0.5, 3),                // encryption is hours, not days
+  },
+  stepDaysDefault: LN(0.1, 1, 7),
+  // By capability, read at the attempt's own draw: a top-tier operator moves at a third
+  // of the typical pace, an opportunist at twice it. Judgement, anchored on the
+  // hand-off figure (seconds) against the median dwell (weeks).
+  capabilitySpeed: [2.0, 1.3, 0.8, 0.35],
+  // By the detective measure's strength: weak (a log nobody reads until asked) to very
+  // strong (telemetry with alerting). Anchored so a moderate SIEM lands near the
+  // 9-day internal-detection dwell once the response time is added.
+  detectDays: [LN(3, 20, 90), LN(0.2, 1.5, 10), LN(0.05, 0.4, 3), LN(0.01, 0.1, 1)],
+  // By the organisation's readiness. External notification (25 days) against internal
+  // detection (9) says what a response that has to be organised on the day costs;
+  // Marsh/Cyentia put incident-response planning among the three controls with the
+  // largest measured effect.
+  respondDays: {
+    "No response capability": LN(5, 20, 90),
+    "Plan on paper": LN(1, 4, 20),
+    "Exercised plan": LN(0.2, 1, 5),
+    "24x7 response with authority to contain": LN(0.02, 0.15, 1),
+  },
 };
 
 export const DEFAULT_CALIBRATION: Calibration = {
   version: CALIBRATION_VERSION, frequency: FREQUENCY, demand: DEMAND,
-  adversary: ADVERSARY, effect: EFFECT, magnitude: MAGNITUDE,
+  adversary: ADVERSARY, effect: EFFECT, magnitude: MAGNITUDE, time: TIME,
 };
 
 // ---------------------------------------------------------------------------
@@ -352,6 +485,9 @@ export const DEFAULT_CALIBRATION: Calibration = {
  *  "0.35 from a published incidence survey" and "0.35 because it felt right" are not the
  *  same claim, and a reader has no way to tell them apart otherwise. */
 export type Evidence =
+  /** The organisation's own record, entered by the analyst. Beats every published figure
+   *  for THIS organisation; says nothing about any other. */
+  | "own"
   /** Taken from published measurement, with the derivation written down. */
   | "measured"
   /** Computed from published measurement plus a stated assumption. */
@@ -381,13 +517,28 @@ export const CALIBRATION_DOC: Record<string, TableDoc> = {
     effect: "Multiplies the attempt rate of every scenario driven by this actor class, and with it the expected annual loss.",
     origin: "Surveys report incidence - the share of organisations seeing at least one event in a year. A rate follows as -ln(1 - incidence). UK survey: 67% of medium and 74% of large businesses saw an attack, so 1.11-1.35/yr, which sets the opportunist rate; 14% saw ransomware, so 0.15/yr. Sophos, surveying organisations with an IT function: 59%, so 0.89/yr. The criminal rate is the geometric mean of those two. Replace this table with your own incident history if you have one.",
   },
+  "frequency.history": {
+    title: "Your own record",
+    grade: "own",
+    question: "What did this organisation actually see - how many serious operations per actor class, over how many years?",
+    effect: "An actor class with an entry here takes its base rate from the record instead of the bundled table, and the sector exception no longer applies to it: a record of this organisation is already a record of its sector. Every scenario driven by that class follows.",
+    origin: "Rate = (count + ½) ÷ (years × organisations). The half is the Jeffreys prior for a Poisson rate: it keeps a short record honest - zero events in three years reads as one in six, not as never - and vanishes against a long one. The same caveat as every survey: a record counts what was noticed. Leave the years at zero to use the bundled rates.",
+  },
+  "frequency.size": {
+    title: "Organisation size",
+    grade: "measured",
+    source: "Eurostat isoc_cisce_ic 2024 (EU-27, enterprises >= 10 persons): incidents with a consequence due to attack in 3.15% of 10-49, 4.34% of 50-249 and 7.05% of 250+ enterprises. Cyentia IRIS 2025: relative probability of a loss event by revenue tier, 0.60x (<$10M) to 3.46x (>$100B).",
+    question: "How much more often is an organisation of this size attacked than the medium one the bundled rates describe?",
+    effect: "Multiplies the base rate of every actor class, and with it every attempt rate in the study. Read from the study's size; unset means medium. Not applied where the base rate comes from your own record.",
+    origin: "The bundled base rates were derived from a survey's medium and large businesses, so medium is 1. Small is Eurostat's 3.15/4.34 = 0.73 (the any-incident column gives 0.71); large 7.05/4.34 = 1.62, with IRIS's step from $100M-1B to $1B-10B at 1.5; very large 2.5, below IRIS's 3-4 because its population is firms with a PUBLIC incident, which over-represents the largest. Two independent sources within 10% on the first three steps - the best agreement in this calibration; the fourth is derived.",
+  },
   "frequency.sector": {
     title: "Sector exceptions",
     grade: "measured",
-    source: "Sophos State of Ransomware sector reports - healthcare 67% and financial services 65% hit, against a 59% cross-sector figure; ransomware leak-site tallies for 2025.",
+    source: "Sophos State of Ransomware sector reports - healthcare 67% and financial services 65% hit, against a 59% cross-sector figure; Cyentia IRIS 2025 relative loss-event probability by sector (healthcare 1.34x, financial 1.44x, manufacturing 1.03x, education 1.60x, information 1.55x, utilities 0.62x); ransomware leak-site tallies for 2025.",
     question: "Which actor classes attack a sector more than they attack an average organisation, and by what factor?",
     effect: "Multiplies the base rate for that one actor-and-sector pair. A factor of 1.15 means 15% more attacks. An absent pair means no adjustment.",
-    origin: "Measured as incidence among comparable organisations: healthcare 67% against a 59% cross-sector figure, so x1.15. Victim counts suggest far larger differences but have no denominator - a sector with more organisations in it produces more victims at equal risk. The state-actor and hacktivist rows have no such measurement and remain judgement.",
+    origin: "Measured as incidence among comparable organisations: healthcare 67% against a 59% cross-sector figure, so x1.15. Victim counts suggest far larger differences but have no denominator - a sector with more organisations in it produces more victims at equal risk. The state-actor and hacktivist rows have no such measurement and remain judgement. Since 2026-09 a second source: where IRIS agrees with Sophos the row is confirmed, where it disagrees the row sits halfway (healthcare 1.15 and 1.34 -> 1.25); education, technology and energy rows are new from IRIS alone, damped towards 1 because IRIS pools every actor and carries a size effect.",
   },
   "frequency.tempo": {
     title: "Tempo, per activity rating",
@@ -415,7 +566,7 @@ export const CALIBRATION_DOC: Record<string, TableDoc> = {
     grade: "derived",
     source: "Verizon DBIR 2025 initial-access vectors: stolen credentials 22% of breaches, exploited vulnerabilities 20%, phishing 15%.",
     question: "How easily does contact happen at all, given how this chain starts?",
-    effect: "Multiplies the attempt rate. Read from the entry step's technique.",
+    effect: "Multiplies the attempt rate. Read from the entry step's technique. Any technique can be given a row - from the bundled list or by its ATT&CK id - and a technique without one takes the default below.",
     origin: "Ordered by the observed initial-access vectors: stolen credentials 22% of breaches, exploited vulnerabilities 20%, phishing 15%. The order comes from that data; the spacing is judgement. The same technique also sets the entry cost - a different question, not the same effect counted twice.",
   },
   "frequency.likelihoodBands": {
@@ -430,7 +581,7 @@ export const CALIBRATION_DOC: Record<string, TableDoc> = {
     grade: "derived",
     source: "Verizon DBIR 2025 initial-access vectors; Mandiant M-Trends 2026 on the industrialised access-broker market.",
     question: "How much attacker skill does the first foothold take, as a share of the attacker population?",
-    effect: "Sets the starting height of the bar, and it is added into every gate along the chain - so it makes the whole scenario harder, not just its first step.",
+    effect: "Sets the starting height of the bar, and it is added into every gate along the chain - so it makes the whole scenario harder, not just its first step. Any technique can be given a row; one without takes the default.",
     origin: "The order follows the observed vectors: valid accounts and phishing are cheap and common, supply-chain compromise expensive and rare. The spacing is judgement. Where a stakeholder grants access to the entry step's asset, the granted-access discount is subtracted.",
   },
   "demand.tooling": {
@@ -461,12 +612,59 @@ export const CALIBRATION_DOC: Record<string, TableDoc> = {
     effect: "Compared against the bar once per attempt. Vulnerability follows from the two distributions meeting - it is not set anywhere.",
     origin: "No published distribution of attacker skill exists. The bands are wide because a rating covers a class, not one person, and each reaches close to 1: a band stopping short of a bar would make that bar unbeatable.",
   },
+  "time.step": {
+    title: "How long the attacker spends on a step",
+    grade: "derived",
+    source: "Mandiant M-Trends 2026 (2025 data): median dwell 14 days over all intrusions, 9 days when detected internally, 25 when notified from outside; hand-off from initial access to the operating group in 22 seconds (8 hours in 2022); espionage 122 days. Ransomware operations complete their chain within days of access.",
+    question: "How many days does an attacker of typical capability need for a step of this tactic?",
+    effect: "Summed along the route ahead of a watched step, this is the time the defender has to detect and act. Longer steps give detection more room; a faster actor (capability) shortens every step.",
+    origin: "The sources give dwell per intrusion, not per tactic; these bands apportion a ransomware dwell of one to two weeks over the tactics a chain walks, with initial access and impact in hours (the mail is opened or not; encryption runs in hours) and lateral movement, collection and exfiltration in days. Lognormal, points P5 / median / P95. The apportioning is the stated assumption; the totals are the measurement.",
+  },
+  "time.detect": {
+    title: "How fast a watched step raises an alert",
+    grade: "judgement",
+    source: "Anchored: M-Trends 2026 internal-detection dwell of 9 days; alerting telemetry raises within hours.",
+    question: "Once a detective measure of this strength sees the attacker, how long until somebody has an alert?",
+    effect: "Adds to the defender's time in the race at every watched step. Whether the step is watched at all is the measure's efficacy (strength, roll-out, lifecycle); this is only how fast, once it is.",
+    origin: "Weak: a log that is read when somebody asks - weeks. Moderate: a SIEM with rules somebody reviews - days; with the response time of a plan on paper this lands at the 9-day internal-detection dwell. Strong: tuned detections - a day. Very strong: telemetry with alerting - hours. The steps are judgement; the moderate anchor is the measurement.",
+  },
+  "time.respond": {
+    title: "How fast the organisation acts on an alert",
+    grade: "derived",
+    source: "M-Trends 2026: 25 days dwell when notified from outside against 9 when detected internally; Marsh McLennan / Cyentia 2023: incident-response planning among the three controls with the largest measured effect on event likelihood.",
+    question: "From the alert to containment - how long does this organisation take?",
+    effect: "Adds to the defender's time at every watched step of every scenario. A property of the study (its response readiness), not of a step; the strongest lever a detective posture has, and now a factor the tornado shows.",
+    origin: "No capability: the response has to be organised on the day - weeks, the external-notification dwell. Plan on paper: days. Exercised plan: a day or two. 24x7 with authority to contain: hours. Unset reads as a plan on paper, and the derivation says so.",
+  },
+  "time.speed": {
+    title: "How much faster a capable attacker is",
+    grade: "judgement",
+    source: "M-Trends 2026: hand-off in 22 seconds where it took 8 hours in 2022 - the operating groups are fast; espionage dwell of 122 days - the patient ones are slow by choice.",
+    question: "How does the attacker's capability change the time the steps take?",
+    effect: "Multiplies every step's time at the attempt's own capability draw. A capable actor gives the defender less time; an opportunist more.",
+    origin: "Read at the drawn capability, top of the population fast: x0.35 at the top, x2 at the bottom. Judgement; the direction is the measurement, the size is not.",
+  },
+  "effect.cost": {
+    title: "What a measure costs against what it buys",
+    grade: "judgement",
+    question: "Over how many years is a one-off cost spread when a measure's yearly worth is set against it?",
+    effect: "Only the ranking of measures by loss avoided per euro reads it. A longer period makes a one-off investment look cheaper per year; nothing else in the model moves.",
+    origin: "Three years is a common write-off period for security tooling and projects; it is a convention, and an organisation with its own depreciation rule should set that instead.",
+  },
+  "effect.strength": {
+    title: "What a measure's strength is worth",
+    grade: "derived",
+    source: "Google (MFA blocks 66% of targeted attacks, 99% of bulk phishing); Marsh McLennan / Cyentia 2023 (patching high-severity CVEs within 7 days halves the probability of an event; automated hardening the largest effect of any control; MFA only when implemented fully; incident-response planning, MFA and EDR the top three); Mandiant M-Trends 2026 (30% of ransomware intrusions found by internal detection); ASD Essential Eight (application control and patching as the first mitigations).",
+    question: "When two measures are fully in force, how much does the stronger one protect against the weaker?",
+    effect: "Multiplies a measure's efficacy before the roll-out and lifecycle weights. Read from the measure's Strength rating; the library seeds the rating from published evidence, an unrated measure counts as very strong - what every measure was assumed to be before the rating existed.",
+    origin: "The ceiling (0.85) was set from MFA against targeted attacks, so a measure at the top of this scale is an MFA-class control and the rating says how far below that a measure sits. Weak 0.4: controls whose published effect on the likelihood of an event is small or indirect - awareness training alone, an asset inventory. Moderate 0.65: controls that narrow the attack surface or detect part of the activity - SIEM (30% of intrusions found internally), DLP, encryption. Strong 0.85: segmentation, EDR, patching within days, allow-listing on servers. Very strong 1: MFA, application control on endpoints, immutable backups. The steps are judgement; which measure gets which step is the library's table in calibration-sources.md.",
+  },
   "effect": {
     title: "What each kind of measure is worth",
     grade: "measured",
     source: "Google security research on MFA: blocks 100% of automated attacks, 99% of bulk phishing and 66% of TARGETED attacks. Mandiant M-Trends 2026 detection sources for ransomware: 30% found internally, 49% announced by the attacker, 21% reported from outside.",
     question: "How far does each class of measure move the factor it acts on, when fully implemented?",
-    effect: "Preventive raises the bar at its step. Detective converts into breaking off the intrusion, gated on the response capability. Deterrent and avoidance cut the number of attacks. Corrective cuts the loss and the follow-on loss.",
+    effect: "Preventive raises the bar at its step. Detective makes the step watched; whether the intrusion is caught in time is the race in the time tables. Deterrent and avoidance cut the number of attacks. Corrective cuts the loss and the follow-on loss.",
     origin: "MFA blocks 66% of targeted attacks, against 99% of bulk phishing and 100% of automated ones. Targeted is the case a modelled scenario describes, which is why the ceiling is 0.85 and one measure comes out worth a factor of 2-4. For ransomware, 30% of intrusions are found by internal detection and 49% by the attacker announcing themselves - hence 0.35 for detection and a 0.20 response floor.",
   },
   "effect.depth": {
@@ -474,15 +672,15 @@ export const CALIBRATION_DOC: Record<string, TableDoc> = {
     grade: "judgement",
     question: "What is one measure worth at each implementation level and lifecycle status, and what does a second or third measure on the same step add?",
     effect: "A measure is worth level weight x status weight x ceiling. Measures on one step combine as 1 - product(1 - each), so they saturate: the second adds much less than the first, the third little. The combined figure then raises the bar by the preventive weight - which is the term that decides how much any of this matters, since the whole range from no cover to full cover moves the bar by that one figure.",
-    origin: "The saturating form assumes the measures fail independently. Correlated failure - a shared administrator, platform or bypass - is not modelled, so a stack of similar controls is flattered. Depth across the chain is the effect that carries: the traversal makes an attacker clear every defended step, which is where distributing measures beats stacking them.",
+    origin: "The saturating form assumes the measures fail independently. Correlated failure - a shared administrator, platform or bypass - is modelled only where a measure names what it fails with; a stack of similar controls that does not is flattered. Depth across the chain is the effect that carries: the traversal makes an attacker clear every defended step, which is where distributing measures beats stacking them.",
   },
   "magnitude": {
     title: "Loss magnitude, per severity",
     grade: "derived",
-    source: "IBM Cost of a Data Breach 2025: global average USD 4.44M; healthcare 7.42M, financial services 5.56M, industrial 5.00M.",
+    source: "Cyentia IRIS 2025: median loss per incident USD 603K (2015-2024, 2024 dollars), 95th percentile 32M, mean 14M; by revenue tier typical 329K-2M, extreme 7M-62M; healthcare median 557K, 95th 14M. NetDiligence Cyber Claims Study 2025: SME average incident 264K, ransomware 631-663K, healthcare SME 566K. IBM Cost of a Data Breach 2025: global mean 4.44M.",
     question: "What does one loss event cost, how often does a follow-on loss occur, and what does that cost?",
-    effect: "Sets the money. Frequency decides how often you pay, these tables decide how much. Read from the feared event's severity.",
-    origin: "The top band is anchored on the USD 4.44M global average - a mean over large organisations with a long tail behind it, so it sits at the top of the scale rather than in the middle. The most organisation-specific numbers here: replace them with your own loss history rather than adjusting them.",
+    effect: "Sets the money. Frequency decides how often you pay, these tables decide how much. Read from the feared event's severity. The money points are the 5th percentile, the median and the 95th of a lognormal - not bounds: one draw in twenty falls outside them, and the long ones are the tail every measured loss distribution has.",
+    origin: "Measured loss distributions are lognormal with a 95th percentile 20-50x the median (IRIS: 603K against 32M). A band bounded at its maximum cannot produce that tail, so the money factors are drawn lognormal, with the three points read as P5 / median / P95. The medians follow the typical losses by revenue tier and sector, the P95s their 95th percentiles; a single scenario is narrower than a whole population, so the spread within a band (sigma 1.2-1.7) sits below the population's (2-2.4). The bands are symmetric on the log scale, so the outer points are exactly the 5th and 95th percentiles; an edited band that is not gets one sigma fitted to both sides. The most organisation-specific numbers here: replace them with your own loss history rather than adjusting them.",
   },
 };
 
@@ -544,10 +742,27 @@ export function sampleBand(anchors: number[], r: number): number {
 }
 
 /** Base rate for an actor class in a sector, with the sector row applied. */
-export function baseRateOf(c: FrequencyCalibration, actor: string, sector: string): number {
+/** The rate this organisation's own record gives for an actor class, or null where the
+ *  record says nothing about it. (count + ½) / exposure - see the table's `origin`. */
+export function ownRateOf(c: FrequencyCalibration, actor: string): number | null {
+  const h = c.history;
+  if (!h || !(h.years > 0) || !(h.organisations > 0)) return null;
+  const n = h.counts[actor];
+  if (typeof n !== "number" || !(n >= 0)) return null;
+  return (n + 0.5) / (h.years * h.organisations);
+}
+
+/** The size multiplier for a study: 1 for medium, for an unset size, and for a size this
+ *  calibration has no row for. */
+export const sizeFactorOf = (c: FrequencyCalibration, size: string | undefined): number =>
+  (size && c.size?.[size]) || 1;
+
+export function baseRateOf(c: FrequencyCalibration, actor: string, sector: string, size?: string): number {
+  const own = ownRateOf(c, actor);
+  if (own != null) return own;                        // the record already IS this sector and this size
   const base = c.baseRate[actor] ?? c.baseRateDefault;
   const row = c.sector.find((s) => s.actor === actor && s.sector === sector);
-  return base * (row ? row.factor : 1);
+  return base * (row ? row.factor : 1) * sizeFactorOf(c, size);
 }
 
 /** Is this a sector the model has a vocabulary for? The lookup above matches by STRING,

@@ -48,6 +48,8 @@
   --bg: transparent; /* echter Grund kommt vom body-Gradient */
   --bg-raised: oklch(0.2 0.02 265 / 0.72);
   --bg-panel: oklch(0.22 0.02 265 / 0.55);
+  /* Opaque and a step lighter than the raised sheet: the ground a reading list sits on. */
+  --bg-sheet: oklch(0.235 0.02 265);
   --bg-input: oklch(0.14 0.018 265 / 0.65);
   --bg-hover: oklch(1 0 0 / 0.06);
   --bg-active: oklch(1 0 0 / 0.09);
@@ -85,6 +87,7 @@
   --bg: transparent;
   --bg-raised: oklch(1 0 0 / 0.75);
   --bg-panel: oklch(1 0 0 / 0.7);
+  --bg-sheet: oklch(0.995 0.002 265);
   --bg-input: oklch(1 0 0 / 0.9);
   --bg-hover: oklch(0.2 0.02 265 / 0.05);
   --bg-active: oklch(0.2 0.02 265 / 0.08);

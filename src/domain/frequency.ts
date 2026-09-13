@@ -12,7 +12,7 @@
 // The shape below is deliberate: ALL the empirical burden sits in the base rate.
 // Everything else is a ratio, and every ratio answers a question an analyst can defend.
 import type { FrequencyCalibration } from "./calibration";
-import { baseRateOf, knownSector, sampleBand, techniqueId } from "./calibration";
+import { baseRateOf, knownSector, ownRateOf, sampleBand, sizeFactorOf, techniqueId } from "./calibration";
 
 /** Why this organisation - as far as the model can tell from the objectives. */
 export type Pull =
@@ -28,6 +28,8 @@ export interface FrequencyFacts {
   actor: string;
   /** The study's sector - selects the base-rate exception, if any. */
   sector: string;
+  /** The study's size class; undefined = medium. */
+  size?: string;
   /** Ratios 0..1 of the respective ratings, so any scale length feeds in. */
   activity: number;
   resources: number;
@@ -53,12 +55,22 @@ export interface FrequencyBreakdown {
    *  sector is matched by string, so a value the calibration has never heard of changes
    *  nothing at all - and used to do so without a word. */
   sector: { name: string; known: boolean; factor: number };
+  /** What the study's size did to the base rate; 1 for medium, unset, or an own record. */
+  size: { name: string; factor: number };
+  /** True when the base came from the organisation's own record rather than the bundled
+   *  table - the strongest thing a frequency figure here can rest on, and worth saying. */
+  own: boolean;
 }
 
 export function attemptsPerYear(f: FrequencyFacts, cal: FrequencyCalibration): FrequencyBreakdown {
-  const base = baseRateOf(cal, f.actor, f.sector);
+  const base = baseRateOf(cal, f.actor, f.sector, f.size);
+  const own = ownRateOf(cal, f.actor) != null;
   const plain = cal.baseRate[f.actor] ?? cal.baseRateDefault;
-  const sector = { name: f.sector, known: knownSector(cal, f.sector), factor: plain > 0 ? base / plain : 1 };
+  // With an own record neither the sector nor the size did anything - the record is of
+  // this organisation. Otherwise the two factors are reported apart, so each can be read.
+  const sizeF = own ? 1 : sizeFactorOf(cal, f.size);
+  const size = { name: f.size ?? "", factor: sizeF };
+  const sector = { name: f.sector, known: knownSector(cal, f.sector), factor: own || plain <= 0 ? 1 : base / plain / sizeF };
   const tempo = sampleBand(cal.tempo, f.activity);
   const throughput = sampleBand(cal.throughput, f.resources);
   const pull = f.pull === "declared" ? cal.targetPull.declared
@@ -69,7 +81,7 @@ export function attemptsPerYear(f: FrequencyFacts, cal: FrequencyCalibration): F
 
   const raw = base * tempo * throughput * pull * reachability;
   const total = Math.min(cal.cap, raw);
-  return { base, tempo, throughput, pull, reachability, total, capped: raw > cal.cap, sector };
+  return { base, tempo, throughput, pull, reachability, total, capped: raw > cal.cap, sector, size, own };
 }
 
 /** The band the simulation draws from. A base rate is an order-of-magnitude setting,

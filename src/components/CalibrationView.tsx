@@ -12,13 +12,15 @@ import { t as tr } from "../domain/i18n";
 
 import type { Study } from "../domain/types";
 import { useStore } from "../domain/store";
+import { foldScope, getFolds, setFolds } from "../domain/viewstate";
+import { Icon } from "./ui";
 import {
-  CALIBRATION_DOC, DEFAULT_CALIBRATION, SECTORS, isDefaultCalibration,
+  CALIBRATION_DOC, DEFAULT_CALIBRATION, SECTORS, SIZES, isDefaultCalibration, ownRateOf,
   type Band as Band2, type SectorRow, type TableDoc,
 } from "../domain/calibration";
 import { MITRE_TECHNIQUES } from "../domain/mitre";
 import { effectChannel } from "../domain/controls";
-import { Dial, DialRow, Seg } from "./CalInputs";
+import { AddTechnique, Dial, DialRow, Seg } from "./CalInputs";
 import { DepthCurve } from "./CalDepth";
 import { DistInput } from "./DistInput";
 
@@ -94,7 +96,49 @@ const TOOL_OPTS = [
 /** Name of a curated technique, so the identifiers are not bare. */
 const TECH_NAME = new Map(MITRE_TECHNIQUES.map((t) => [t.id, t.name]));
 const techName = (id: string) => TECH_NAME.get(id) ?? "";
+/** One subject of the calibration, folded by default: sixteen tables in one run was a
+ *  wall, and the reader who came for the loss bands scrolled past the tempo multipliers
+ *  to reach them. A chapter says what it holds and whether anything in it was edited,
+ *  and opens on a click; which chapters are open is remembered with the reader, like
+ *  every other fold, and never in the study. */
+function Chapter({ id, title, lead, edited, tables, open, onToggle, children }: {
+  id: string; title: string; lead: string; edited: boolean; tables: number;
+  open: boolean; onToggle: (id: string) => void; children: React.ReactNode;
+}) {
+  return (
+    <section className={"cal-chapter" + (open ? " open" : "")}>
+      <button type="button" className="cal-chapter-h" onClick={() => onToggle(id)} aria-expanded={open}>
+        <span className={"caret" + (open ? " open" : "")}><Icon.chevron /></span>
+        <span className="cal-chapter-t">{title}</span>
+        <span className="cal-chapter-lead">{lead}</span>
+        <span className="spacer" />
+        {edited && <em className="cal-edited">edited</em>}
+        <span className="cal-chapter-n">{tables} {tables === 1 ? "table" : "tables"}</span>
+      </button>
+      {open && <div className="cal-chapter-b">{children}</div>}
+    </section>
+  );
+}
+
+/** The second level inside a chapter: the figures a reader argues with first stand
+ *  open; the fine tuning behind them - multipliers, weights, fallbacks - is folded. */
+function Depth({ id, title, edited, open, onToggle, children }: {
+  id: string; title: string; edited: boolean; open: boolean; onToggle: (id: string) => void; children: React.ReactNode;
+}) {
+  return (
+    <div className={"cal-depth" + (open ? " open" : "")}>
+      <button type="button" className="cal-depth-h" onClick={() => onToggle(id)} aria-expanded={open}>
+        <span className={"caret" + (open ? " open" : "")}><Icon.chevron /></span>
+        <span>{title}</span>
+        {edited && <em className="cal-edited">edited</em>}
+      </button>
+      {open && <div className="cal-depth-b">{children}</div>}
+    </div>
+  );
+}
+
 const GRADE_HINT: Record<string, string> = {
+  own: "This organisation's own record, entered by the analyst.",
   measured: "Published figure. Source named, derivation documented.",
   derived: "Published figure plus a stated assumption.",
   judgement: "No published figure. Set by reasoning.",
@@ -121,6 +165,15 @@ export function CalibrationView({ study, color, scope = "all" }: {
     ?? cal.effect.levelWeight.map((_, i) => `level ${i + 1}`);
 
   const put = (path: (string | number)[], value: unknown) => setCal(setIn(cal, path, value));
+  /** Take a key out of a table - only ever a key the reader added; a bundled row is
+   *  reset, not removed, so the table keeps the shape the documentation describes. */
+  const drop = (path: (string | number)[], key: string) => {
+    let table: unknown = cal;
+    for (const k of path) table = (table as Record<string, unknown>)?.[k as string];
+    const next = { ...(table as Record<string, unknown>) };
+    delete next[key];
+    setCal(setIn(cal, path, next));
+  };
 
   /** Restore one or more branches of the defaults, leaving every other edit in place.
    *  Several branches are folded into ONE update on purpose: calling a single-path
@@ -143,6 +196,12 @@ export function CalibrationView({ study, color, scope = "all" }: {
   };
 
   const changedInScope = all ? !isDefaultCalibration(cal) : differs(["effect"]);
+  // Which chapters and depths are open. Stored as the OPEN set (everything folded is the
+  // default, so the study opens as an overview), in the reader's view state.
+  const foldKey = foldScope(study.id, "calibration");
+  const [opened, setOpened] = useState<Set<string>>(() => getFolds(foldKey));
+  const isOpen = (id: string) => opened.has(id);
+  const toggleOpen = (id: string) => setOpened((o) => { const n = new Set(o); n.has(id) ? n.delete(id) : n.add(id); setFolds(foldKey, n); return n; });
   const D = DEFAULT_CALIBRATION;
   const f = cal.frequency, d = cal.demand, e = cal.effect, mg = cal.magnitude;
   const actors = Object.keys(f.baseRate);
@@ -173,6 +232,82 @@ export function CalibrationView({ study, color, scope = "all" }: {
     );
   }
 
+  const effectTables = (
+    <>
+      <Table docKey="effect.depth"
+        changed={["levelWeight", "strengthWeight", "statusWeight", "controlCeiling", "prevention"].some((k) => differs(["effect", k]))}
+        onReset={() => resetPaths(["effect", "levelWeight"], ["effect", "strengthWeight"], ["effect", "statusWeight"], ["effect", "controlCeiling"], ["effect", "prevention"])}>
+        <p className="cal-lead">
+          {tr('ui.calibration.everything-below-rests-on', 'Everything below rests on one idea. An attack needs a certain level of skill to get\n          past a step, and a security measure raises that level. Skill is expressed as a rank\n          among attackers - &quot;better than 84% of them&quot;. The higher the level a step\n          demands, the fewer attempts clear it.')}
+        </p>
+        <DepthCurve effect={e} capability={cal.adversary.capability[2] ?? cal.adversary.capability[0]}
+          spread={d.spread} levels={levelLabels} level={lvl} onLevel={setLvl} />
+        <p className="cal-sub">
+          {tr('ui.calibration.how-much-a-measure', 'How much a measure counts at each stage of its roll-out, against a finished one:')}
+        </p>
+        <Band labels={levelLabels} values={e.levelWeight} dflt={D.effect.levelWeight}
+          lo={0} hi={1} step={0.01} kind="mult" onChange={(i, n) => put(["effect", "levelWeight", i], n)} />
+        <p className="cal-sub">
+          How much a measure of each strength reaches of the ceiling, when fully in force. The
+          library rates its measures from published evidence; an unrated measure counts as very strong:
+        </p>
+        <Band labels={["weak", "moderate", "strong", "very strong"]} values={e.strengthWeight ?? [0.4, 0.65, 0.85, 1]} dflt={D.effect.strengthWeight}
+          lo={0} hi={1} step={0.01} kind="mult" onChange={(i, n) => put(["effect", "strengthWeight", i], n)} />
+        <p className="cal-sub">
+          How much it counts depending on whether it exists yet. The two multiply: a measure
+          that is only planned and only partly rolled out protects{" "}
+          {Math.round((e.levelWeight[1] ?? 0) * (e.statusWeight.Planned ?? 0) * e.controlCeiling * 100)}% of its step.
+        </p>
+        <div className="dial-rows">
+          {Object.keys(e.statusWeight).map((k) => (
+            <DialRow key={k} name={k} value={e.statusWeight[k]} dflt={D.effect.statusWeight[k] ?? 0}
+              lo={0} hi={1} step={0.05} kind="mult" onChange={(n) => put(["effect", "statusWeight", k], n)} />
+          ))}
+          <DialRow name="The most one measure can protect on its own"
+            hint="no single control is perfect; several together can go higher"
+            value={e.controlCeiling} dflt={D.effect.controlCeiling}
+            lo={0} hi={1} step={0.01} kind="pct" onChange={(n) => put(["effect", "controlCeiling"], n)} />
+          <DialRow name="How much more skill a fully protected step demands"
+            hint={`a step protected 100% lifts the requirement by this much - from "better than 50% of attackers" to "better than ${Math.round((0.5 + e.prevention) * 100)}%"`}
+            value={e.prevention} dflt={D.effect.prevention}
+            lo={0} hi={1} step={0.01} kind="pct" onChange={(n) => put(["effect", "prevention"], n)} />
+        </div>
+      </Table>
+
+      <Table docKey="effect" changed={differs(["effect"])} onReset={() => resetPath(["effect"])}>
+        {([
+          ["Detective", [
+            ["detection", "How often a spotted intrusion is actually stopped", "an alarm that nobody follows up changes nothing, so only part of what a detective measure sees ends the intrusion"],
+            ["responseFloor", "Assumed ability to react when none is recorded", "the model reads that ability from the recovery measures in the study; where a study records none, it assumes this rather than nothing - some reaction always happens"],
+            ["lateDetection", "Spotting it while the damage is happening", "at the last step of the chain there is nothing left to prevent, so detection only shortens the event and takes this much off the bill"],
+          ]],
+          ["Corrective", [
+            ["recoverableShare", "The most recovery can take off the bill", "fines, notification duties and lost reputation stay, however good the backups"],
+            ["containment", "Cuts the chance of a knock-on loss by", ""],
+          ]],
+          ["Deterrent", [["deterrence", "Cuts the number of attacks by", ""]]],
+          ["Avoidance", [["avoidance", "Cuts the number of attacks by", "by removing the exposure, so contact happens less often"]]],
+        ] as const).map(([cls, rows]) => (
+          <div className="cal-class" key={cls}>
+            <p className="cal-class-h">
+              <b>{cls}</b>
+              <em>{effectChannel(cls)}</em>
+            </p>
+            <div className="dial-rows">
+              {rows.map(([k, name, hint]) => (
+                <DialRow key={k} name={name} hint={hint || undefined} value={e[k] as number} dflt={D.effect[k] as number}
+                  lo={0} hi={1} step={0.01} kind="pct" onChange={(n) => put(["effect", k], n)} />
+              ))}
+            </div>
+          </div>
+        ))}
+        <p className="cal-sub">
+          {tr('ui.calibration.preventive-measures-are-the', 'Preventive measures are the fifth class; what they are worth is set in the\n          defence-in-depth table above, because it depends on how many sit on a step.')}
+        </p>
+      </Table>
+    </>
+  );
+
   return (
     <div className="panel ws-accent cal" style={{ ["--ws-color" as string]: color, marginBottom: 20 }}>
       {head}
@@ -202,7 +337,9 @@ export function CalibrationView({ study, color, scope = "all" }: {
       </div>
 
       {all && <>
-      <h2 className="cal-part">{tr('ui.calibration.how-often-a-scenario', 'How often a scenario is attempted')}</h2>
+      <Chapter id="freq" title={tr('ui.calibration.how-often-a-scenario', 'How often a scenario is attempted')}
+        lead="base rate by actor class, size, sector, your own record - and the multipliers on it"
+        edited={differs(["frequency"])} tables={9} open={isOpen("freq")} onToggle={toggleOpen}>
 
       <Table docKey="frequency.baseRate" changed={differs(["frequency", "baseRate"]) || differs(["frequency", "baseRateDefault"])}
         onReset={() => resetPaths(["frequency", "baseRate"], ["frequency", "baseRateDefault"])}>
@@ -216,6 +353,59 @@ export function CalibrationView({ study, color, scope = "all" }: {
             lo={0.005} hi={3} step={0.005} kind="rate" log
             onChange={(n) => put(["frequency", "baseRateDefault"], n)} />
         </div>
+      </Table>
+
+      <Table docKey="frequency.size" changed={differs(["frequency", "size"])} onReset={() => resetPath(["frequency", "size"])}>
+        <div className="dial-rows">
+          {SIZES.map((z) => (
+            <DialRow key={z} name={z} value={f.size[z] ?? 1} dflt={D.frequency.size[z] ?? 1}
+              lo={0.2} hi={5} step={0.05} kind="mult" onChange={(n) => put(["frequency", "size", z], n)} />
+          ))}
+        </div>
+      </Table>
+
+      <Table docKey="frequency.history" changed={differs(["frequency", "history"])} onReset={() => resetPath(["frequency", "history"])}>
+        {(() => {
+          const h = f.history;
+          const exposure = h.years * h.organisations;
+          const num = (path: (string | number)[], v: number, min: number, step: number, width = 64) => (
+            <input type="number" className="cal-num" value={v} min={min} step={step} style={{ width }}
+              onChange={(ev) => { const n = Number(ev.target.value); if (Number.isFinite(n) && n >= min) put(path, n); }} />
+          );
+          return (
+            <div className="dial-rows">
+              <div className="dial-row">
+                <span className="dial-k">Years the record covers<em>0 = no record, the bundled rates stand</em></span>
+                {num(["frequency", "history", "years"], h.years, 0, 1)}
+              </div>
+              <div className="dial-row">
+                <span className="dial-k">Organisations in it<em>1 for your own; more where a group's or a peer set's incidents were pooled</em></span>
+                {num(["frequency", "history", "organisations"], h.organisations, 1, 1)}
+              </div>
+              {actors.map((a) => {
+                const n = h.counts[a];
+                const own = ownRateOf(f, a);
+                return (
+                  <div className="dial-row" key={a}>
+                    <span className="dial-k">{a}
+                      <em>{own != null
+                        ? `(${n} + ½) ÷ ${exposure} = ${own.toPrecision(2)}/yr - bundled ${(f.baseRate[a] ?? f.baseRateDefault).toPrecision(2)}/yr`
+                        : exposure > 0 ? "no entry - the bundled rate stands" : ""}</em>
+                    </span>
+                    <input type="number" className="cal-num" value={n ?? ""} min={0} step={1} style={{ width: 64 }}
+                      placeholder="seen" aria-label={`${a}: operations seen over the record`}
+                      onChange={(ev) => {
+                        const v = ev.target.value;
+                        const next = { ...h.counts };
+                        if (v === "") delete next[a]; else { const k = Number(v); if (Number.isFinite(k) && k >= 0) next[a] = k; }
+                        put(["frequency", "history", "counts"], next);
+                      }} />
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </Table>
 
       <Table docKey="frequency.sector" changed={differs(["frequency", "sector"])} onReset={() => resetPath(["frequency", "sector"])}>
@@ -242,6 +432,9 @@ export function CalibrationView({ study, color, scope = "all" }: {
         </div>
       </Table>
 
+      <Depth id="freq.mult" title="The multipliers - tempo, throughput, why us, reachability, the cap"
+        edited={["tempo", "throughput", "targetPull", "reachability", "reachabilityDefault", "cap", "likelihoodBands"].some((k) => differs(["frequency", k]))}
+        open={isOpen("freq.mult")} onToggle={toggleOpen}>
       <Table docKey="frequency.tempo" changed={differs(["frequency", "tempo"])} onReset={() => resetPath(["frequency", "tempo"])}>
         <Band labels={["dormant", "occasional", "regular", "persistent"]} values={f.tempo} dflt={D.frequency.tempo}
           lo={0.1} hi={3} step={0.05} kind="mult" onChange={(i, n) => put(["frequency", "tempo", i], n)} />
@@ -272,9 +465,12 @@ export function CalibrationView({ study, color, scope = "all" }: {
         <div className="dial-rows">
           {Object.keys(f.reachability).map((t) => (
             <DialRow key={t} name={t} hint={techName(t)} value={f.reachability[t]}
-              dflt={D.frequency.reachability[t] ?? 1} lo={0.2} hi={3} step={0.05} kind="mult"
-              onChange={(n) => put(["frequency", "reachability", t], n)} />
+              dflt={D.frequency.reachability[t] ?? f.reachabilityDefault} lo={0.2} hi={3} step={0.05} kind="mult"
+              onChange={(n) => put(["frequency", "reachability", t], n)}
+              onRemove={t in D.frequency.reachability ? undefined : () => drop(["frequency", "reachability"], t)} />
           ))}
+          <AddTechnique have={Object.keys(f.reachability)} tactic="Initial Access" options={MITRE_TECHNIQUES}
+            placeholder="Another entry technique" onAdd={(id) => put(["frequency", "reachability", id], f.reachabilityDefault)} />
           <DialRow name="Any other entry technique" value={f.reachabilityDefault} dflt={D.frequency.reachabilityDefault}
             lo={0.2} hi={3} step={0.05} kind="mult" onChange={(n) => put(["frequency", "reachabilityDefault"], n)} />
           <DialRow name="Never more than" hint="cap on the product" value={f.cap} dflt={D.frequency.cap}
@@ -288,15 +484,23 @@ export function CalibrationView({ study, color, scope = "all" }: {
           onChange={(i, n) => put(["frequency", "likelihoodBands", i], n)} />
       </Table>
 
-      <h2 className="cal-part">{tr('ui.calibration.what-an-attempt-is', 'What an attempt is up against')}</h2>
+      </Depth>
+      </Chapter>
+
+      <Chapter id="demand" title={tr('ui.calibration.what-an-attempt-is', 'What an attempt is up against')}
+        lead="what the first foothold costs, what the chain adds, how capable the attacker is"
+        edited={differs(["demand"]) || differs(["adversary"])} tables={5} open={isOpen("demand")} onToggle={toggleOpen}>
 
       <Table docKey="demand.entry" changed={differs(["demand", "entry"]) || differs(["demand", "grantedAccess"])}
         onReset={() => resetPaths(["demand", "entry"], ["demand", "entryDefault"], ["demand", "grantedAccess"])}>
         <div className="dial-rows">
           {Object.keys(d.entry).map((t) => (
-            <DialRow key={t} name={t} hint={techName(t)} value={d.entry[t]} dflt={D.demand.entry[t] ?? d.entry[t]}
-              lo={0} hi={1} step={0.01} kind="pct" onChange={(n) => put(["demand", "entry", t], n)} />
+            <DialRow key={t} name={t} hint={techName(t)} value={d.entry[t]} dflt={D.demand.entry[t] ?? d.entryDefault}
+              lo={0} hi={1} step={0.01} kind="pct" onChange={(n) => put(["demand", "entry", t], n)}
+              onRemove={t in D.demand.entry ? undefined : () => drop(["demand", "entry"], t)} />
           ))}
+          <AddTechnique have={Object.keys(d.entry)} tactic="Initial Access" options={MITRE_TECHNIQUES}
+            placeholder="Another entry technique" onAdd={(id) => put(["demand", "entry", id], d.entryDefault)} />
           <DialRow name="Any other entry" value={d.entryDefault} dflt={D.demand.entryDefault}
             lo={0} hi={1} step={0.01} kind="pct" onChange={(n) => put(["demand", "entryDefault"], n)} />
           <DialRow name="Discount where a stakeholder grants the access" value={d.grantedAccess} dflt={D.demand.grantedAccess}
@@ -304,6 +508,9 @@ export function CalibrationView({ study, color, scope = "all" }: {
         </div>
       </Table>
 
+      <Depth id="demand.fine" title="The fine tuning - what the chain adds, tooling per technique, the fallback"
+        edited={["wTooling", "wDepth", "wDwell", "depthSaturates", "dwellTactics", "spread", "tooling", "toolingByTactic", "difficultyFallback"].some((k) => differs(["demand", k]))}
+        open={isOpen("demand.fine")} onToggle={toggleOpen}>
       <Table docKey="demand.weights" changed={["wTooling", "wDepth", "wDwell", "depthSaturates", "dwellTactics", "spread"].some((k) => differs(["demand", k]))}
         onReset={() => resetPaths(...["wTooling", "wDepth", "wDwell", "depthSaturates", "dwellSaturates", "dwellTactics", "spread", "floor"].map((k) => ["demand", k]))}>
         <div className="dial-rows">
@@ -367,6 +574,7 @@ export function CalibrationView({ study, color, scope = "all" }: {
           lo={0} hi={1} step={0.01} kind="pct" onChange={(i, n) => put(["demand", "difficultyFallback", i], n)} />
       </Table>
 
+      </Depth>
       <Table docKey="adversary.capability" changed={differs(["adversary", "capability"])} onReset={() => resetPath(["adversary", "capability"])}>
         <div className="cal-curves">
           {cal.adversary.capability.map((b: Band2, i: number) => (
@@ -376,77 +584,62 @@ export function CalibrationView({ study, color, scope = "all" }: {
           ))}
         </div>
       </Table>
+      </Chapter>
       </>}
 
-      {all && <h2 className="cal-part">{tr('ui.calibration.what-a-measure-is', 'What a measure is worth, and what a loss costs')}</h2>}
-
-      <Table docKey="effect.depth"
-        changed={["levelWeight", "statusWeight", "controlCeiling", "prevention"].some((k) => differs(["effect", k]))}
-        onReset={() => resetPaths(["effect", "levelWeight"], ["effect", "statusWeight"], ["effect", "controlCeiling"], ["effect", "prevention"])}>
-        <p className="cal-lead">
-          {tr('ui.calibration.everything-below-rests-on', 'Everything below rests on one idea. An attack needs a certain level of skill to get\n          past a step, and a security measure raises that level. Skill is expressed as a rank\n          among attackers - &quot;better than 84% of them&quot;. The higher the level a step\n          demands, the fewer attempts clear it.')}
-        </p>
-        <DepthCurve effect={e} capability={cal.adversary.capability[2] ?? cal.adversary.capability[0]}
-          spread={d.spread} levels={levelLabels} level={lvl} onLevel={setLvl} />
-        <p className="cal-sub">
-          {tr('ui.calibration.how-much-a-measure', 'How much a measure counts at each stage of its roll-out, against a finished one:')}
-        </p>
-        <Band labels={levelLabels} values={e.levelWeight} dflt={D.effect.levelWeight}
-          lo={0} hi={1} step={0.01} kind="mult" onChange={(i, n) => put(["effect", "levelWeight", i], n)} />
-        <p className="cal-sub">
-          How much it counts depending on whether it exists yet. The two multiply: a measure
-          that is only planned and only partly rolled out protects{" "}
-          {Math.round((e.levelWeight[1] ?? 0) * (e.statusWeight.Planned ?? 0) * e.controlCeiling * 100)}% of its step.
-        </p>
-        <div className="dial-rows">
-          {Object.keys(e.statusWeight).map((k) => (
-            <DialRow key={k} name={k} value={e.statusWeight[k]} dflt={D.effect.statusWeight[k] ?? 0}
-              lo={0} hi={1} step={0.05} kind="mult" onChange={(n) => put(["effect", "statusWeight", k], n)} />
-          ))}
-          <DialRow name="The most one measure can protect on its own"
-            hint="no single control is perfect; several together can go higher"
-            value={e.controlCeiling} dflt={D.effect.controlCeiling}
-            lo={0} hi={1} step={0.01} kind="pct" onChange={(n) => put(["effect", "controlCeiling"], n)} />
-          <DialRow name="How much more skill a fully protected step demands"
-            hint={`a step protected 100% lifts the requirement by this much - from "better than 50% of attackers" to "better than ${Math.round((0.5 + e.prevention) * 100)}%"`}
-            value={e.prevention} dflt={D.effect.prevention}
-            lo={0} hi={1} step={0.01} kind="pct" onChange={(n) => put(["effect", "prevention"], n)} />
-        </div>
-      </Table>
-
-      <Table docKey="effect" changed={differs(["effect"])} onReset={() => resetPath(["effect"])}>
-        {([
-          ["Detective", [
-            ["detection", "How often a spotted intrusion is actually stopped", "an alarm that nobody follows up changes nothing, so only part of what a detective measure sees ends the intrusion"],
-            ["responseFloor", "Assumed ability to react when none is recorded", "the model reads that ability from the recovery measures in the study; where a study records none, it assumes this rather than nothing - some reaction always happens"],
-            ["lateDetection", "Spotting it while the damage is happening", "at the last step of the chain there is nothing left to prevent, so detection only shortens the event and takes this much off the bill"],
-          ]],
-          ["Corrective", [
-            ["recoverableShare", "The most recovery can take off the bill", "fines, notification duties and lost reputation stay, however good the backups"],
-            ["containment", "Cuts the chance of a knock-on loss by", ""],
-          ]],
-          ["Deterrent", [["deterrence", "Cuts the number of attacks by", ""]]],
-          ["Avoidance", [["avoidance", "Cuts the number of attacks by", "by removing the exposure, so contact happens less often"]]],
-        ] as const).map(([cls, rows]) => (
-          <div className="cal-class" key={cls}>
-            <p className="cal-class-h">
-              <b>{cls}</b>
-              <em>{effectChannel(cls)}</em>
-            </p>
-            <div className="dial-rows">
-              {rows.map(([k, name, hint]) => (
-                <DialRow key={k} name={name} hint={hint || undefined} value={e[k] as number} dflt={D.effect[k] as number}
-                  lo={0} hi={1} step={0.01} kind="pct" onChange={(n) => put(["effect", k], n)} />
-              ))}
-            </div>
-          </div>
-        ))}
-        <p className="cal-sub">
-          {tr('ui.calibration.preventive-measures-are-the', 'Preventive measures are the fifth class; what they are worth is set in the\n          defence-in-depth table above, because it depends on how many sit on a step.')}
-        </p>
-      </Table>
+      {all ? (
+      <Chapter id="effect" title={tr('ui.calibration.what-a-measure-is-worth', 'What a measure is worth')}
+        lead="strength, roll-out and lifecycle, the ceiling, what each class of measure does"
+        edited={differs(["effect"])} tables={2} open={isOpen("effect")} onToggle={toggleOpen}>
+        {effectTables}
+      </Chapter>
+      ) : effectTables}
 
       {all && (
+      <Chapter id="time" title="How fast the two sides are"
+        lead="the attacker's days per step and pace by capability; the defender's alert and response times"
+        edited={differs(["time"])} tables={4} open={isOpen("time")} onToggle={toggleOpen}>
+        <Table docKey="time.respond" changed={differs(["time", "respondDays"])} onReset={() => resetPath(["time", "respondDays"])}>
+          <div className="cal-curves">
+            {Object.keys(cal.time.respondDays).map((k) => (
+              <DistInput key={k} label={k} value={cal.time.respondDays[k]} unit="days" lo={0.01} hi={120} log accent="var(--teal-bright)"
+                onChange={(r) => put(["time", "respondDays", k], { ...cal.time.respondDays[k], ...r })} />
+            ))}
+          </div>
+        </Table>
+        <Table docKey="time.detect" changed={differs(["time", "detectDays"])} onReset={() => resetPath(["time", "detectDays"])}>
+          <div className="cal-curves">
+            {cal.time.detectDays.map((b: Band2, i: number) => (
+              <DistInput key={i} label={["weak", "moderate", "strong", "very strong"][i] ?? `level ${i + 1}`} value={b} unit="days" lo={0.01} hi={120} log accent="var(--teal-bright)"
+                onChange={(r) => put(["time", "detectDays", i], { ...b, ...r })} />
+            ))}
+          </div>
+        </Table>
+        <Depth id="time.fine" title="The fine tuning - days per step by tactic, pace by capability"
+          edited={differs(["time", "stepDays"]) || differs(["time", "stepDaysDefault"]) || differs(["time", "capabilitySpeed"])}
+          open={isOpen("time.fine")} onToggle={toggleOpen}>
+          <Table docKey="time.step" changed={differs(["time", "stepDays"]) || differs(["time", "stepDaysDefault"])} onReset={() => resetPaths(["time", "stepDays"], ["time", "stepDaysDefault"])}>
+            <div className="cal-curves">
+              {Object.keys(cal.time.stepDays).map((k) => (
+                <DistInput key={k} label={k} value={cal.time.stepDays[k]} unit="days" lo={0.005} hi={120} log accent="var(--teal-bright)"
+                  onChange={(r) => put(["time", "stepDays", k], { ...cal.time.stepDays[k], ...r })} />
+              ))}
+              <DistInput label="Any other tactic" value={cal.time.stepDaysDefault} unit="days" lo={0.005} hi={120} log accent="var(--teal-bright)"
+                onChange={(r) => put(["time", "stepDaysDefault"], { ...cal.time.stepDaysDefault, ...r })} />
+            </div>
+          </Table>
+          <Table docKey="time.speed" changed={differs(["time", "capabilitySpeed"])} onReset={() => resetPath(["time", "capabilitySpeed"])}>
+            <Band labels={RATING} values={cal.time.capabilitySpeed} dflt={D.time.capabilitySpeed}
+              lo={0.1} hi={4} step={0.05} kind="mult" onChange={(i, n) => put(["time", "capabilitySpeed", i], n)} />
+          </Table>
+        </Depth>
+      </Chapter>
+      )}
+
+      {all && (
+      <Chapter id="magnitude" title={tr('ui.calibration.what-a-loss-costs', 'What a loss costs')}
+        lead="direct and follow-on loss by severity - lognormal, points read P5 / median / P95"
+        edited={differs(["magnitude"])} tables={1} open={isOpen("magnitude")} onToggle={toggleOpen}>
       <Table docKey="magnitude" changed={differs(["magnitude"])} onReset={() => resetPath(["magnitude"])}>
         {([["loss", "Direct loss per event"], ["cascadeLoss", "Follow-on loss, when it happens"]] as const).map(([k, name]) => (
           <div key={k}>
@@ -465,6 +658,7 @@ export function CalibrationView({ study, color, scope = "all" }: {
           dflt={D.magnitude.cascadeLikelihood.map((b) => b.mode)} lo={0} hi={1} step={0.01} kind="pct"
           onChange={(i, n) => put(["magnitude", "cascadeLikelihood", i, "mode"], n)} />
       </Table>
+      </Chapter>
       )}
 
       {all && (

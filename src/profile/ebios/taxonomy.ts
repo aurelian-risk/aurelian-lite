@@ -21,8 +21,9 @@ const TACTICS = [
 ];
 
 /** Bumped whenever the default taxonomy's vocabulary grows in a way stored studies
- *  should pick up (see reconcileTaxonomy). 3 added the "Avoidance" measure effect class. */
-export const TAXONOMY_SCHEMA_VERSION = 3;
+ *  should pick up (see reconcileTaxonomy). 3 added the "Avoidance" measure effect class;
+ *  4 added the measure's "fails_with" field; 5 its "strength"; 6 its costs; 7 its ATT&CK mitigations. */
+export const TAXONOMY_SCHEMA_VERSION = 7;
 
 export const DEFAULT_TAXONOMY: Taxonomy = {
   schemaVersion: TAXONOMY_SCHEMA_VERSION,
@@ -180,6 +181,12 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
         { key: "status", label: "Status", type: "enum", options: ["Implemented", "Planned", "Missing", "Recommended"] },
         { key: "priority", label: "Priority", type: "scale", scaleLabels: SCALE },
         { key: "implementation_level", label: "Implementation", type: "scale", scaleLabels: ["none", "partial", "substantial", "full"], polarity: "positive" },
+        // How much this measure is worth against the ceiling, when fully in force. Read by
+        // the quantification; seeded from the library where the library has evidence.
+        // Unset reads as "very strong" - which is what every measure was assumed to be
+        // before the field existed, so nothing recorded earlier changes.
+        { key: "strength", label: "Strength", type: "scale", scaleLabels: ["weak", "moderate", "strong", "very strong"], polarity: "positive",
+          help: "How much of the ceiling this measure reaches when fully in force. MFA against phishing is very strong (Google: blocks 66% of targeted attacks), awareness training on its own is weak. The library seeds this from published evidence; unset counts as very strong." },
         // A measure on an attack step is in use by that fact, so the switch is refused in
         // that direction rather than letting the study say two things at once.
         { key: "scope", label: "In use", type: "enum", options: ["not in use", "in use"], toggle: true,
@@ -188,6 +195,18 @@ export const DEFAULT_TAXONOMY: Taxonomy = {
         { key: "covers", label: "Covers steps", type: "multiref", refType: "kill_chain_step", relation: "covers" },
         { key: "protects", label: "Protects assets", type: "multiref", refType: "supporting_asset", relation: "protects" },
         { key: "fulfills", label: "Fulfills requirements", type: "multiref", refType: "requirement", relation: "fulfills" },
+        // Read by the quantification: measures that name the same cause are drawn together
+        // in the traversal - the attacker who finds the shared weakness passes all of them.
+        // What it costs. Read by the quantification's worth ranking: loss avoided per
+        // euro is what a budget meeting asks, and it needs a denominator.
+        { key: "cost_once", label: "Cost, one-off", type: "number", help: "Purchase, project and roll-out cost, spread over the write-off period set in the calibration." },
+        { key: "cost_yearly", label: "Cost, yearly", type: "number", help: "Licences, operation, staff time per year." },
+        // The ATT&CK mitigations this measure is: "M1032" for MFA, "M1030" for segmentation.
+        // The completeness checks hold them against the techniques of the steps it covers.
+        { key: "mitigations", label: "ATT&CK mitigations", type: "text",
+          help: "The ATT&CK mitigation ids this measure implements, e.g. M1032 (Multi-factor Authentication), M1030 (Network Segmentation). The library seeds them. A check compares them with the techniques of the steps the measure covers and says where ATT&CK knows no effect." },
+        { key: "fails_with", label: "Fails with", type: "text",
+          help: "Name what this measure depends on that other measures depend on too - the identity provider, the SIEM, one administrator, a network segment. Measures naming the same thing fail together in the quantification: two gates on one cause are worth one gate, not two." },
       ],
     },
     {
