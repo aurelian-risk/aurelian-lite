@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 // Renders a single taxonomy field as the appropriate input control.
+import { t as tr } from "../domain/i18n";
 import type { FieldDef, FieldValue, EntityTypeDef } from "../domain/types";
 import { fieldHelp, optionLabel, scaleLabel, scaleMax } from "../domain/taxonomy";
 import { suggestTechniques, techniqueLabel } from "../domain/mitre";
@@ -35,10 +36,16 @@ export function FieldInput({
       // enums, where "not stated" is a real answer.
       const two = !!field.toggle && field.options?.length === 2;
       const shown = two && String(value ?? "") !== field.options![0] ? field.options![1] : String(value ?? "");
+      // A stored value the vocabulary no longer lists - a tactic ATT&CK has since retired,
+      // an option the user deleted - is shown as what it is, at the end and marked. A
+      // select without that option would display the first one and say nothing, and the
+      // record would read as changed the moment it was touched.
+      const foreign = !two && shown !== "" && !(field.options ?? []).includes(shown);
       return (
         <select value={shown} onChange={(e) => onChange(e.target.value)}>
           {!field.required && !two && <option value="">—</option>}
           {(field.options ?? []).map((o) => <option key={o} value={o}>{optionLabel(field, o, type)}</option>)}
+          {foreign && <option value={shown}>{shown} ({tr("ui.field.not-in-list", "not in the list")})</option>}
         </select>
       );
     }

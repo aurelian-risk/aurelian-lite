@@ -817,7 +817,7 @@ try {
   await page.screenshot({ path: `${shots}/FlowOrphan.png` });
 
   // Import dialog: additive/destructive + paste source
-  await page.locator(".topbar button", { hasText: "Export / Import" }).click();
+  await page.locator(".topbar button", { hasText: "Import / Export" }).click();
   await page.waitForTimeout(150);
   await page.locator(".menu-item", { hasText: "Import data" }).click();
   await page.waitForTimeout(200);
@@ -1858,7 +1858,7 @@ try {
       await page.getByText("Riverside General Hospital").first().click();
       await page.waitForSelector(".ws-tabs", { timeout: 10000 });
     }
-    await page.locator("button", { hasText: "Export / Import" }).first().click();
+    await page.locator("button", { hasText: "Import / Export" }).first().click();
     await page.waitForSelector(".menu-pop", { timeout: 8000 });
     const menu = page.locator(".menu-pop").first();
     const body = await menu.innerText().catch(() => "");
@@ -1868,7 +1868,7 @@ try {
     await page.keyboard.press("Escape");
     await page.waitForTimeout(250);
     ok("Escape closes the export menu", (await page.locator(".menu-pop").count()) === 0);
-    await page.locator("button", { hasText: "Export / Import" }).first().click();
+    await page.locator("button", { hasText: "Import / Export" }).first().click();
     await page.waitForSelector(".menu-pop", { timeout: 8000 });
     // Format, protection and recipients used to be asked here AND in a dialog beside it -
     // two places for one answer. They live in the dialog now; the menu is the way in.
@@ -2040,7 +2040,7 @@ try {
           text: new TextDecoder().decode(bytes), file: new Blob([bytes], { type: "application/pdf" }) });
         tx.oncomplete = res; });
     });
-    await a.getByRole("button", { name: /Export \/ Import/ }).click();
+    await a.getByRole("button", { name: /Import \/ Export/ }).click();
     await a.waitForTimeout(300);
     // One dialog decides the whole export: which studies, what goes in, how it is written
     // and who may open it. The archive is a choice inside it, not a second menu entry.
@@ -2312,6 +2312,155 @@ try {
     await p.locator(".ws-tab").first().click(); await p.waitForTimeout(400);
     ok("...and the order is still there after leaving the tab",
       (await p.locator(".tbl").first().locator("thead th.sorted").count()) === 1);
+    await ctx.close();
+  }
+
+  // ── A selection from a STIX bundle ─────────────────────────────────────────────
+  // The synthetic bundle in samples/, through the import dialog: the ring of types,
+  // descended to an actor, its techniques and campaign chosen on the stage and in the
+  // panel, the landing, the additive review, applied - and imported once more, which
+  // must change nothing. Its own context: it writes records into the study.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const p = await ctx.newPage();
+    p.on("console", (m) => { if (m.type() === "error" && !benign(m.text())) errors.push(m.text()); });
+    p.on("pageerror", (e) => errors.push("pageerror: " + e.message));
+    await p.goto(file);
+    await p.waitForSelector("#root .app", { timeout: 10000 });
+    await p.getByText("Load sample study").click();
+    await p.waitForSelector(".ws-tabs", { timeout: 10000 });
+    const story = readFileSync(new URL("../samples/stix-story.json", import.meta.url), "utf8");
+    const crumbs = async () => (await p.locator(".stix-crumbs").innerText()).replace(/\s+/g, " ");
+    const run = async (first) => {
+      await p.getByRole("button", { name: /Import \/ Export/ }).click();
+      await p.getByText("Import data…").click();
+      await p.waitForSelector(".modal-lg");
+      await p.locator(".modal-lg textarea").fill(story);
+      await p.getByText("Preview pasted →").click();
+      await p.waitForSelector(".stix-columns");
+      const col = (i) => p.locator(".stix-col").nth(i);
+      if (first) {
+        ok("STIX: the import dialog recognises a STIX bundle in the paste and opens the columns", (await p.locator(".modal-lg.stix").count()) === 1 && (await p.locator(".stix-col").count()) === 1);
+        ok("...the first column lists the types with what each becomes, the bundle's facts above",
+          (await p.locator(".stix-row-type").count()) >= 12 && /When.*2021-06-01 → 2026-03-05/.test((await p.locator(".stix-facts").textContent()).replace(/\s+/g, " ")));
+      }
+      // A row opens the next column; the row stays marked.
+      await p.locator(".stix-row-type", { hasText: "threat-actor" }).click(); await p.waitForTimeout(300);
+      if (first) ok("...a type's row opens a second column with its objects, the row marked", (await p.locator(".stix-col").count()) === 2 && (await p.locator(".stix-row-type.open", { hasText: "threat-actor" }).count()) === 1 && (await col(1).locator(".stix-row").count()) === 2);
+      await col(1).locator(".stix-row-open", { hasText: "Vireo Syndicate" }).click(); await p.waitForTimeout(300);
+      if (first) {
+        const groups = await col(2).locator(".stix-group-head.rel").allInnerTexts();
+        ok("...an object's row opens a third column: its card, then its relations as headed groups with direction",
+          (await p.locator(".stix-col").count()) === 3 && groups.some((g) => /uses → attack-pattern 7/.test(g.replace(/\s+/g, " "))) && groups.some((g) => /← attributed-to campaign 1/.test(g.replace(/\s+/g, " "))));
+        ok("...rows that become nothing have no box", (await col(2).locator(".stix-group", { hasText: "identity" }).locator("input").count()) === 0);
+        // The box chooses; the row opens. Two different places on the row.
+        await col(2).locator(".stix-row", { hasText: "T1566.001" }).locator("input").click(); await p.waitForTimeout(200);
+        ok("...the box on a row chooses it, the tray counts and names it", /1 chosen → 1 record/.test((await p.locator(".stix-tray-line").innerText()).replace(/\s+/g, " ")) && (await p.locator(".stix-chip").count()) === 1 && (await p.locator(".stix-col").count()) === 3);
+        await col(2).locator(".stix-group-head.rel", { hasText: "attack-pattern" }).locator("input").click();
+        await col(2).locator(".stix-group-head.rel", { hasText: "campaign" }).locator("input").click();
+        await p.waitForTimeout(250);
+        ok("...the box on a group's heading chooses the whole group", /8 chosen → 8 records/.test((await p.locator(".stix-tray-line").innerText()).replace(/\s+/g, " ")));
+        ok("...the tray says where they land, naming only the workshops that gain", /^Operational Scenarios \+8$/.test((await p.locator(".stix-tray .stix-ws-pill").allInnerTexts()).join(" ").replace(/\s+/g, " ")));
+        // The search: across the whole bundle, by id, name, alias or text; a hit opens straight to its object.
+        await p.locator(".stix-searchbar input").fill("gold finch"); await p.waitForTimeout(250);
+        ok("STIX search: an alias finds the actor", (await col(0).locator(".stix-row-name").allInnerTexts()).join() === "Vireo Syndicate");
+        await p.locator(".stix-searchbar input").fill("T1566"); await p.waitForTimeout(250);
+        ok("...an ATT&CK id finds the technique and its sub-technique", (await col(0).locator(".stix-row-name").allInnerTexts()).join() === "T1566 Phishing,T1566.001 Spearphishing Attachment");
+        await p.locator(".stix-searchbar input").fill("clinical VLAN"); await p.waitForTimeout(250);
+        ok("...words in a description find it, said to be in the text", (await col(0).locator(".stix-row-sub").allInnerTexts()).some((t) => /in the text/.test(t)));
+        await p.locator(".stix-searchbar button").click(); await p.waitForTimeout(150);
+        ok("...clearing the search brings the types back", (await p.locator(".stix-row-type").count()) >= 12);
+        // Opening an unmapped row still opens: a fourth column, with the actor found again on the other side.
+        await col(2).locator(".stix-row-open", { hasText: "Bedside Loader" }).click(); await p.waitForTimeout(300);
+        ok("...an unmapped row opens too; its column shows the way back to the actor as a relation", (await p.locator(".stix-col").count()) === 4 && (await col(3).locator(".stix-group-head.rel", { hasText: "threat-actor" }).count()) === 1);
+        // A relation runs both ways; the loader's column names the server, the server's names
+        // the loader - which must not open a fifth column, but lead back to the third.
+        const groupsL = await col(3).locator(".stix-group-head.rel").allInnerTexts();
+        ok("...in an unmapped object's column, the groups that become something come first", /threat-actor|attack-pattern/.test(groupsL[0].replace(/\s+/g, " ")) && /threat-actor|attack-pattern/.test(groupsL[1].replace(/\s+/g, " ")));
+        await col(3).locator(".stix-row-open", { hasText: "Bedside C2 hosting" }).first().click(); await p.waitForTimeout(300);
+        ok("...a column with nothing to choose says so", (await p.locator(".stix-col").count()) === 5 && (await col(4).locator(".stix-nothing").count()) === 1);
+        ok("...an object already open further left is marked as such, not opened again", (await col(4).locator(".stix-row.back", { hasText: "Bedside Loader" }).count()) >= 1);
+        await col(4).locator(".stix-row.back .stix-row-open").first().click(); await p.waitForTimeout(150);
+        ok("...and its row leads back to where it is open, lighting that column up", (await p.locator(".stix-col").count()) === 4 && (await p.locator(".stix-col.flash").count()) === 1);
+        await p.waitForTimeout(600);
+        await col(3).locator(".stix-row-open", { hasText: "Bedside C2 hosting" }).first().click(); await p.waitForTimeout(300);
+        await col(3).locator(".stix-row.open .stix-row-open").first().click(); await p.waitForTimeout(150);
+        ok("...the row this column opened, pressed again, shows its column rather than doing nothing", (await p.locator(".stix-col").count()) === 5 && (await p.locator(".stix-col.flash").count()) === 1);
+        await p.waitForTimeout(600);
+        // Back: a row further left; everything to its right goes, the choice stays.
+        await col(1).locator(".stix-row-open", { hasText: "Contract engineer" }).click(); await p.waitForTimeout(300);
+        ok("...a row further left leads back: the columns to its right go, the choice stays", (await p.locator(".stix-col").count()) === 3 && (await p.locator(".stix-chip").count()) === 8);
+        await col(1).locator(".stix-row-open", { hasText: "Vireo Syndicate" }).click(); await p.waitForTimeout(300);
+        await col(2).locator(".stix-card-name input").click(); await p.waitForTimeout(200);
+      } else {
+        await col(2).locator(".stix-group-head.rel", { hasText: "attack-pattern" }).locator("input").click();
+        await col(2).locator(".stix-group-head.rel", { hasText: "campaign" }).locator("input").click();
+        await col(2).locator(".stix-card-name input").click(); await p.waitForTimeout(200);
+        // Plus a campaign the bundle connects to none of it: disjoint, and said so.
+        await p.locator(".stix-searchbar input").fill("ledgerfall"); await p.waitForTimeout(250);
+        await col(0).locator(".stix-row input").first().click(); await p.waitForTimeout(200);
+        await p.locator(".stix-searchbar button").click(); await p.waitForTimeout(150);
+      }
+      await p.getByRole("button", { name: /^Landing/ }).click();
+      await p.waitForSelector(".stix-landing");
+      if (first) {
+        // What the bundle connects among the chosen: one group here, all nine hang together.
+        ok("STIX landing: the chosen objects are drawn as the bundle connects them", /1 connected group · 11 relationships/.test((await p.locator(".stix-weave > .menu-hint").innerText()).replace(/\s+/g, " ")));
+        await p.locator(".stix-weave-box", { hasText: "Operation Bedside" }).click(); await p.waitForTimeout(150);
+        const card = (await p.locator(".stix-weave-card").innerText()).replace(/\s+/g, " ");
+        ok("...a box pressed shows the object and its relations to the others chosen, and what the bundle knows beyond",
+          /campaign Operation Bedside/.test(card) && /attributed-to → Vireo Syndicate/.test(card) && /uses → T1566.001/.test(card) && /\+ 4 relationships in the bundle to objects not chosen/.test(card));
+        await p.locator(".stix-weave-rel-row").first().click(); await p.waitForTimeout(150);
+        ok("...a relation in the card leads to the other object", /Vireo Syndicate/.test(await p.locator(".stix-weave-card-head strong").innerText()));
+        await p.locator(".stix-weave-card-head .btn").click(); await p.waitForTimeout(100);
+        // Folded records say their gaps in the head: seven steps without a scenario.
+        const gaps = await p.locator(".stix-rec-head .stix-gap").evaluateAll((els) => els.map((e) => e.textContent.trim()));
+        ok("STIX landing: the steps say they have no scenario yet, as a gap in the record's head", gaps.filter((g) => /Part of scenario/.test(g)).length === 7);
+        await p.locator(".stix-scn select").selectOption("@campaign"); await p.waitForTimeout(200);
+        ok("...attaching them to the campaign closes those gaps", (await p.locator(".stix-rec-head .stix-gap").count()) === 0);
+        const heads = await p.locator(".stix-chain-head").allInnerTexts();
+        ok("...the chain is previewed as a numbered sequence of the tactics that hold a step, skipped tactics as a connector",
+          heads.join().toLowerCase() === "initial access,execution,persistence,stealth,lateral movement,exfiltration,impact" && (await p.locator(".stix-chain-link.skip").count()) === 3 && (await p.locator(".stix-chain-n").first().textContent()) === "1");
+        await p.locator(".stix-chain-step", { hasText: "PowerShell" }).click(); await p.waitForTimeout(150);
+        ok("...a step pressed in the chain is left out", (await p.locator(".stix-chain-step.off").count()) === 1 && /Review import \(8\)/.test(await p.getByRole("button", { name: /Review import/ }).textContent()));
+        await p.locator(".stix-chain-step", { hasText: "PowerShell" }).click(); await p.waitForTimeout(150);
+        const touches = await p.locator(".stix-touch").evaluateAll((els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
+        ok("...techniques the study's chain already has are named as touches, both kept", touches.length === 2 && touches.every((t) => /already a step.*both are kept/.test(t)));
+        // Adjust: rename the actor. Its record is folded (no gaps); open it.
+        const actorRec = p.locator(".stix-rec", { hasText: "Vireo Syndicate" }).first();
+        await actorRec.evaluate((el) => { el.open = true; });
+        await actorRec.locator(".stix-field input:not([type=checkbox])").first().fill("Vireo Syndicate (CTI)");
+        ok("...the actor's scales came from the STIX vocabularies", /high/.test(await actorRec.innerText()));
+      } else {
+        await p.locator(".stix-scn select").selectOption("@campaign").catch(() => {});
+        const actorRec = p.locator(".stix-rec", { hasText: "Vireo Syndicate" }).first();
+        await actorRec.evaluate((el) => { el.open = true; });
+        await actorRec.locator(".stix-field input:not([type=checkbox])").first().fill("Vireo Syndicate (CTI)");
+      }
+      if (!first) ok("STIX landing: a campaign the bundle links to nothing chosen is drawn apart and counted as disjoint",
+        /2 connected groups · 1 object the bundle connects to nothing else chosen/.test((await p.locator(".stix-weave > .menu-hint").innerText()).replace(/\s+/g, " ")) && (await p.locator(".stix-weave-svg rect[stroke-dasharray]").count()) === 1);
+      await p.getByRole("button", { name: /Review import/ }).click();
+      await p.waitForSelector("text=Review changes");
+      const modes = await p.locator(".import-modes-inline label").evaluateAll((els) => els.map((e) => e.textContent.trim()));
+      if (first) {
+        ok("STIX review: additive only, no seal verdict for records that were never a file", modes.join() === "Additive" && (await p.locator("text=Not sealed").count()) === 0);
+        ok("...nine records are added, the rest untouched - not 'kept' with a minus, not listed", /\+9 added[\s\S]*62 untouched/.test(await p.locator(".modal-lg").first().innerText()) && (await p.locator(".idiff-ent.removed").count()) === 0);
+      } else {
+        ok("STIX: importing the same objects again changes nothing, and the disjoint campaign is one record added", /\+1 added[\s\S]*~0 changed/.test(await p.locator(".modal-lg").first().innerText()));
+      }
+      await p.getByRole("button", { name: /Apply changes/ }).click();
+      await p.waitForTimeout(500);
+    };
+    await run(true);
+    await p.locator(".ws-tab", { hasText: "Operational" }).first().click(); await p.waitForTimeout(400);
+    await p.locator("text=Operation Bedside").first().click(); await p.waitForTimeout(600);
+    const lane = await p.locator(".kc-lane .kc-step").evaluateAll((els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
+    ok("...the campaign is a scenario whose steps lie in tactic order, the revoked technique read through to its successor",
+      lane.length === 7 && /^Spearphishing Attachment/.test(lane[0]) && /T1685 Disable or Modify Tools/.test(lane[3]) && /Data Encrypted for Impact/.test(lane[6]));
+    await p.locator(".ws-tab", { hasText: "Risk Sources" }).first().click(); await p.waitForTimeout(400);
+    ok("...the adjusted name is what was written", (await p.locator("text=Vireo Syndicate (CTI)").count()) >= 1);
+    // The second time: the same choices, so the same records.
+    await run(false);
     await ctx.close();
   }
 } catch (e) {

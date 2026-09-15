@@ -7,6 +7,7 @@
 // A sibling product supplies its own file here and shares the entire engine.
 import type { Taxonomy } from "../../domain/types";
 import { EFFECT_CLASSES } from "../../domain/controls";
+import { TACTICS as ATTACK_TACTICS } from "../../domain/mitre";
 
 const SCALE = ["low", "moderate", "high", "critical"];
 const LIKELIHOOD = ["low", "possible", "likely", "near-certain"];
@@ -14,16 +15,13 @@ const GRAVITY = ["negligible", "noticeable", "severe", "existential"];
 const TREATMENT = ["Reduce", "Accept", "Share", "Avoid"];         // ISO 27005 risk-treatment options
 const TREAT_STATUS = ["Proposed", "In progress", "Implemented", "Verified"];
 const RELIABILITY = ["very low", "low", "good", "very good"];
-const TACTICS = [
-  "Reconnaissance", "Resource Development", "Initial Access", "Execution", "Persistence",
-  "Privilege Escalation", "Defense Evasion", "Credential Access", "Discovery", "Lateral Movement",
-  "Collection", "Command and Control", "Exfiltration", "Impact",
-];
+// The tactic vocabulary is ATT&CK's, in its matrix order, from the generated reference.
+const TACTICS = [...ATTACK_TACTICS];
 
 /** Bumped whenever the default taxonomy's vocabulary grows in a way stored studies
  *  should pick up (see reconcileTaxonomy). 3 added the "Avoidance" measure effect class;
  *  4 added the measure's "fails_with" field; 5 its "strength"; 6 its costs; 7 its ATT&CK mitigations. */
-export const TAXONOMY_SCHEMA_VERSION = 7;
+export const TAXONOMY_SCHEMA_VERSION = 8;
 
 export const DEFAULT_TAXONOMY: Taxonomy = {
   schemaVersion: TAXONOMY_SCHEMA_VERSION,

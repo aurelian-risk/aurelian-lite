@@ -1,0 +1,1236 @@
+{
+  "type": "bundle",
+  "id": "bundle--00000000-0000-4000-8000-000000000000",
+  "objects": [
+    {
+      "type": "marking-definition",
+      "spec_version": "2.1",
+      "id": "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da",
+      "created": "2017-01-20T00:00:00.000Z",
+      "definition_type": "tlp",
+      "name": "TLP:GREEN",
+      "definition": {
+        "tlp": "green"
+      }
+    },
+    {
+      "type": "identity",
+      "spec_version": "2.1",
+      "id": "identity--00000000-0000-4000-8000-000000000009",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "name": "Aurelian Threat Desk (fictional)",
+      "description": "The invented producer of this sample bundle. Nothing in it describes a real organisation, incident or actor; the ATT&CK ids are real.",
+      "identity_class": "organization",
+      "sectors": [
+        "technology"
+      ],
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ]
+    },
+    {
+      "type": "identity",
+      "spec_version": "2.1",
+      "id": "identity--00000000-0000-4000-8000-000000000001",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Riverside General Hospital Trust",
+      "description": "A regional hospital group - the organisation the sample study describes.",
+      "identity_class": "organization",
+      "sectors": [
+        "healthcare"
+      ],
+      "contact_information": "soc@riverside.example"
+    },
+    {
+      "type": "identity",
+      "spec_version": "2.1",
+      "id": "identity--00000000-0000-4000-8000-000000000002",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Regional Savings Bank",
+      "description": "A retail bank; targeted by the second actor.",
+      "identity_class": "organization",
+      "sectors": [
+        "financial-services"
+      ]
+    },
+    {
+      "type": "identity",
+      "spec_version": "2.1",
+      "id": "identity--00000000-0000-4000-8000-000000000003",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Healthcare providers, western Europe",
+      "description": "The class of organisations the first actor goes after.",
+      "identity_class": "class",
+      "sectors": [
+        "healthcare"
+      ]
+    },
+    {
+      "type": "location",
+      "spec_version": "2.1",
+      "id": "location--00000000-0000-4000-8000-000000000005",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Germany",
+      "region": "western-europe",
+      "country": "DE"
+    },
+    {
+      "type": "threat-actor",
+      "spec_version": "2.1",
+      "id": "threat-actor--00000000-0000-4000-8000-000000000010",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Vireo Syndicate",
+      "description": "Financially motivated crew running double-extortion ransomware against hospitals in Europe. Buys initial access, moves fast, encrypts within days.",
+      "aliases": [
+        "VIREO",
+        "GOLD FINCH"
+      ],
+      "threat_actor_types": [
+        "crime-syndicate"
+      ],
+      "roles": [
+        "director",
+        "agent"
+      ],
+      "sophistication": "advanced",
+      "resource_level": "organization",
+      "primary_motivation": "personal-gain",
+      "secondary_motivations": [
+        "coercion"
+      ],
+      "goals": [
+        "Extort a ransom",
+        "Sell patient data"
+      ],
+      "first_seen": "2024-02-01T00:00:00.000Z",
+      "last_seen": "2026-02-15T00:00:00.000Z"
+    },
+    {
+      "type": "threat-actor",
+      "spec_version": "2.1",
+      "id": "threat-actor--00000000-0000-4000-8000-000000000012",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Contract engineer with a grievance",
+      "description": "An insider archetype: legitimate remote-maintenance access, low tooling, high knowledge of the environment.",
+      "threat_actor_types": [
+        "insider-disgruntled"
+      ],
+      "sophistication": "minimal",
+      "resource_level": "individual",
+      "primary_motivation": "revenge",
+      "goals": [
+        "Disrupt clinical operations"
+      ]
+    },
+    {
+      "type": "intrusion-set",
+      "spec_version": "2.1",
+      "id": "intrusion-set--00000000-0000-4000-8000-000000000011",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Nightjar",
+      "description": "Espionage group; tooling maturity high, patient, targets the financial sector for long-term access.",
+      "aliases": [
+        "NIGHTJAR",
+        "APT-NJ"
+      ],
+      "first_seen": "2021-06-01T00:00:00.000Z",
+      "last_seen": "2026-01-20T00:00:00.000Z",
+      "resource_level": "government",
+      "primary_motivation": "organizational-gain",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "G0999",
+          "url": "https://attack.mitre.org/groups/G0999",
+          "hashes": {
+            "SHA-256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        }
+      ]
+    },
+    {
+      "type": "campaign",
+      "spec_version": "2.1",
+      "id": "campaign--00000000-0000-4000-8000-000000000020",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Operation Bedside",
+      "description": "Spring 2026 wave against clinical networks: phishing the maintenance provider, lateral movement over RDP, encryption of the hospital information system.",
+      "aliases": [
+        "Bedside"
+      ],
+      "first_seen": "2026-01-10T00:00:00.000Z",
+      "last_seen": "2026-03-01T00:00:00.000Z",
+      "objective": "Encrypt clinical systems and demand payment"
+    },
+    {
+      "type": "campaign",
+      "spec_version": "2.1",
+      "id": "campaign--00000000-0000-4000-8000-000000000021",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Ledgerfall",
+      "description": "Slow-burn intrusion into a bank's treasury systems over months.",
+      "first_seen": "2025-09-01T00:00:00.000Z",
+      "last_seen": "2026-01-20T00:00:00.000Z",
+      "objective": "Persistent access to payment infrastructure"
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--00000000-0000-4000-8000-000000000030",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Phishing",
+      "description": "Adversaries may send phishing messages to gain access to victim systems.",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "T1566"
+        }
+      ],
+      "kill_chain_phases": [
+        {
+          "kill_chain_name": "mitre-attack",
+          "phase_name": "initial-access"
+        }
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--00000000-0000-4000-8000-000000000035",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Spearphishing Attachment",
+      "description": "Phishing with a malicious attachment, aimed at the maintenance provider's staff.",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "T1566.001"
+        }
+      ],
+      "kill_chain_phases": [
+        {
+          "kill_chain_name": "mitre-attack",
+          "phase_name": "initial-access"
+        }
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--00000000-0000-4000-8000-000000000036",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Exploit Public-Facing Application",
+      "description": "The bank's VPN appliance, via a published vulnerability.",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "T1190"
+        }
+      ],
+      "kill_chain_phases": [
+        {
+          "kill_chain_name": "mitre-attack",
+          "phase_name": "initial-access"
+        }
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--00000000-0000-4000-8000-000000000037",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Valid Accounts",
+      "description": "Legitimate maintenance credentials, bought or phished.",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "T1078"
+        }
+      ],
+      "kill_chain_phases": [
+        {
+          "kill_chain_name": "mitre-attack",
+          "phase_name": "persistence"
+        },
+        {
+          "kill_chain_name": "mitre-attack",
+          "phase_name": "privilege-escalation"
+        },
+        {
+          "kill_chain_name": "mitre-attack",
+          "phase_name": "initial-access"
+        }
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--00000000-0000-4000-8000-000000000038",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "PowerShell",
+      "description": "Loader stages run through PowerShell.",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "T1059.001"
+        }
+      ],
+      "kill_chain_phases": [
+        {
+          "kill_chain_name": "mitre-attack",
+          "phase_name": "execution"
+        }
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--00000000-0000-4000-8000-000000000031",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Remote Services",
+      "description": "Adversaries may use valid accounts to log into remote services.",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "T1021"
+        }
+      ],
+      "kill_chain_phases": [
+        {
+          "kill_chain_name": "mitre-attack",
+          "phase_name": "lateral-movement"
+        }
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--00000000-0000-4000-8000-000000000039",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Remote Desktop Protocol",
+      "description": "RDP from the maintenance host into the clinical VLAN.",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "T1021.001"
+        }
+      ],
+      "kill_chain_phases": [
+        {
+          "kill_chain_name": "mitre-attack",
+          "phase_name": "lateral-movement"
+        }
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--00000000-0000-4000-8000-000000000032",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Impair Defenses",
+      "description": "Written against ATT&CK v18: the phase name is the old one, and the technique has since been revoked in favour of a successor.",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "T1562"
+        }
+      ],
+      "kill_chain_phases": [
+        {
+          "kill_chain_name": "mitre-attack",
+          "phase_name": "defense-evasion"
+        }
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--00000000-0000-4000-8000-000000000040",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Exfiltration to Cloud Storage",
+      "description": "Patient records staged and pushed to a cloud share before encryption.",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "T1567.002"
+        }
+      ],
+      "kill_chain_phases": [
+        {
+          "kill_chain_name": "mitre-attack",
+          "phase_name": "exfiltration"
+        }
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--00000000-0000-4000-8000-000000000033",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Data Encrypted for Impact",
+      "description": "Encryption of the hospital information system and imaging archive.",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "T1486"
+        }
+      ],
+      "kill_chain_phases": [
+        {
+          "kill_chain_name": "mitre-attack",
+          "phase_name": "impact"
+        }
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--00000000-0000-4000-8000-000000000034",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Badge cloning at the loading dock",
+      "description": "A feed's own technique, with no ATT&CK id: cloning a contractor badge to enter the plant room.",
+      "kill_chain_phases": [
+        {
+          "kill_chain_name": "mitre-attack",
+          "phase_name": "initial-access"
+        }
+      ]
+    },
+    {
+      "type": "malware",
+      "spec_version": "2.1",
+      "id": "malware--00000000-0000-4000-8000-000000000040",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Bedside Loader",
+      "description": "First-stage loader delivered by the phishing attachment.",
+      "is_family": true,
+      "malware_types": [
+        "downloader"
+      ],
+      "capabilities": [
+        "communicates-with-c2",
+        "installs-other-components"
+      ]
+    },
+    {
+      "type": "tool",
+      "spec_version": "2.1",
+      "id": "tool--00000000-0000-4000-8000-000000000041",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Cobalt Strike",
+      "description": "Commercial adversary-emulation framework, used post-compromise.",
+      "tool_types": [
+        "remote-access"
+      ],
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "S0154",
+          "url": "https://attack.mitre.org/software/S0154",
+          "hashes": {
+            "SHA-256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        }
+      ]
+    },
+    {
+      "type": "vulnerability",
+      "spec_version": "2.1",
+      "id": "vulnerability--00000000-0000-4000-8000-000000000045",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "CVE-2025-0001 (fictional)",
+      "description": "A pre-auth flaw in a VPN appliance; the bank had not patched.",
+      "external_references": [
+        {
+          "source_name": "cve",
+          "external_id": "CVE-2025-0001"
+        }
+      ]
+    },
+    {
+      "type": "infrastructure",
+      "spec_version": "2.1",
+      "id": "infrastructure--00000000-0000-4000-8000-000000000046",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Bedside C2 hosting",
+      "description": "Rented virtual servers used for command and control.",
+      "infrastructure_types": [
+        "command-and-control"
+      ]
+    },
+    {
+      "type": "course-of-action",
+      "spec_version": "2.1",
+      "id": "course-of-action--00000000-0000-4000-8000-000000000050",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Multi-factor Authentication",
+      "description": "Use two or more pieces of evidence to authenticate to a system.",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "M1032",
+          "url": "https://attack.mitre.org/mitigations/M1032",
+          "hashes": {
+            "SHA-256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        }
+      ]
+    },
+    {
+      "type": "course-of-action",
+      "spec_version": "2.1",
+      "id": "course-of-action--00000000-0000-4000-8000-000000000051",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Data Backup",
+      "description": "Take and store data backups from end-user systems and critical servers; keep them off the network.",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "M1053",
+          "url": "https://attack.mitre.org/mitigations/M1053",
+          "hashes": {
+            "SHA-256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        }
+      ]
+    },
+    {
+      "type": "course-of-action",
+      "spec_version": "2.1",
+      "id": "course-of-action--00000000-0000-4000-8000-000000000052",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "User Training",
+      "description": "Train users to be aware of access or manipulation attempts.",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "M1017",
+          "url": "https://attack.mitre.org/mitigations/M1017",
+          "hashes": {
+            "SHA-256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        }
+      ]
+    },
+    {
+      "type": "indicator",
+      "spec_version": "2.1",
+      "id": "indicator--00000000-0000-4000-8000-000000000060",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Bedside C2 domain",
+      "description": "Command-and-control domain of the loader.",
+      "indicator_types": [
+        "malicious-activity"
+      ],
+      "pattern": "[domain-name:value = 'bedside-updates.example']",
+      "pattern_type": "stix",
+      "pattern_version": "2.1",
+      "valid_from": "2026-01-10T00:00:00.000Z"
+    },
+    {
+      "type": "report",
+      "spec_version": "2.1",
+      "id": "report--00000000-0000-4000-8000-000000000070",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Vireo Syndicate - Q1 2026",
+      "description": "Quarterly write-up of the actor, its campaign and the techniques seen.",
+      "published": "2026-03-05T00:00:00.000Z",
+      "report_types": [
+        "threat-actor",
+        "campaign"
+      ],
+      "object_refs": [
+        "threat-actor--00000000-0000-4000-8000-000000000010",
+        "campaign--00000000-0000-4000-8000-000000000020",
+        "attack-pattern--00000000-0000-4000-8000-000000000030",
+        "attack-pattern--00000000-0000-4000-8000-000000000035",
+        "malware--00000000-0000-4000-8000-000000000040"
+      ]
+    },
+    {
+      "type": "note",
+      "spec_version": "2.1",
+      "id": "note--00000000-0000-4000-8000-000000000075",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "abstract": "Analyst note on Operation Bedside",
+      "content": "Dwell before encryption was 4 to 9 days across the three known victims; exfiltration preceded encryption in all three.",
+      "authors": [
+        "Aurelian Threat Desk (fictional)"
+      ],
+      "object_refs": [
+        "campaign--00000000-0000-4000-8000-000000000020"
+      ]
+    },
+    {
+      "type": "grouping",
+      "spec_version": "2.1",
+      "id": "grouping--00000000-0000-4000-8000-000000000076",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "name": "Bedside - everything seen",
+      "description": "Working set of the Bedside investigation.",
+      "context": "suspicious-activity",
+      "object_refs": [
+        "campaign--00000000-0000-4000-8000-000000000020",
+        "malware--00000000-0000-4000-8000-000000000040",
+        "indicator--00000000-0000-4000-8000-000000000060",
+        "infrastructure--00000000-0000-4000-8000-000000000046"
+      ]
+    },
+    {
+      "type": "sighting",
+      "spec_version": "2.1",
+      "id": "sighting--00000000-0000-4000-8000-000000000080",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "object_marking_refs": [
+        "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da"
+      ],
+      "description": "Three attempts by the actor against the hospital's maintenance provider in the quarter.",
+      "sighting_of_ref": "threat-actor--00000000-0000-4000-8000-000000000010",
+      "where_sighted_refs": [
+        "identity--00000000-0000-4000-8000-000000000001"
+      ],
+      "count": 3,
+      "first_seen": "2026-01-12T00:00:00.000Z",
+      "last_seen": "2026-02-28T00:00:00.000Z"
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000100",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "threat-actor--00000000-0000-4000-8000-000000000010",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000035",
+      "description": "Phishes the maintenance provider with a malicious attachment."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000101",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "threat-actor--00000000-0000-4000-8000-000000000010",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000039",
+      "description": "Moves over RDP once inside."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000102",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "threat-actor--00000000-0000-4000-8000-000000000010",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000032",
+      "description": "Disables endpoint protection before encrypting (recorded under the retired tactic name)."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000103",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "threat-actor--00000000-0000-4000-8000-000000000010",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000033",
+      "description": "Encrypts the hospital information system."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000117",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "threat-actor--00000000-0000-4000-8000-000000000010",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000040",
+      "description": "Exfiltrates records to cloud storage before encrypting."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000118",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "threat-actor--00000000-0000-4000-8000-000000000010",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000037",
+      "description": "Uses bought maintenance credentials where phishing fails."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000119",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "threat-actor--00000000-0000-4000-8000-000000000010",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000038",
+      "description": "Runs the loader stages through PowerShell."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000104",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "threat-actor--00000000-0000-4000-8000-000000000010",
+      "target_ref": "malware--00000000-0000-4000-8000-000000000040",
+      "description": "Its first-stage loader."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000120",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "threat-actor--00000000-0000-4000-8000-000000000010",
+      "target_ref": "tool--00000000-0000-4000-8000-000000000041",
+      "description": "Post-compromise framework."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000105",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "targets",
+      "source_ref": "threat-actor--00000000-0000-4000-8000-000000000010",
+      "target_ref": "identity--00000000-0000-4000-8000-000000000001",
+      "description": "Targeted in Operation Bedside."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000121",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "targets",
+      "source_ref": "threat-actor--00000000-0000-4000-8000-000000000010",
+      "target_ref": "identity--00000000-0000-4000-8000-000000000003",
+      "description": "Its victim class."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000122",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "targets",
+      "source_ref": "threat-actor--00000000-0000-4000-8000-000000000010",
+      "target_ref": "location--00000000-0000-4000-8000-000000000005",
+      "description": "Most known victims are in Germany."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000123",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "attributed-to",
+      "source_ref": "threat-actor--00000000-0000-4000-8000-000000000010",
+      "target_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "description": "Attribution by the fictional threat desk.",
+      "revoked": true
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000106",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "targets",
+      "source_ref": "intrusion-set--00000000-0000-4000-8000-000000000011",
+      "target_ref": "identity--00000000-0000-4000-8000-000000000002",
+      "description": "Long-term access to treasury systems."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000112",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "intrusion-set--00000000-0000-4000-8000-000000000011",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000036",
+      "description": "Exploits the VPN appliance."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000124",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "intrusion-set--00000000-0000-4000-8000-000000000011",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000037",
+      "description": "Then lives on valid accounts."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000113",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "intrusion-set--00000000-0000-4000-8000-000000000011",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000034",
+      "description": "Physical access where remote access fails."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000125",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "intrusion-set--00000000-0000-4000-8000-000000000011",
+      "target_ref": "tool--00000000-0000-4000-8000-000000000041",
+      "description": "Post-compromise framework."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000126",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "threat-actor--00000000-0000-4000-8000-000000000012",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000037",
+      "description": "Own legitimate credentials."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000127",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "targets",
+      "source_ref": "threat-actor--00000000-0000-4000-8000-000000000012",
+      "target_ref": "identity--00000000-0000-4000-8000-000000000001",
+      "description": "Their employer's client."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000107",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "attributed-to",
+      "source_ref": "campaign--00000000-0000-4000-8000-000000000020",
+      "target_ref": "threat-actor--00000000-0000-4000-8000-000000000010",
+      "description": "Tooling and infrastructure overlap."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000128",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "attributed-to",
+      "source_ref": "campaign--00000000-0000-4000-8000-000000000021",
+      "target_ref": "intrusion-set--00000000-0000-4000-8000-000000000011",
+      "description": "Tradecraft overlap."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000108",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "campaign--00000000-0000-4000-8000-000000000020",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000035",
+      "description": "Initial access in every known Bedside case."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000109",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "campaign--00000000-0000-4000-8000-000000000020",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000033",
+      "description": "The objective."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000129",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "campaign--00000000-0000-4000-8000-000000000020",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000040",
+      "description": "Before encryption."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000130",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "campaign--00000000-0000-4000-8000-000000000021",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000036",
+      "description": "Entry."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000131",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "targets",
+      "source_ref": "campaign--00000000-0000-4000-8000-000000000020",
+      "target_ref": "identity--00000000-0000-4000-8000-000000000001",
+      "description": "One of three known victims."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000110",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "malware--00000000-0000-4000-8000-000000000040",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000038",
+      "description": "Runs its stages through PowerShell."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000132",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "beacons-to",
+      "source_ref": "malware--00000000-0000-4000-8000-000000000040",
+      "target_ref": "infrastructure--00000000-0000-4000-8000-000000000046",
+      "description": "Beacons to rented servers."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000133",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "hosts",
+      "source_ref": "infrastructure--00000000-0000-4000-8000-000000000046",
+      "target_ref": "malware--00000000-0000-4000-8000-000000000040",
+      "description": "Serves the second stage."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000134",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "targets",
+      "source_ref": "attack-pattern--00000000-0000-4000-8000-000000000036",
+      "target_ref": "vulnerability--00000000-0000-4000-8000-000000000045",
+      "description": "The flaw it exploits."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000135",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "located-at",
+      "source_ref": "identity--00000000-0000-4000-8000-000000000001",
+      "target_ref": "location--00000000-0000-4000-8000-000000000005",
+      "description": "Site."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000111",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "mitigates",
+      "source_ref": "course-of-action--00000000-0000-4000-8000-000000000050",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000031",
+      "description": "MFA on remote services."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000136",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "mitigates",
+      "source_ref": "course-of-action--00000000-0000-4000-8000-000000000050",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000037",
+      "description": "MFA on valid accounts."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000137",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "mitigates",
+      "source_ref": "course-of-action--00000000-0000-4000-8000-000000000051",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000033",
+      "description": "Offline backups against encryption."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000138",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "mitigates",
+      "source_ref": "course-of-action--00000000-0000-4000-8000-000000000052",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000030",
+      "description": "Training against phishing."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000114",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "indicates",
+      "source_ref": "indicator--00000000-0000-4000-8000-000000000060",
+      "target_ref": "malware--00000000-0000-4000-8000-000000000040",
+      "description": "The loader's C2 domain."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000139",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "indicates",
+      "source_ref": "indicator--00000000-0000-4000-8000-000000000060",
+      "target_ref": "infrastructure--00000000-0000-4000-8000-000000000046",
+      "description": "Resolves to the rented servers."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000115",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "threat-actor--00000000-0000-4000-8000-000000000010",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000999",
+      "description": "Dangling on purpose: the target is not in the bundle."
+    },
+    {
+      "type": "relationship",
+      "spec_version": "2.1",
+      "id": "relationship--00000000-0000-4000-8000-000000000116",
+      "created": "2026-03-01T00:00:00.000Z",
+      "modified": "2026-03-01T00:00:00.000Z",
+      "created_by_ref": "identity--00000000-0000-4000-8000-000000000009",
+      "relationship_type": "uses",
+      "source_ref": "intrusion-set--00000000-0000-4000-8000-000000000011",
+      "target_ref": "attack-pattern--00000000-0000-4000-8000-000000000033",
+      "description": "Revoked on purpose: withdrawn attribution.",
+      "revoked": true
+    }
+  ]
+}

@@ -126,7 +126,7 @@ export function StudyView({ onBack }: { onBack: () => void }) {
           <Icon.search /> {tr("ui.search.search", "Search")}
         </button>
         <ReportMenu tax={tax} study={study} />
-        <DataMenu studyScope={study} label={tr("ui.study.export-import", "Export / Import")} />
+        <DataMenu studyScope={study} label={tr("ui.study.export-import", "Import / Export")} />
       </div>
 
       {searching && <SearchSheet tax={tax} study={study} state={search} onState={setSearch} onClose={() => setSearching(false)}

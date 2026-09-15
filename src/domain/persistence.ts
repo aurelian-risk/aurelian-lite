@@ -249,9 +249,25 @@ export function isArchive(buf: ArrayBuffer): boolean {
   return u[0] === 0x50 && u[1] === 0x4b && (u[2] === 3 || u[2] === 5 || u[2] === 7);
 }
 
+/** What was pasted, if it arrived wrapped in Markdown. A model answers with a fenced
+ *  block, often several - the schema excerpt it was shown, then the records - and the
+ *  text around them parses as one long YAML string, not as a bundle. The block that
+ *  carries `studies` (or a plain list) is the one meant; failing that, the first block
+ *  that parses at all. Text without a fence is returned as it is. */
+function unfence(text: string): string {
+  const blocks = [...text.matchAll(/```[a-zA-Z]*\s*\n([\s\S]*?)```/g)].map((m) => m[1]);
+  if (!blocks.length) return text;
+  const loads = blocks.map((b) => { try { return yaml.load(b); } catch { return undefined; } });
+  const isBundle = (d: unknown) => Array.isArray(d) || (!!d && typeof d === "object" && "studies" in (d as object));
+  const i = loads.findIndex(isBundle);
+  if (i >= 0) return blocks[i];
+  const j = loads.findIndex((d) => !!d && typeof d === "object");
+  return j >= 0 ? blocks[j] : text;
+}
+
 export function parseBundle(text: string): Bundle {
-  const data = yaml.load(text) as Record<string, unknown> | unknown[] | null;
-  if (!data) throw new Error("Empty or invalid file.");
+  const data = yaml.load(unfence(text)) as Record<string, unknown> | unknown[] | null;
+  if (!data || typeof data !== "object") throw new Error("Empty or invalid file.");
 
   // Array → list of studies.
   if (Array.isArray(data)) return { kind: "ebios-data", version: 2, studies: data as Study[] };

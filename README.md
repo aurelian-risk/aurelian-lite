@@ -134,6 +134,25 @@ control that mitigates it.
 > class of measure moves, the shipped calibration with its source per table, and what the
 > model does not claim.
 
+## Threat intelligence in - a STIX bundle, browsed and chosen from
+
+*Import / Export → Import data…* recognises a **STIX 2.1 bundle** - MITRE ATT&CK, a MISP or
+TAXII export, a vendor report - and opens it in columns, as a file browser does: the
+bundle's types, a type's objects, an object's relationships with the objects under each.
+A row opens the next column; the box beside a row chooses it; a search runs across the
+whole bundle. What is chosen is projected onto the study's own types - an actor becomes a
+risk source with its scales read from the STIX vocabularies, a technique a kill-chain step
+under its tactic, a campaign an operational scenario, a mitigation a security measure -
+and the landing shows where the records go, the chain they make, what the bundle
+connects among them and what they touch in the study, every field editable, before the
+same additive review every import goes through. Importing the same object again updates
+the record it wrote, never doubles it. Written up in [docs/stix-import.md](docs/stix-import.md);
+`samples/stix-story.json` is an invented bundle to try it on.
+
+**Copy for LLM**, on every workshop and on the quantification, closes with the records
+and their data-model excerpt in the shape the import reads, so an answer in that shape
+can be pasted straight into *Import data…*.
+
 ## Assisted extraction - a model that runs on your machine
 
 Turning a pile of documents into a structured analysis is the slow part of any assessment.
@@ -228,10 +247,10 @@ MIT for anyone holding them.
 Full details are in [`NOTICE`](NOTICE) (data sources and trademarks) and
 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) (software licenses).
 
-- **MITRE ATT&CK®** - a curated subset of ATT&CK tactic and technique identifiers
-  and names powers the offline kill-chain typeahead (labelled "TTP" in the UI); the
-  Enterprise mitigation relationships (v19.2), reduced to those techniques, drive the
-  technique-fit checks.
+- **MITRE ATT&CK®** - the Enterprise tactics and the identifiers and names of all
+  techniques and sub-techniques (v19.2) power the offline kill-chain typeahead (labelled
+  "TTP" in the UI); the Enterprise mitigation relationships drive the technique-fit checks.
+  Both tables are generated from the ATT&CK STIX bundle (`scripts/attack-gen.mjs`).
   ATT&CK® content is © The MITRE Corporation, used under the
   [ATT&CK Terms of Use](https://attack.mitre.org/resources/legal-and-branding/terms-of-use/).
   MITRE ATT&CK® is a registered trademark of The MITRE Corporation.
