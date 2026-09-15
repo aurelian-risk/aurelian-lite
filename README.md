@@ -134,24 +134,27 @@ control that mitigates it.
 > class of measure moves, the shipped calibration with its source per table, and what the
 > model does not claim.
 
-## Threat intelligence in - a STIX bundle, browsed and chosen from
+## Threat intelligence import
 
-*Import / Export → Import data…* recognises a **STIX 2.1 bundle** - MITRE ATT&CK, a MISP or
-TAXII export, a vendor report - and opens it in columns, as a file browser does: the
-bundle's types, a type's objects, an object's relationships with the objects under each.
-A row opens the next column; the box beside a row chooses it; a search runs across the
-whole bundle. What is chosen is projected onto the study's own types - an actor becomes a
-risk source with its scales read from the STIX vocabularies, a technique a kill-chain step
-under its tactic, a campaign an operational scenario, a mitigation a security measure -
-and the landing shows where the records go, the chain they make, what the bundle
-connects among them and what they touch in the study, every field editable, before the
-same additive review every import goes through. Importing the same object again updates
-the record it wrote, never doubles it. Written up in [docs/stix-import.md](docs/stix-import.md);
-`samples/stix-story.json` is an invented bundle to try it on.
+Aurelian Lite reads **STIX 2.1 bundles** - MITRE ATT&CK, MISP or TAXII exports, vendor
+reports - through *Import / Export → Import data…*.
 
-**Copy for LLM**, on every workshop and on the quantification, closes with the records
-and their data-model excerpt in the shape the import reads, so an answer in that shape
-can be pasted straight into *Import data…*.
+- **Browse the bundle in columns.** Types, then the objects of a type, then an object's
+  relationships. Click a row to open it, tick the box to choose it, search across the
+  whole bundle.
+- **Chosen objects become study records.** An actor becomes a risk source, a technique a
+  kill-chain step, a campaign an operational scenario, a mitigation a security measure.
+  The rules are declared per STIX type and can be adjusted before anything is written.
+- **See where it lands first.** Which workshops gain records, the kill chain the chosen
+  techniques form, what the bundle connects among them, and what already exists in the
+  study. Then the usual additive import review.
+- **Import twice, get one record.** Re-importing the same object updates it.
+
+Details: [docs/stix-import.md](docs/stix-import.md). Try it with the sample bundle
+`samples/stix-story.json`.
+
+**Copy for LLM** now ends with the records in import format, so a model's answer can be
+pasted straight back into *Import data…*.
 
 ## Assisted extraction - a model that runs on your machine
 
