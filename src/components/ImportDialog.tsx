@@ -11,6 +11,8 @@ import { isEncrypted, decryptText, decryptForKey, envelopeRecipients,
   isEncryptedBytes, decryptBytes, decryptBytesForKey, bytesEnvelopeRecipients } from "../domain/crypto";
 import { fingerprint, knownKey, ownKey, publicOf, readPublicKeyFile, rememberKey, verifyAllSeals } from "../domain/keys";
 import { taxonomyGap } from "../domain/taxonomy";
+import { isStix } from "../domain/stix";
+import { StixImport } from "./StixImport";
 import { getType, recordTitle } from "../domain/taxonomy";
 import { sealState } from "./SealPanel";
 import { importDocs } from "../domain/documents";
@@ -32,6 +34,12 @@ const short = (v: FieldValue): string => {
 const deltaText = (f: FieldDelta) => `${f.label}: ${short(f.from)} → ${short(f.to)}`;
 
 export function ImportDialog({ onClose }: { onClose: () => void }) {
+  // A STIX bundle is not a study: it is walked and projected first (StixImport), and what
+  // comes back are records that were never a file - there is no log to vouch for and
+  // nothing the destructive mode could rightly replace, a selection is not the whole
+  // study. So for those no seal verdict is shown and the mode stays additive.
+  const [stix, setStix] = useState<{ text: string; source: string } | null>(null);
+  const [projected, setProjected] = useState(false);
   const store = useStore();
   const tax = useStore((s) => s.taxonomy);
   const active = useActiveStudy();
@@ -71,7 +79,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
    *  plain JSON bundle, which carries references only. */
   const pendingDocs = useRef<ArchiveDoc[] | null>(null);
 
-  const preview = async (bundle: Bundle, note?: string, source?: string) => {
+  const preview = async (bundle: Bundle, note?: string, source?: string, fromProjection = false) => {
     const diff = diffBundle(tax, store.studies, bundle.studies ?? []);
     // Verify the incoming file BEFORE it is confirmed. Confirming an import re-establishes
     // the chain, so without this the analyst would vouch for the content blind - and a
@@ -80,7 +88,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
     // a signature that only becomes visible once the data is in is a signature nobody
     // acted on. The named records are the ones the log accounts for nothing about.
     const audit = [];
-    for (const s of bundle.studies ?? []) {
+    for (const s of fromProjection ? [] : bundle.studies ?? []) {
       const verdict = verifyLog(s.log, s.entities);
       const byId = new Map(s.entities.map((e) => [e.id, e]));
       audit.push({
@@ -152,14 +160,23 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
         await preview(bundle, undefined, f.name);
       } else {
         pendingDocs.current = null;
-        await preview(parseBundle(await resolveText(f.text ?? "")), undefined, f.name);
+        const raw = await resolveText(f.text ?? "");
+        if (!takeStix(raw, f.name)) await preview(parseBundle(raw), undefined, f.name);
       }
     }
     catch (e) { if (e instanceof Error && e.message !== "No file selected" && e.message !== "cancelled") setStatus("Import failed: " + e.message); }
     setBusy(false);
   };
+  /** STIX goes to the column browser, not to the diff. Needs an open study to land in. */
+  const takeStix = (raw: string, source: string): boolean => {
+    if (!isStix(raw)) return false;
+    if (!active) { setStatus(tr("ui.import.stix-needs-study", "This is a STIX bundle. Open the study it should land in, then import it there.")); return true; }
+    setStix({ text: raw, source }); setStatus("");
+    return true;
+  };
   const fromText = () => {
     if (!text.trim()) { setStatus("Paste JSON or YAML text first, or choose a file."); return; }
+    if (takeStix(text, tr("ui.stix.pasted", "pasted STIX"))) return;
     try { void preview(parseBundle(text)); }
     catch (e) { setStatus("Could not parse: " + (e instanceof Error ? e.message : String(e))); }
   };
@@ -208,11 +225,12 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
 
   return createPortal(
     <Overlay onClose={onClose}>
-      <div className="modal-lg" style={{ maxWidth: 620 }} onMouseDown={(e) => e.stopPropagation()}>
+      <div className={"modal-lg" + (stix ? " stix" : "")} style={stix ? undefined : { maxWidth: 620 }} onMouseDown={(e) => e.stopPropagation()}>
         <header className="modal-lg-head">
           <div style={{ flex: 1 }}>
-            <div className="dialog-sub" style={{ margin: 0 }}>{tr('ui.import.data-json-yaml-auto', 'Data · JSON / YAML (auto-detected)')}</div>
-            <h2 style={{ fontSize: 19 }}>{pending ? "Review changes" : "Import data"}</h2>
+            <div className="dialog-sub" style={{ margin: 0 }}>{stix ? tr("ui.stix.sub", "Threat intelligence · STIX 2.1") : tr('ui.import.data-json-yaml-auto', 'Data · JSON / YAML (auto-detected)')}</div>
+            <h2 style={{ fontSize: 19 }}>{stix ? tr("ui.stix.title", "Threat intelligence import") : pending ? "Review changes" : "Import data"}</h2>
+
           </div>
           <button className="btn ghost sm" onClick={onClose} aria-label={tr('ui.import.close', 'Close')}><Icon.close /></button>
         {/* One picker for the key a seal is checked against, outside both branches: the
@@ -221,13 +239,16 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
           onChange={(e) => { const f = e.target.files?.[0]; if (f) checkKeyFile(f); e.target.value = ""; }} />
         </header>
 
-        {!pending ? (
+        {stix && active ? (
+          <StixImport tax={tax} study={active} text={stix.text} source={stix.source} onBack={() => setStix(null)}
+            onReview={(h) => { setStix(null); setProjected(true); void preview(h.bundle, h.note, h.source, true); }} />
+        ) : !pending ? (
           <div className="modal-lg-body">
             <div className="menu-label" style={{ padding: "16px 0 8px" }}>{tr('ui.import.source', 'Source')}</div>
             <div className="field" style={{ marginBottom: 8 }}>
               <label>{tr('ui.import.paste-json-yaml', 'Paste JSON / YAML')}</label>
               <textarea style={{ minHeight: 130, fontFamily: "var(--font-mono)", fontSize: 12 }} value={text}
-                onChange={(e) => setText(e.target.value)} placeholder={tr('ui.import.paste-a-bundle-study', 'Paste a bundle, study data, or a taxonomy here…')} />
+                onChange={(e) => setText(e.target.value)} placeholder={tr('ui.import.paste-a-bundle-study', 'Paste a bundle, study data, a taxonomy or a STIX bundle here…')} />
             </div>
             <div className="idiff-actions">
               <button className="btn" disabled={busy} onClick={fromFile}><Icon.upload /> {tr('ui.import.choose-file', 'Choose file…')}</button>
@@ -340,22 +361,27 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
               </div>
               </div>
             ))}
+            {/* Additive: nothing is removed, so a red "−62" would announce a loss that is not
+                happening. The records the file does not mention are untouched, and said so
+                once, in grey, not listed one by one. */}
             <div className="idiff-summary">
-              <span className="idiff-c add">+{totals!.added} added</span>
-              <span className="idiff-c chg">~{totals!.changed} changed</span>
-              <span className="idiff-c rem">−{totals!.removed} {mode === "replace" ? "removed" : "kept"}</span>
+              <span className="idiff-c add">+{totals!.added} {tr("ui.import.added", "added")}</span>
+              <span className="idiff-c chg">~{totals!.changed} {tr("ui.import.changed", "changed")}</span>
+              {mode === "replace"
+                ? <span className="idiff-c rem">−{totals!.removed} {tr("ui.import.removed", "removed")}</span>
+                : <span className="idiff-c keep">{totals!.removed} {tr("ui.import.untouched", "untouched")}</span>}
             </div>
             {pending.diff.length === 0 && <div className="hint">{tr('ui.import.no-study-data-in', 'No study data in this file (taxonomy/settings only).')}</div>}
             {pending.diff.map((sd) => (
               <div className="idiff-study" key={sd.id}>
                 <div className="idiff-study-h">{sd.name}{sd.isNew && <span className="idiff-new">new study</span>}</div>
-                {[...sd.changed, ...sd.added, ...sd.removed].length === 0 && <div className="hint">{tr('ui.import.no-differences', 'No differences.')}</div>}
-                {[...sd.changed, ...sd.added, ...sd.removed].map((ed) => (
+                {[...sd.changed, ...sd.added, ...(mode === "replace" ? sd.removed : [])].length === 0 && <div className="hint">{tr('ui.import.no-differences', 'No differences.')}</div>}
+                {[...sd.changed, ...sd.added, ...(mode === "replace" ? sd.removed : [])].map((ed) => (
                   <div className={"idiff-ent " + ed.kind} key={ed.kind + ed.id}>
                     <span className={"idiff-badge " + ed.kind}>{ed.kind === "added" ? "+" : ed.kind === "removed" ? "−" : "~"}</span>
                     <span className="idiff-lbl">{ed.label}</span>
                     <span className="idiff-type">{ed.typeLabel}</span>
-                    {ed.kind === "removed" && <span className="idiff-hint">{mode === "replace" ? "will be removed" : "kept (additive)"}</span>}
+                    {ed.kind === "removed" && <span className="idiff-hint">{tr("ui.import.will-be-removed", "will be removed")}</span>}
                     {ed.fields && <span className="idiff-fields">{ed.fields.slice(0, 3).map(deltaText).join(" · ")}{ed.fields.length > 3 ? ` · +${ed.fields.length - 3} more` : ""}</span>}
                     {ed.last && ed.kind !== "removed" && (
                       <span className="idiff-meta">{ed.last.editor} · {new Date(ed.last.ts).toLocaleString()}{ed.last.comment ? ` · “${ed.last.comment}”` : ""}</span>
@@ -367,13 +393,13 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        <footer className="modal-lg-foot">
+        {!stix && <footer className="modal-lg-foot">
           {!pending ? (
             <span className="hint">{tr('ui.import.choose-a-source-to', 'Choose a source to preview the changes first.')}</span>
           ) : (
             <>
               <div className="import-modes-inline">
-                {(["merge", "replace"] as Mode[]).map((m) => (
+                {((projected ? ["merge"] : ["merge", "replace"]) as Mode[]).map((m) => (
                   <label key={m} className={"seg-btn" + (mode === m ? " on" : "")}>
                     <input type="radio" name="imode" checked={mode === m} onChange={() => setMode(m)} style={{ display: "none" }} />
                     {m === "merge" ? "Additive" : "Destructive"}
@@ -381,13 +407,13 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
               <span style={{ flex: 1 }} />
-              <button className="btn ghost" onClick={() => setPending(null)}>‹ Back</button>
+              <button className="btn ghost" onClick={() => projected ? onClose() : setPending(null)}>‹ Back</button>
               <button className={"btn " + (mode === "replace" ? "danger" : "primary")} onClick={apply}>
                 {mode === "replace" ? "Replace all" : "Apply changes"}
               </button>
             </>
           )}
-        </footer>
+        </footer>}
       </div>
     </Overlay>,
     document.body,

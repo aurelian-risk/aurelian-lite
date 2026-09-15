@@ -176,5 +176,25 @@ ok("the default is left as this check found it", defField.vocabulary === hadVoca
   }
 }
 
+// ── A vocabulary that is an order ─────────────────────────────────────────
+// Schema 8 moved the tactics to ATT&CK v19, which split Defense Evasion into Stealth and
+// Defense Impairment. The lanes of the kill chain are that vocabulary in that order, so a
+// new option has to land where the matrix puts it, not at the end - and the retired one
+// stays: a step recorded under it is the analyst's to move.
+{
+  const tacticF = () => DEFAULT_TAXONOMY.entityTypes.flatMap((t) => t.fields).find((f) => f.key === "tactic");
+  const v18 = ["Reconnaissance", "Resource Development", "Initial Access", "Execution", "Persistence",
+    "Privilege Escalation", "Defense Evasion", "Credential Access", "Discovery", "Lateral Movement",
+    "Collection", "Command and Control", "Exfiltration", "Impact"];
+  const before = Object.assign(clone(DEFAULT_TAXONOMY), { schemaVersion: TAXONOMY_SCHEMA_VERSION - 1 });
+  before.entityTypes.flatMap((t) => t.fields).find((f) => f.key === "tactic").options = v18;
+  const after = reconcileTaxonomy(before).entityTypes.flatMap((t) => t.fields).find((f) => f.key === "tactic").options;
+  ok("the default tactic vocabulary is ATT&CK v19's", tacticF().options.includes("Stealth") && tacticF().options.includes("Defense Impairment") && !tacticF().options.includes("Defense Evasion"));
+  ok("a stored v18 vocabulary gains the two new tactics", after.includes("Stealth") && after.includes("Defense Impairment"));
+  ok("...in matrix position, after Privilege Escalation", after.indexOf("Stealth") === after.indexOf("Privilege Escalation") + 1 && after.indexOf("Defense Impairment") === after.indexOf("Stealth") + 1);
+  ok("...and keeps Defense Evasion where it was", after.indexOf("Defense Evasion") === after.indexOf("Defense Impairment") + 1);
+  ok("...nothing else moved", after.filter((o) => !["Stealth", "Defense Impairment"].includes(o)).join() === v18.join());
+}
+
 console.log(`\n${pass}/${pass + fail} taxonomy-migration assertions passed · ${fail} failed`);
 process.exit(fail ? 1 : 0);

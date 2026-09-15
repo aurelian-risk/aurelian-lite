@@ -123,11 +123,11 @@ export function Seg({ value, onChange, options, dflt, name }: {
  *  new row starts at the table's default, which is what an unlisted technique was
  *  worth before it had a row; the reader then moves it. */
 export function AddTechnique({ have, tactic, options, onAdd, placeholder }: {
-  have: string[]; tactic?: string; options: { id: string; name: string; tactic: string }[];
+  have: string[]; tactic?: string; options: readonly { id: string; name: string; tactics: readonly string[] }[];
   onAdd: (id: string) => void; placeholder: string;
 }) {
   const [free, setFree] = useState("");
-  const listed = options.filter((t) => !have.includes(t.id) && (!tactic || t.tactic === tactic));
+  const listed = options.filter((t) => !have.includes(t.id) && (!tactic || t.tactics.includes(tactic)));
   const id = free.toUpperCase().match(/T\d{4}(\.\d{3})?/)?.[0] ?? null;
   const add = (v: string) => { if (v && !have.includes(v)) onAdd(v); setFree(""); };
   return (

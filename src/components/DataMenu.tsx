@@ -26,6 +26,7 @@ export function DataMenu({ studyScope, label }: { studyScope?: Study; label?: st
   const [facts, setFacts] = useState<ExportFacts | null>(null);
   useDismissOnEscape(open, () => setOpen(false));
   const [importing, setImporting] = useState(false);
+
   // Read at the moment of use, not once per render of this menu: the export dialog can add
   // and forget keys while it is open, and this component does not re-render for that. A ring
   // captured up here would resolve a freshly added recipient to nothing.
@@ -124,13 +125,6 @@ export function DataMenu({ studyScope, label }: { studyScope?: Study; label?: st
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={() => setOpen(false)} />
           <div className="menu-pop">
-            <button className="menu-item stacked" onClick={askExport}>
-              <Icon.download />
-              <span className="mi-text">
-                {tr("ui.datamenu.export-dots", "Export…")}
-                <span className="menu-hint">{tr("ui.datamenu.hint-export", "choose what goes in and who may open it")}</span>
-              </span>
-            </button>
             <button className="menu-item stacked" onClick={() => { setOpen(false); setImporting(true); }}>
               <Icon.upload />
               <span className="mi-text">
@@ -138,10 +132,18 @@ export function DataMenu({ studyScope, label }: { studyScope?: Study; label?: st
                 <span className="menu-hint">{tr("ui.datamenu.hint-file-or-paste", "file, archive or paste")}</span>
               </span>
             </button>
+            <button className="menu-item stacked" onClick={askExport}>
+              <Icon.download />
+              <span className="mi-text">
+                {tr("ui.datamenu.export-dots", "Export…")}
+                <span className="menu-hint">{tr("ui.datamenu.hint-export", "choose what goes in and who may open it")}</span>
+              </span>
+            </button>
           </div>
         </>
       )}
       {importing && <ImportDialog onClose={() => setImporting(false)} />}
+
     </div>
   );
 }

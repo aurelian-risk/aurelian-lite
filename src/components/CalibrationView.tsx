@@ -18,7 +18,7 @@ import {
   CALIBRATION_DOC, DEFAULT_CALIBRATION, SECTORS, SIZES, isDefaultCalibration, ownRateOf,
   type Band as Band2, type SectorRow, type TableDoc,
 } from "../domain/calibration";
-import { MITRE_TECHNIQUES } from "../domain/mitre";
+import { MITRE_TECHNIQUES, TACTICS } from "../domain/mitre";
 import { effectChannel } from "../domain/controls";
 import { AddTechnique, Dial, DialRow, Seg } from "./CalInputs";
 import { DepthCurve } from "./CalDepth";
@@ -144,7 +144,7 @@ const GRADE_HINT: Record<string, string> = {
   judgement: "No published figure. Set by reasoning.",
 };
 /** The tactics the bundled reference knows, in the order it lists them. */
-const TACTIC_NAMES = [...new Set(MITRE_TECHNIQUES.map((t) => t.tactic))];
+const TACTIC_NAMES = TACTICS;
 
 /** `scope` decides which tables are shown. The quantification workshop takes the whole
  *  calibration; the treatment workshop takes only what a measure is worth, because that

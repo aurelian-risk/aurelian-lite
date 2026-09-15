@@ -8,7 +8,8 @@ import { declaredClass, effectClassOf, hasEffectField } from "./controls";
 import { isSetBack } from "./taxonomy";
 import { DEFAULT_CALIBRATION, techniqueId } from "./calibration";
 import { deriveInputs } from "./quantModel";
-import { TECHNIQUE_MITIGATIONS, isBundled, mitigationIds, mitigates } from "./attackMitigations";
+import { TECHNIQUE_MITIGATIONS, mitigationIds, mitigates } from "./attackMitigations";
+import { RETIRED_TACTICS, currentTechnique, techniqueById } from "./mitre";
 import { t as tr } from "./i18n";
 
 export type Severity = "high" | "medium" | "low";
@@ -161,13 +162,29 @@ export function lintStudy(tax: Taxonomy, study: Study): LintCheck[] {
     // A technique ATT&CK marks as not easily mitigated by preventive controls, with a
     // preventive measure on it and nothing watching: the lever there is detection.
     add("step-hard-to-prevent", "Steps whose technique is hard to prevent, defended only by prevention", "low",
-      "ATT&CK lists no preventive mitigation for these steps' techniques - defence evasion, discovery - and says detection is the lever. The preventive measures here are credited as gates by the model; consider a detective measure on the step.",
+      "ATT&CK lists no preventive mitigation for these steps' techniques - stealth, discovery - and says detection is the lever. The preventive measures here are credited as gates by the model; consider a detective measure on the step.",
       "kill_chain_step", steps.filter((st) => {
         const t = techOf(st); if (!t) return false;
-        if (!isBundled(t) || (TECHNIQUE_MITIGATIONS[t.split(".")[0]]?.length ?? 0) > 0) return false;
+        const live = currentTechnique(t) ?? currentTechnique(t.split(".")[0]);
+        if (!live || (TECHNIQUE_MITIGATIONS[live.id.split(".")[0]]?.length ?? 0) > 0) return false;
         const m = onStep(st.id);
         return m.some((x) => effectClassOf(x) === "Preventive") && !m.some((x) => effectClassOf(x) === "Detective");
       }));
+
+    // A tactic ATT&CK has since retired (v19 split Defense Evasion into Stealth and
+    // Defense Impairment). The step keeps it - which lane it belongs in is the analyst's
+    // call, not a rename's - but it stands outside the vocabulary until moved.
+    // Named whether or not the study's vocabulary still lists the old name: a migrated
+    // taxonomy keeps it (nothing is removed), and the step is no less out of date for that.
+    add("step-tactic-retired", "Kill-chain steps under a tactic ATT&CK has retired", "low",
+      "ATT&CK v19 split Defense Evasion into Stealth and Defense Impairment. These steps still carry the old tactic; move each to the successor that fits what the step does.",
+      "kill_chain_step", steps.filter((st) => String(st.values.tactic ?? "") in RETIRED_TACTICS));
+
+    // A technique ATT&CK has revoked and replaced. The checks already read through to the
+    // successor; the step should say what it means today.
+    add("step-technique-revoked", "Kill-chain steps under a technique ATT&CK has replaced", "low",
+      "ATT&CK has revoked these steps' techniques in favour of a successor. The checks read the successor; update the step's technique so it names what ATT&CK now calls it.",
+      "kill_chain_step", steps.filter((st) => { const t = techOf(st); return !!t && !!(techniqueById(t) ?? techniqueById(t.split(".")[0]))?.revokedBy; }));
 
     // Steps that never show up in the tactic view because they carry no tactic.
     add("step-no-tactic", "Kill-chain steps with no tactic", "low",

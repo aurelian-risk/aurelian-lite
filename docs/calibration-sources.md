@@ -458,6 +458,9 @@ the largest measured effect.
 | Table | What it holds | Derivation | Grade |
 |---|---|---|---|
 | `time.stepDays` per tactic | attacker days per step | dwell per intrusion apportioned over the tactics a ransomware chain walks: initial access and impact in hours (the mail is opened or not; encryption runs in hours), lateral movement, collection and exfiltration in days, so that a five-step ransomware chain sums to a few days at typical pace — the reported dwell of such operations | derived |
+
+The tactic-keyed tables (`toolingByTactic`, `dwellTactics`, `time.stepDays`) follow ATT&CK v19, which split Defense Evasion into Stealth and Defense Impairment; both inherit the Defense Evasion row unchanged, and that row stays for a step still recorded under the retired name. No source distinguishes the two.
+
 | `time.capabilitySpeed` by capability | ×2.0 / 1.3 / 0.8 / 0.35 on every step | direction from the hand-off figure (seconds) against the median dwell (weeks); size judgement | judgement |
 | `time.detectDays` by detective strength | weak 20 d · moderate 1.5 d · strong 0.4 d · very strong 0.1 d (medians) | anchored so that a moderate SIEM with a plan on paper reproduces the internal-detection dwell; the steps are judgement | judgement |
 | `time.respondDays` by readiness | none 20 d · plan on paper 4 d · exercised 1 d · 24×7 0.15 d (medians) | external against internal dwell (25 vs 9) for what a response organised on the day costs; the exercised and 24×7 levels from the IR-planning effect | derived |

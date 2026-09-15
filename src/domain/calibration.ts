@@ -334,7 +334,7 @@ const DEMAND: DemandCalibration = {
     T1566: 0, T1190: 0.5, T1133: 0, T1078: 0, T1195: 1,
     // Execution / Persistence
     T1059: 0, T1204: 0, T1053: 0, T1547: 0, T1136: 0, T1505: 0.5,
-    // Privilege Escalation / Defense Evasion
+    // Privilege Escalation / Stealth / Defense Impairment
     T1068: 0.5, T1548: 0.5, T1070: 0.5, T1027: 0.5, T1562: 0.5, T1055: 0.5,
     // Credential Access
     T1003: 0.5, T1110: 0, T1552: 0, T1555: 0.5,
@@ -351,7 +351,8 @@ const DEMAND: DemandCalibration = {
   toolingByTactic: {
     "Reconnaissance": 0, "Resource Development": 0.5, "Initial Access": 0.25,
     "Execution": 0, "Persistence": 0.25, "Privilege Escalation": 0.5,
-    "Defense Evasion": 0.5, "Credential Access": 0.5, "Discovery": 0,
+    "Stealth": 0.5, "Defense Impairment": 0.5, "Credential Access": 0.5, "Discovery": 0,
+    "Defense Evasion": 0.5,   // retired in ATT&CK v19; a step still under it reads this row
     "Lateral Movement": 0.5, "Collection": 0, "Command and Control": 0.25,
     "Exfiltration": 0, "Impact": 0.25,
   },
@@ -360,7 +361,7 @@ const DEMAND: DemandCalibration = {
   wDepth: 0.20,
   wDwell: 0.12,
   depthSaturates: 6,
-  dwellTactics: ["Persistence", "Defense Evasion", "Lateral Movement"],
+  dwellTactics: ["Persistence", "Stealth", "Defense Impairment", "Lateral Movement", "Defense Evasion"],
   dwellSaturates: 2,
   floor: 0.02,
   spread: 0.25,
@@ -442,7 +443,9 @@ const TIME: TimeCalibration = {
     "Execution": LN(0.01, 0.2, 2),
     "Persistence": LN(0.05, 0.5, 5),
     "Privilege Escalation": LN(0.1, 1, 7),
-    "Defense Evasion": LN(0.05, 0.5, 5),
+    "Stealth": LN(0.05, 0.5, 5),
+    "Defense Impairment": LN(0.05, 0.5, 5),
+    "Defense Evasion": LN(0.05, 0.5, 5),       // retired in ATT&CK v19, kept for steps still under it
     "Credential Access": LN(0.1, 1, 7),
     "Discovery": LN(0.1, 1, 7),
     "Lateral Movement": LN(0.2, 2, 14),

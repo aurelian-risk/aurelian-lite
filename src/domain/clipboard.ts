@@ -16,6 +16,7 @@ import { effectClassOf } from "./controls";
 import { likelihoodCheck } from "./frequency";
 import { carriers, sensitivityOf, type Sensitivity } from "./sensitivity";
 import { measureWorth } from "./worth";
+import { llmContext, quantSeed } from "./llmcontext";
 
 function fieldSpec(f: FieldDef, tax: Taxonomy): string {
   const parts: string[] = [f.type];
@@ -88,6 +89,9 @@ export function workshopMarkdown(tax: Taxonomy, study: Study, groupKey: string):
     L.push("");
   }
 
+  // The same records once more, as the application stores them - the half that can come
+  // back through the import dialog.
+  L.push(llmContext(tax, study, types.map((t) => t.key)));
   return L.join("\n").trim() + "\n";
 }
 
@@ -1595,9 +1599,10 @@ export function quantLlmMarkdown(tax: Taxonomy, study: Study): string {
     "- Published incidence measures NOTICED events, so every rate here is biased downward by",
     "  an unknown amount. The bias runs the same way for all actor classes, so orderings are",
     "  sturdier than levels.",
-    "- Correlated control failure is not modelled: two measures sharing an administrator,",
-    "  platform or bypass fail together, but their resistance is treated as independent.",
-    "  Correlation is modelled only on the attacker's side, via the single capability draw.",
+    "- Correlated control failure is modelled only where a measure names what it fails with;",
+    "  two measures sharing an administrator, platform or bypass that do not say so are",
+    "  treated as independent. The attacker's side is always correlated, via the single",
+    "  capability draw.",
     "- Loss is one figure, not decomposed into productivity, response, replacement, fines and",
     "  reputation. The cap on recovery stands in for that distinction.",
     "- Magnitude is scenario-level; routes ending at different assets would strictly be",
@@ -1606,5 +1611,8 @@ export function quantLlmMarkdown(tax: Taxonomy, study: Study): string {
     "  assurance measurement.",
     "- The output is a structured argument about relative magnitude, useful for comparing",
     "  scenarios and showing what a measure buys. It is not a prediction.", "");
+  // The scenarios, steps and measures once more as the application stores them - the
+  // half that can come back through the import dialog.
+  P(llmContext(tax, study, quantSeed(tax)));
   return L.join("\n");
 }

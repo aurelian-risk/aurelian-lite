@@ -329,11 +329,22 @@ export const useStore = create<StoreState>((set, get) => ({
         const cur = known.get(inc.id);
         const keepOwn = opts.studiesMode === "merge" && !!cur;
         const ents = new Map(keepOwn ? cur!.entities.map((e) => [e.id, e]) : []);
-        for (const e of inc.entities) ents.set(e.id, e);
+        // A record written outside the app - by hand, or by a model answering in the
+        // shape of the export - carries id, type and values and nothing else. What the
+        // file leaves out is filled from the record it replaces, else from now.
+        const was = new Map((cur?.entities ?? []).map((e) => [e.id, e]));
+        for (const e of inc.entities ?? []) {
+          const id = e.id ?? uid(), old = was.get(id);
+          ents.set(id, { ...e, id, values: e.values ?? {},
+            createdAt: e.createdAt ?? old?.createdAt ?? ts, updatedAt: e.updatedAt ?? ts });
+        }
         const entities = [...ents.values()];
         const dropped = cur && !keepOwn ? cur.entities.filter((e) => !ents.has(e.id)) : [];
         return {
           ...(cur ?? {}), ...inc, entities, updatedAt: ts,
+          // As on load: an imported calibration keeps its edits and picks up the tables
+          // added since the file was written, now rather than at the next start.
+          ...(inc.calibration ? { calibration: reconcileCalibration(inc.calibration) } : {}),
           log: appendAll(cur?.log, importEntries(tax, inc, entities, dropped, ts, from, opts.studiesMode, cur?.log,
             opts.sealNotes?.[inc.id])),
         } as Study;

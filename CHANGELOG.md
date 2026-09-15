@@ -5,6 +5,49 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [1.5.0] — 2026-09-15
+
+Threat intelligence in, and ATT&CK v19 under everything. Taxonomy schema 8; earlier
+studies are read and upgraded in place.
+
+### Added
+- **STIX 2.1 import.** *Import data…* recognises a STIX bundle - ATT&CK, a MISP or TAXII
+  export, a vendor report - and opens it in columns: the bundle's types, a type's objects
+  (a large type cut by tactic or by letter), an object's relationships with the objects
+  under each. A row opens the next column, the box beside it chooses; a relation that
+  runs both ways leads back rather than opening a fifth column; a search runs across the
+  whole bundle by name, id, alias, sector, tactic and text. Chosen objects are projected
+  by rules declared per STIX type (`src/profile/ebios/stix.ts`): actor → risk source with
+  scales from the STIX vocabularies, technique → kill-chain step under its tactic (a
+  revoked technique read through to its successor), campaign → operational scenario,
+  mitigation → security measure; what is not mapped is named with why. The landing
+  shows where the records go, the chain they make in tactic order, what the bundle
+  connects among them (a layered picture; a box tells its relations), what they touch
+  in the study (same name or alias: create beside it or update; same technique or
+  mitigation: noted), and the records with every field editable. A record's id follows
+  the STIX object's, so a second import updates rather than doubles. `npm run test:stix`;
+  `samples/stix-story.json`, an invented bundle valid against the OASIS schemas;
+  [docs/stix-import.md](docs/stix-import.md).
+- **Copy for LLM closes with the records as the import reads them**: the data-model
+  excerpt of the types involved and the records as `studies: [{id, entities}]`, so an
+  answer in that shape - pasted, fenced in Markdown or not - goes straight into
+  *Import data…* additively. `npm run test:llmcontext`.
+- **Checks**: a step under a tactic ATT&CK has retired, a step under a technique ATT&CK
+  has replaced.
+
+### Changed
+- **ATT&CK v19**: the tactic vocabulary is the matrix's (Defense Evasion → Stealth and
+  Defense Impairment); a stored vocabulary gains the new tactics in matrix position and
+  keeps the retired one on the steps that carry it. The technique reference is generated
+  from the ATT&CK STIX bundle - all 697 techniques and sub-techniques, 149 revoked ones
+  kept with their successor - instead of a curated subset; the mitigation table with it.
+- An enum value the vocabulary no longer lists stays visible in the form as "not in the
+  list" instead of falling silently on the first option.
+- The additive review says `untouched` for what the file does not mention, and lists
+  only what changes.
+- The data menu leads with Import; the button reads *Import / Export*.
+- The loss-distribution axis thins its labels to what fits.
+
 ## [1.0.0] — 2026-09-13
 
 The quantification programme of September 2026: every calibration table graded and

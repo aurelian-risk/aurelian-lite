@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
-// Which ATT&CK mitigation is known to act against which technique - the "mitigates"
-// relationships of the Enterprise matrix, reduced to the techniques this product bundles.
+// Which ATT&CK mitigation is known to act against which technique - the "mitigates" relationships of the Enterprise matrix. Sub-techniques are folded onto their technique. "Do Not Mitigate" (M1055) and "Pre-compromise" (M1056) are left out: they say a technique has no mitigation, which is what an EMPTY list says here.
 //
-// Generated from the ATT&CK STIX bundle (enterprise-attack, version 19.2) by the script
-// in docs/sources/README.md; regenerate rather than edit. Sub-techniques are folded onto
-// their technique. "Do Not Mitigate" (M1055) and "Pre-compromise" (M1056) are left out:
-// they say a technique has no mitigation, which is what an EMPTY list says here.
+// Generated from the ATT&CK STIX bundle (enterprise-attack, version 19.2) by
+// scripts/attack-gen.mjs; regenerate rather than edit.
 //
-// Attribution: MITRE ATT&CK® identifiers and mitigation names, © The MITRE Corporation,
-// reproduced under the ATT&CK terms of use (https://attack.mitre.org/resources/legal-and-branding/terms-of-use/).
+// Attribution: the identifiers and names are MITRE ATT&CK® content, © The MITRE
+// Corporation, reproduced under the ATT&CK terms of use
+// (https://attack.mitre.org/resources/legal-and-branding/terms-of-use/). MITRE ATT&CK® is
+// a registered trademark of The MITRE Corporation; this project is not affiliated with or
+// endorsed by MITRE. See NOTICE. (Surfaced in the UI generically as "TTP".)
+
+import { currentTechnique } from "./mitre";
 
 /** The mitigations referred to below, by id. */
 export const ATTACK_MITIGATIONS: Record<string, string> = {
@@ -56,55 +58,171 @@ export const ATTACK_MITIGATIONS: Record<string, string> = {
   M1060: "Out-of-Band Communications Channel",
 };
 
-/** Per bundled technique, the mitigations ATT&CK lists against it. A technique with
- *  no entry is one ATT&CK marks as not easily mitigated by preventive controls (the
- *  lever there is detection), or one no relationship names. */
+/** Per technique, the mitigations ATT&CK lists against it. A technique with no entry is
+ *  one ATT&CK marks as not easily mitigated by preventive controls (the lever there is
+ *  detection), or one no relationship names. */
 export const TECHNIQUE_MITIGATIONS: Record<string, readonly string[]> = {
-  T1595: ["M1042"],
-  T1566: ["M1017", "M1018", "M1021", "M1031", "M1047", "M1049", "M1054"],
-  T1190: ["M1016", "M1026", "M1030", "M1035", "M1037", "M1048", "M1050", "M1051"],
-  T1133: ["M1021", "M1030", "M1032", "M1035", "M1042"],
-  T1078: ["M1013", "M1015", "M1017", "M1018", "M1026", "M1027", "M1032", "M1036"],
-  T1195: ["M1013", "M1016", "M1018", "M1033", "M1046", "M1051"],
-  T1199: ["M1018", "M1030", "M1032"],
-  T1189: ["M1017", "M1021", "M1048", "M1050", "M1051"],
-  T1091: ["M1034", "M1040", "M1042"],
-  T1200: ["M1034", "M1035"],
-  T1659: ["M1021", "M1041"],
-  T1059: ["M1018", "M1021", "M1026", "M1033", "M1038", "M1040", "M1042", "M1045", "M1047", "M1049"],
-  T1204: ["M1017", "M1021", "M1031", "M1033", "M1038", "M1040", "M1045", "M1047"],
-  T1053: ["M1018", "M1022", "M1026", "M1028", "M1047"],
-  T1547: ["M1017", "M1018", "M1022", "M1024", "M1025", "M1026", "M1033", "M1038", "M1042", "M1043", "M1044", "M1049"],
-  T1136: ["M1026", "M1028", "M1030", "M1032"],
-  T1505: ["M1018", "M1024", "M1026", "M1038", "M1042", "M1045", "M1046", "M1047"],
-  T1068: ["M1019", "M1038", "M1048", "M1050", "M1051"],
-  T1548: ["M1018", "M1022", "M1026", "M1028", "M1038", "M1047", "M1051", "M1052"],
-  T1070: ["M1022", "M1024", "M1029", "M1039", "M1041", "M1047"],
-  T1027: ["M1017", "M1040", "M1047", "M1048", "M1049"],
-  T1055: ["M1022", "M1026", "M1040"],
+  T1001: ["M1031"],
   T1003: ["M1015", "M1017", "M1025", "M1026", "M1027", "M1028", "M1040", "M1041", "M1043"],
-  T1110: ["M1018", "M1027", "M1032", "M1036", "M1051"],
-  T1552: ["M1015", "M1017", "M1018", "M1022", "M1026", "M1027", "M1028", "M1030", "M1035", "M1037", "M1041", "M1042", "M1047", "M1051"],
-  T1555: ["M1017", "M1018", "M1021", "M1026", "M1027", "M1042", "M1051", "M1054"],
-  T1087: ["M1018", "M1028", "M1047"],
-  T1046: ["M1030", "M1031", "M1042"],
-  T1021: ["M1018", "M1026", "M1027", "M1028", "M1030", "M1032", "M1033", "M1035", "M1037", "M1042", "M1047", "M1048"],
-  T1570: ["M1031", "M1037"],
-  T1550: ["M1013", "M1015", "M1018", "M1021", "M1026", "M1027", "M1036", "M1041", "M1047", "M1051", "M1052", "M1054"],
-  T1560: ["M1047"],
   T1005: ["M1057"],
-  T1114: ["M1032", "M1041", "M1042", "M1047", "M1060"],
-  T1071: ["M1031", "M1037"],
-  T1105: ["M1031", "M1037"],
-  T1573: ["M1020", "M1031"],
+  T1006: ["M1018", "M1040"],
+  T1008: ["M1031"],
+  T1011: ["M1028", "M1042"],
+  T1020: ["M1018", "M1041", "M1057"],
+  T1021: ["M1018", "M1026", "M1027", "M1028", "M1030", "M1032", "M1033", "M1035", "M1037", "M1042", "M1047", "M1048"],
+  T1025: ["M1057"],
+  T1027: ["M1017", "M1040", "M1047", "M1048", "M1049"],
+  T1029: ["M1031"],
+  T1030: ["M1031"],
+  T1036: ["M1017", "M1018", "M1022", "M1028", "M1038", "M1040", "M1045", "M1047", "M1049"],
+  T1037: ["M1022", "M1024"],
+  T1040: ["M1018", "M1030", "M1032", "M1041"],
   T1041: ["M1031", "M1057"],
-  T1567: ["M1021", "M1057"],
+  T1046: ["M1030", "M1031", "M1042"],
+  T1047: ["M1018", "M1026", "M1038", "M1040"],
   T1048: ["M1018", "M1022", "M1030", "M1031", "M1037", "M1057"],
-  T1486: ["M1040", "M1053"],
-  T1490: ["M1018", "M1028", "M1038", "M1053"],
-  T1489: ["M1018", "M1022", "M1024", "M1030", "M1060"],
+  T1052: ["M1034", "M1042", "M1057"],
+  T1053: ["M1018", "M1022", "M1026", "M1028", "M1047"],
+  T1055: ["M1022", "M1026", "M1040"],
+  T1056: ["M1017", "M1026"],
+  T1059: ["M1018", "M1021", "M1026", "M1033", "M1038", "M1040", "M1042", "M1045", "M1047", "M1049"],
+  T1068: ["M1019", "M1038", "M1048", "M1050", "M1051"],
+  T1070: ["M1022", "M1024", "M1029", "M1039", "M1041", "M1047"],
+  T1071: ["M1031", "M1037"],
+  T1072: ["M1015", "M1017", "M1018", "M1026", "M1027", "M1029", "M1030", "M1032", "M1033", "M1051"],
+  T1078: ["M1013", "M1015", "M1017", "M1018", "M1026", "M1027", "M1032", "M1036"],
+  T1080: ["M1022", "M1038", "M1049", "M1050"],
+  T1087: ["M1018", "M1028", "M1047"],
+  T1090: ["M1020", "M1031", "M1037"],
+  T1091: ["M1034", "M1040", "M1042"],
+  T1092: ["M1028", "M1042"],
+  T1095: ["M1030", "M1031", "M1037", "M1047"],
+  T1098: ["M1018", "M1022", "M1026", "M1028", "M1030", "M1032", "M1042"],
+  T1102: ["M1021", "M1031"],
+  T1104: ["M1031"],
+  T1105: ["M1031", "M1037"],
+  T1106: ["M1038", "M1040"],
+  T1110: ["M1018", "M1027", "M1032", "M1036", "M1051"],
+  T1111: ["M1017"],
+  T1112: ["M1024"],
+  T1114: ["M1032", "M1041", "M1042", "M1047", "M1060"],
+  T1119: ["M1029", "M1041"],
+  T1127: ["M1021", "M1038", "M1042", "M1045"],
+  T1129: ["M1038"],
+  T1132: ["M1031"],
+  T1133: ["M1021", "M1030", "M1032", "M1035", "M1042"],
+  T1134: ["M1015", "M1018", "M1026"],
+  T1135: ["M1028"],
+  T1136: ["M1026", "M1028", "M1030", "M1032"],
+  T1137: ["M1040", "M1042", "M1051", "M1054"],
+  T1176: ["M1017", "M1033", "M1038", "M1047", "M1051"],
+  T1185: ["M1017", "M1018"],
+  T1187: ["M1027", "M1037"],
+  T1189: ["M1017", "M1021", "M1048", "M1050", "M1051"],
+  T1190: ["M1016", "M1026", "M1030", "M1035", "M1037", "M1048", "M1050", "M1051"],
+  T1195: ["M1013", "M1016", "M1018", "M1033", "M1046", "M1051"],
+  T1197: ["M1018", "M1028", "M1037"],
+  T1199: ["M1018", "M1030", "M1032"],
+  T1200: ["M1034", "M1035"],
+  T1201: ["M1027"],
+  T1203: ["M1048", "M1050", "M1051"],
+  T1204: ["M1017", "M1021", "M1031", "M1033", "M1038", "M1040", "M1045", "M1047"],
+  T1205: ["M1037", "M1042"],
+  T1210: ["M1016", "M1019", "M1026", "M1030", "M1042", "M1048", "M1050", "M1051"],
+  T1211: ["M1019", "M1048", "M1050", "M1051"],
+  T1212: ["M1013", "M1019", "M1048", "M1050", "M1051"],
+  T1213: ["M1017", "M1018", "M1032", "M1041", "M1047", "M1054", "M1060"],
+  T1216: ["M1038", "M1040"],
+  T1218: ["M1021", "M1022", "M1026", "M1037", "M1038", "M1042", "M1050"],
+  T1219: ["M1031", "M1034", "M1037", "M1038", "M1042"],
+  T1220: ["M1038"],
+  T1221: ["M1017", "M1031", "M1042", "M1049"],
+  T1222: ["M1022", "M1026"],
+  T1482: ["M1030", "M1047"],
+  T1484: ["M1018", "M1026", "M1047"],
   T1485: ["M1018", "M1032", "M1053"],
+  T1486: ["M1040", "M1053"],
+  T1489: ["M1018", "M1022", "M1024", "M1030", "M1060"],
+  T1490: ["M1018", "M1028", "M1038", "M1053"],
+  T1491: ["M1053"],
+  T1495: ["M1026", "M1046", "M1051"],
+  T1496: ["M1013"],
   T1498: ["M1037"],
+  T1499: ["M1037"],
+  T1505: ["M1018", "M1024", "M1026", "M1038", "M1042", "M1045", "M1046", "M1047"],
+  T1525: ["M1026", "M1045", "M1047"],
+  T1528: ["M1017", "M1018", "M1021", "M1047"],
+  T1530: ["M1018", "M1022", "M1032", "M1037", "M1041", "M1047"],
+  T1535: ["M1054"],
+  T1537: ["M1018", "M1037", "M1054", "M1057"],
+  T1538: ["M1018"],
+  T1539: ["M1017", "M1021", "M1032", "M1047", "M1051", "M1054"],
+  T1542: ["M1026", "M1028", "M1031", "M1035", "M1046", "M1047", "M1051"],
+  T1543: ["M1018", "M1022", "M1026", "M1028", "M1033", "M1040", "M1045", "M1047", "M1054"],
+  T1546: ["M1018", "M1022", "M1026", "M1028", "M1035", "M1038", "M1040", "M1042", "M1045", "M1047", "M1051", "M1052", "M1054"],
+  T1547: ["M1017", "M1018", "M1022", "M1024", "M1025", "M1026", "M1033", "M1038", "M1042", "M1043", "M1044", "M1049"],
+  T1548: ["M1018", "M1022", "M1026", "M1028", "M1038", "M1047", "M1051", "M1052"],
+  T1550: ["M1013", "M1015", "M1018", "M1021", "M1026", "M1027", "M1036", "M1041", "M1047", "M1051", "M1052", "M1054"],
+  T1552: ["M1015", "M1017", "M1018", "M1022", "M1026", "M1027", "M1028", "M1030", "M1035", "M1037", "M1041", "M1042", "M1047", "M1051"],
+  T1553: ["M1022", "M1024", "M1026", "M1028", "M1038", "M1042", "M1046", "M1054"],
+  T1554: ["M1045"],
+  T1555: ["M1017", "M1018", "M1021", "M1026", "M1027", "M1042", "M1051", "M1054"],
+  T1556: ["M1017", "M1018", "M1022", "M1024", "M1025", "M1026", "M1027", "M1028", "M1032", "M1047"],
+  T1557: ["M1017", "M1030", "M1031", "M1035", "M1037", "M1041", "M1042"],
+  T1558: ["M1015", "M1026", "M1027", "M1041", "M1043", "M1047"],
+  T1559: ["M1013", "M1026", "M1040", "M1042", "M1048", "M1054"],
+  T1560: ["M1047"],
+  T1561: ["M1053"],
+  T1563: ["M1018", "M1022", "M1026", "M1027", "M1028", "M1030", "M1035", "M1042", "M1047"],
+  T1564: ["M1013", "M1022", "M1028", "M1033", "M1038", "M1040", "M1042", "M1047", "M1049"],
+  T1565: ["M1022", "M1029", "M1030", "M1041"],
+  T1566: ["M1017", "M1018", "M1021", "M1031", "M1047", "M1049", "M1054"],
+  T1567: ["M1021", "M1057"],
+  T1568: ["M1021", "M1031"],
+  T1569: ["M1018", "M1022", "M1026", "M1040"],
+  T1570: ["M1031", "M1037"],
+  T1571: ["M1030", "M1031"],
+  T1572: ["M1031", "M1037"],
+  T1573: ["M1020", "M1031"],
+  T1574: ["M1013", "M1018", "M1022", "M1024", "M1028", "M1038", "M1040", "M1044", "M1047", "M1051", "M1052"],
+  T1578: ["M1018", "M1047"],
+  T1580: ["M1018"],
+  T1590: ["M1054"],
+  T1593: ["M1013", "M1047"],
+  T1595: ["M1042"],
+  T1598: ["M1017", "M1054"],
+  T1599: ["M1026", "M1027", "M1032", "M1037", "M1043"],
+  T1601: ["M1026", "M1027", "M1032", "M1043", "M1045", "M1046"],
+  T1602: ["M1030", "M1031", "M1037", "M1041", "M1051", "M1054"],
+  T1606: ["M1015", "M1018", "M1026", "M1047", "M1054"],
+  T1609: ["M1018", "M1026", "M1035", "M1038", "M1042"],
+  T1610: ["M1018", "M1030", "M1035", "M1047"],
+  T1611: ["M1026", "M1038", "M1042", "M1048", "M1051"],
+  T1612: ["M1026", "M1030", "M1035", "M1047"],
+  T1613: ["M1018", "M1030", "M1035"],
+  T1619: ["M1018"],
+  T1621: ["M1017", "M1032", "M1036"],
+  T1647: ["M1013"],
+  T1648: ["M1018", "M1036"],
+  T1649: ["M1015", "M1041", "M1042", "M1047"],
+  T1651: ["M1026"],
+  T1653: ["M1047"],
+  T1654: ["M1018"],
+  T1657: ["M1017", "M1018"],
+  T1659: ["M1021", "M1041"],
+  T1666: ["M1018", "M1047", "M1054"],
+  T1667: ["M1017", "M1054"],
+  T1669: ["M1030", "M1032", "M1041"],
+  T1671: ["M1042", "M1047"],
+  T1674: ["M1034", "M1038"],
+  T1675: ["M1018"],
+  T1677: ["M1018", "M1054"],
+  T1684: ["M1017", "M1019", "M1036", "M1047", "M1054"],
+  T1685: ["M1018", "M1022", "M1024", "M1029", "M1038", "M1041", "M1042", "M1047", "M1054"],
+  T1686: ["M1018", "M1022", "M1024", "M1047", "M1051"],
+  T1688: ["M1026", "M1054"],
+  T1689: ["M1042", "M1054"],
+  T1690: ["M1028", "M1039"],
 };
 
 /** The id of a mitigation or a technique as written in a field - "M1032", "T1566.001",
@@ -117,10 +235,10 @@ export const mitigationIds = (v: unknown): string[] =>
  *  know. `false` is the finding: named mitigations, known technique, no relationship. */
 export function mitigates(mitigationIdsOf: string[], techniqueId: string | null): boolean | null {
   if (!mitigationIdsOf.length || !techniqueId) return null;
-  const base = techniqueId.split(".")[0];
-  if (!(base in TECHNIQUE_MITIGATIONS) && !ALL_BUNDLED.has(base)) return null;
-  const known = TECHNIQUE_MITIGATIONS[base] ?? [];
+  const live = currentTechnique(techniqueId) ?? currentTechnique(techniqueId.split(".")[0]);
+  if (!live) return null;
+  const known = TECHNIQUE_MITIGATIONS[live.id.split(".")[0]] ?? [];
   return mitigationIdsOf.some((m) => known.includes(m));
 }
-export const isBundled = (techniqueId: string): boolean => ALL_BUNDLED.has(techniqueId.split(".")[0]);
-const ALL_BUNDLED = new Set<string>(["T1595", "T1592", "T1589", "T1583", "T1587", "T1608", "T1566", "T1190", "T1133", "T1078", "T1195", "T1199", "T1189", "T1091", "T1200", "T1659", "T1059", "T1204", "T1053", "T1547", "T1136", "T1505", "T1068", "T1548", "T1070", "T1027", "T1562", "T1055", "T1003", "T1110", "T1552", "T1555", "T1087", "T1082", "T1046", "T1018", "T1021", "T1570", "T1550", "T1560", "T1005", "T1114", "T1071", "T1105", "T1573", "T1041", "T1567", "T1048", "T1486", "T1490", "T1489", "T1485", "T1498"]);
+/** Known to the bundle - live, or revoked with a live successor. */
+export const isBundled = (techniqueId: string): boolean => !!currentTechnique(techniqueId.split(".")[0]);
