@@ -153,8 +153,15 @@ reports - through *Import / Export → Import data…*.
 Details: [docs/stix-import.md](docs/stix-import.md). Try it with the sample bundle
 `samples/stix-story.json`.
 
-**Copy for LLM** now ends with the records in import format, so a model's answer can be
-pasted straight back into *Import data…*.
+## Works with your language model
+
+Every workshop and the quantification have a **Copy for LLM** button. It puts on the
+clipboard what a model needs to reason about the study: the analysis as readable text,
+the data model of the types involved, and the records themselves in the format the
+import reads. Paste it into any model you trust - a local one, a hosted one - and paste
+its answer back into *Import data…*: new or changed records go through the same review
+as any import, additively, nothing is written unseen. No key, no account, no call leaves
+the app; the exchange is yours to make.
 
 ## Assisted extraction - a model that runs on your machine
 
