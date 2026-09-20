@@ -545,6 +545,7 @@ export const ENGINE_WORDS: Record<string, Overlay> = {
     "ui.documents.save-file": "Quelldatei speichern",
     "ui.datamenu.hint-file-or-paste": "Datei, Archiv, STIX oder Einfügen",
     "ui.study.export-import": "Import / Export",
+    "ui.study.workshops": "Workshops",
     "ui.entitymodal.your-name": "Ihr Name",
     "ui.entitymodal.why-this-change": "Grund der Änderung",
     "ui.extraction.optional": "optional",

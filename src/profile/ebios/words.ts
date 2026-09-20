@@ -40,18 +40,25 @@ export const WORDS: Record<string, Overlay> = {
 
     // ── the workshops ──
     "group.ws1.label": "Werte & Umfang",
+    "group.ws1.short": "Werte",
     "group.ws1.description": "Geschäftswerte, Zielobjekte, befürchtete Ereignisse",
     "group.ws2.label": "Risikoquellen",
+    "group.ws2.short": "Risikoquellen",
     "group.ws2.description": "Angreifer und ihre Ziele",
     "group.ws3.label": "Strategische Szenarien",
+    "group.ws3.short": "Strategisch",
     "group.ws3.description": "Beteiligte im Ökosystem und Angriffspfade",
     "group.ws4.label": "Operative Szenarien",
+    "group.ws4.short": "Operativ",
     "group.ws4.description": "Kill-Chains mit TTPs (Taktiken, Techniken und Prozeduren)",
     "group.ws5.label": "Behandlung",
+    "group.ws5.short": "Behandlung",
     "group.ws5.description": "Sicherheitsmaßnahmen und Abdeckung",
     "group.quant.label": "Risikoquantifizierung",
+    "group.quant.short": "Quantifizierung",
     "group.quant.description": "Monte-Carlo-Simulation des Jahresschadens, aus dem qualitativen Modell abgeleitet",
     "group.compliance.label": "Compliance",
+    "group.compliance.short": "Compliance",
     "group.compliance.description": "Anforderungen aus Rahmenwerken und ihre Abdeckung",
 
     // ── the twelve registers ──
