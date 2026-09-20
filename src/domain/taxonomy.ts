@@ -106,6 +106,8 @@ export const typeNameOf = (tax: Taxonomy, key: string, plural = false): string =
 
 export const typeLabelPlural = (t: EntityTypeDef): string => tr(`type.${t.key}.plural`, t.labelPlural);
 export const groupLabel = (g: GroupDef): string => tr(`group.${g.key}.label`, g.label);
+/** The short form for a tight row; the full label where none is declared. */
+export const groupShort = (g: GroupDef): string => (g.short ? tr(`group.${g.key}.short`, g.short) : groupLabel(g));
 export const groupDescription = (g: GroupDef): string | undefined =>
   g.description == null ? undefined : tr(`group.${g.key}.description`, g.description);
 export const fieldLabel = (f: FieldDef, t?: EntityTypeDef): string => fieldLookup(f, t, "label", f.label);

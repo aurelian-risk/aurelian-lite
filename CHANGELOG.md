@@ -5,6 +5,22 @@ All notable changes to Aurelian Lite are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Each released version is also published as a
 downloadable single-file build under [Releases](https://github.com/aurelian-risk/aurelian-lite/releases).
 
+## [1.5.1] — 2026-09-20
+
+### Changed
+- **The workshop bar is one row.** Seven equal steps on a shared baseline, the open one
+  underlined in its colour; the three study-wide views as a switch on the right. Where
+  the full names do not fit, the workshops carry a short name declared in the taxonomy
+  instead of a cut-off one; below 900 px only the open workshop keeps a name.
+
+### Fixed
+- *What each measure buys* laid its columns out in seven equal widths, so the class and
+  state ran into the money; the columns now size to what they hold, and the reading
+  line sits inside the panel's margin.
+- A table scrolled sideways painted its pinned title column over the workshop's accent
+  bar, and the scrollbar's track over the panel's rounded corner; the accent stays above
+  the column, the scrollbar is thin on a transparent track that stops short of the corners.
+
 ## [1.5.0] — 2026-09-15
 
 Threat intelligence in, and ATT&CK v19 under everything. Taxonomy schema 8; earlier

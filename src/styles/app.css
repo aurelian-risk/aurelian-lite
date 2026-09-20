@@ -168,7 +168,11 @@ a { color: var(--primary); }
 .panel-body { padding: 6px 0; }
 .ws-accent { position: relative; }
 .ws-accent::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
-  background: var(--ws-color, var(--primary)); opacity: 0.85; }
+  background: var(--ws-color, var(--primary)); opacity: 0.85;
+  /* above the pinned title column: scrolled sideways, its opaque cells sit at the
+     panel's left edge and painted the accent over, leaving it visible only in the gaps
+     between rows */
+  z-index: 3; pointer-events: none; }
 
 /* ── Formulare ────────────────────────────────────────────────────── */
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
@@ -202,6 +206,13 @@ select { cursor: pointer; }
 /* ── Tabellen ─────────────────────────────────────────────────────── */
 .tbl { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
 .panel-body { overflow-x: auto; } /* wide tables (e.g. risk quantification) scroll instead of squashing */
+/* The sideways scrollbar of a panel: thin, on a transparent track that stops short of the
+   panel's rounded corners and its accent bar. A stock track is a square grey band painted
+   over both - the corner looked cut, the accent looked broken. */
+.panel-body, .qt-worth-tbl-wrap { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+.panel-body::-webkit-scrollbar, .qt-worth-tbl-wrap::-webkit-scrollbar { height: 10px; width: 10px; }
+.panel-body::-webkit-scrollbar-track, .qt-worth-tbl-wrap::-webkit-scrollbar-track { background: transparent; margin: 0 14px; }
+.panel-body::-webkit-scrollbar-thumb, .qt-worth-tbl-wrap::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
 /* Headers wrap rather than ellipsise. A column is as wide as its VALUES need to be, and
    several labels ("Fulfills requirements", "Deadline / target date") are longer than any
    value they head - clipping them cost the reader the label to save a line of height. */
@@ -607,38 +618,58 @@ select { cursor: pointer; }
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 
 /* ── Workshop-Tabs ────────────────────────────────────────────────── */
-/* Workshop navigation: a stepper bar (1→7) + secondary view tabs; wraps, never cut off. */
-.ws-tabs { display: flex; align-items: center; gap: 4px; margin: 16px 28px 2px; padding: 7px 9px;
-  flex-wrap: wrap; row-gap: 6px;
-  background: linear-gradient(180deg, color-mix(in oklch, var(--bg-raised) 50%, var(--bg-panel)), var(--bg-panel));
-  border: 1px solid var(--border); border-radius: 13px;
-  box-shadow: var(--shadow-sm); }
-.ws-tab { display: flex; align-items: center; gap: 9px; padding: 7px 12px 7px 8px; border-radius: 11px;
-  border: 1px solid transparent; background: transparent; color: var(--fg-muted);
-  cursor: pointer; white-space: nowrap; flex: none; transition: all 0.15s var(--ease); }
-.ws-tab:hover { color: var(--fg); background: var(--bg-hover); transform: translateY(-1px); }
-.ws-tab:active { transform: translateY(0); }
-.ws-tab.active { color: var(--fg);
-  border-color: color-mix(in oklch, var(--ws, var(--primary)) 42%, transparent);
-  background: color-mix(in oklch, var(--ws, var(--primary)) 13%, var(--bg-raised));
-  box-shadow: 0 6px 18px -11px var(--ws, var(--primary)); }
+/* One row: the seven workshops as equal steps on a shared baseline, the open one
+   underlined in its colour; the three study-wide views as a segmented switch apart on
+   the right. No wrapping - the names give way before the row does. */
+.ws-tabs { display: flex; align-items: stretch; gap: 10px; margin: 16px 28px 2px; padding: 0 6px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 13px; box-shadow: var(--shadow-sm); }
+.ws-steps { flex: 1 1 auto; display: flex; align-items: stretch; min-width: 0; }
+.ws-views { flex: none; display: flex; align-items: center; gap: 2px; padding: 6px 0; margin-left: auto; }
+.ws-tab { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0;
+  padding: 11px 7px 10px; border: 0; background: transparent; color: var(--fg-muted);
+  cursor: pointer; white-space: nowrap; transition: color 0.15s var(--ease), background 0.15s var(--ease); }
+.ws-steps .ws-tab { flex: 1 1 auto; border-radius: 0; }
+.ws-steps .ws-tab::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 2.5px; border-radius: 2px 2px 0 0;
+  background: var(--ws, var(--primary)); opacity: 0; transition: opacity 0.15s var(--ease); }
+.ws-tab:hover { color: var(--fg); }
+.ws-steps .ws-tab:hover::after { opacity: 0.35; }
+.ws-tab.active { color: var(--fg); }
+.ws-steps .ws-tab.active::after { opacity: 1; }
 .ws-tab.active .t-title { font-weight: 700; }
-/* number badge = a stepper dot carrying the workshop colour */
-.ws-tab .num { width: 23px; height: 23px; border-radius: 50%; flex: none; display: grid; place-items: center;
-  font-weight: 700; font-size: 11.5px; color: color-mix(in oklch, var(--ws, var(--primary)) 70%, var(--fg));
-  background: color-mix(in oklch, var(--ws, var(--primary)) 20%, transparent);
-  box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--ws, var(--primary)) 38%, transparent);
+.ws-tab .t-title { font-weight: 600; font-size: 12.5px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; }
+/* the number: a small disc in the workshop's colour, filled when open */
+.ws-tab .num { width: 20px; height: 20px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  font-weight: 700; font-size: 11px; color: var(--ws, var(--primary));
+  box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--ws, var(--primary)) 55%, transparent);
   transition: all 0.15s var(--ease); }
-.ws-tab:hover .num { background: color-mix(in oklch, var(--ws, var(--primary)) 28%, transparent); }
-.ws-tab.active .num { color: #fff; background: var(--ws, var(--primary));
-  box-shadow: 0 3px 8px -2px color-mix(in oklch, var(--ws, var(--primary)) 65%, transparent);
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.22); }
-/* view tabs (Flow/Graph/Checks): square icon chips so they read as secondary, not steps */
-.ws-tab.plain .num { border-radius: 8px; color: var(--fg-muted); background: var(--bg-hover);
-  box-shadow: none; text-shadow: none; }
-.ws-tab.plain.active .num { color: var(--fg); background: color-mix(in oklch, var(--primary) 22%, var(--bg-hover)); }
-.ws-tab .t-title { font-weight: 600; font-size: 12.5px; line-height: 1.2; }
-.ws-sep { flex: none; width: 1px; align-self: stretch; margin: 3px 7px; background: linear-gradient(var(--hairline), transparent); }
+.ws-tab.active .num { color: #fff; background: var(--ws, var(--primary)); box-shadow: none; }
+/* the views: a segmented switch, icons as glyphs, the open one raised */
+.ws-views .ws-tab { padding: 5px 10px 5px 7px; border-radius: 9px; gap: 6px; }
+.ws-views .ws-tab .num { width: auto; height: auto; box-shadow: none; color: var(--fg-subtle); }
+.ws-views .ws-tab:hover { background: var(--bg-hover); }
+.ws-views .ws-tab.active { background: var(--bg-hover); color: var(--fg); box-shadow: inset 0 0 0 1px var(--border); }
+.ws-views .ws-tab.active .num { color: var(--primary); background: none; }
+/* the view switch names only the open view; the other two are their glyphs, with the
+   name on hover - the seven workshops come first for the room there is */
+@media (max-width: 1720px) {
+  .ws-views .ws-tab:not(.active) .t-title { display: none; }
+  .ws-views .ws-tab:not(.active) { padding: 6px 8px; }
+}
+/* the short names where the full ones do not fit in one row; below 900 px only the open
+   workshop keeps a name, the others are their number */
+.ws-tab .t-short { display: none; font-weight: 600; font-size: 12.5px; line-height: 1.2; }
+.ws-tab.active .t-short { font-weight: 700; }
+@media (max-width: 1560px) {
+  .ws-steps .ws-tab .t-title { display: none; }
+  .ws-steps .ws-tab .t-short { display: inline; }
+}
+@media (max-width: 1100px) {
+  .ws-steps .ws-tab { padding-left: 5px; padding-right: 5px; gap: 5px; }
+}
+@media (max-width: 900px) {
+  .ws-steps .ws-tab:not(.active) .t-short { display: none; }
+  .ws-views .ws-tab .t-title { display: none; }
+}
 
 /* ── Menu popover ─────────────────────────────────────────────────── */
 .menu-pop { position: absolute; right: 0; top: calc(100% + 8px); z-index: 41; width: 250px;
@@ -1273,9 +1304,15 @@ button.hm-cell:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm,
 .ft-race { display: block; font-size: 11px; color: var(--fg-muted); margin-top: 2px; }
 .qt-worth-h { width: 100%; background: none; border: none; font: inherit; color: inherit; cursor: pointer; text-align: left; }
 .qt-worth-h .caret { margin-right: 8px; }
-.qt-worth-read { margin: 0 0 12px; font-size: 13px; line-height: 1.5; }
+/* The reading line and the foot sit inside the panel's text margin; the table runs to
+   the edges like every other table and sizes its columns to what they hold - a fixed
+   layout gave seven equal columns, and "Preventive · implemented" ran into the money. */
+.qt-worth-read { margin: 4px 0 12px; padding: 0 18px; font-size: 13px; line-height: 1.5; }
+.qt-worth .qb-foot { padding: 8px 18px 4px; }
 .qt-worth-tbl-wrap { overflow-x: auto; }
-.qt-worth-tbl { min-width: 720px; }
+.qt-worth-tbl { table-layout: auto; width: 100%; }
+.qt-worth-tbl th { white-space: nowrap; }
+.qt-worth-tbl td:first-child { min-width: 180px; }
 .qt-worth-tbl th.num, .qt-worth-tbl td.num { text-align: right; white-space: nowrap; }
 .qt-worth-state { color: var(--fg-muted); font-size: 12px; white-space: nowrap; }
 .qt-worth-quiet td { opacity: 0.55; }

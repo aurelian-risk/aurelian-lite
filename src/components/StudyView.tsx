@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0 · Copyright (c) Aurelian-Risk
 import { Fragment, useEffect, useState } from "react";
 import { t as tr } from "../domain/i18n";
-import { groupDescription, groupLabel } from "../domain/taxonomy";
+import { groupDescription, groupLabel, groupShort } from "../domain/taxonomy";
 import type { Study, Taxonomy } from "../domain/types";
 import { useActiveStudy, useStore } from "../domain/store";
 import { workshopMarkdown, reportMarkdown, reportHtml, openReportHtml, downloadText, copyText } from "../domain/clipboard";
@@ -132,28 +132,37 @@ export function StudyView({ onBack }: { onBack: () => void }) {
       {searching && <SearchSheet tax={tax} study={study} state={search} onState={setSearch} onClose={() => setSearching(false)}
         onGoto={(g, id) => { setTab(g); setReveal((r) => ({ id, n: (r?.n ?? 0) + 1 })); }} />}
 
-      <div className="ws-tabs">
-        {tax.groups.map((g, i) => (
-          <button key={g.key} className={"ws-tab" + (tab === g.key ? " active" : "")}
-            style={{ ["--ws" as string]: g.color }} onClick={() => setTab(g.key)} title={groupDescription(g) || groupLabel(g)}>
-            <span className="num">{i + 1}</span>
-            <span className="t-title">{groupLabel(g)}</span>
+      {/* The workshop bar: the seven workshops as one row of equal steps - the method's
+          own order, numbered, the open one underlined in its colour - and the three
+          views of the whole study as a separate switch on the right. One row at any
+          width: below 1180 px the steps keep their number and shorten their name, below
+          900 px only the open step keeps a name at all. */}
+      <nav className="ws-tabs" aria-label={tr("ui.study.workshops", "Workshops")}>
+        <div className="ws-steps" role="tablist">
+          {tax.groups.map((g, i) => (
+            <button key={g.key} role="tab" aria-selected={tab === g.key} className={"ws-tab" + (tab === g.key ? " active" : "")}
+              style={{ ["--ws" as string]: g.color }} onClick={() => setTab(g.key)} title={groupDescription(g) || groupLabel(g)}>
+              <span className="num">{i + 1}</span>
+              <span className="t-title">{groupLabel(g)}</span>
+              <span className="t-short">{groupShort(g)}</span>
+            </button>
+          ))}
+        </div>
+        <div className="ws-views" role="tablist">
+          <button role="tab" aria-selected={tab === "canvas"} className={"ws-tab plain" + (tab === "canvas" ? " active" : "")} onClick={() => setTab("canvas")} title={tr('ui.study.event-chains', 'Event chains')}>
+            <span className="num"><Icon.canvas /></span>
+            <span className="t-title">{tr('ui.study.flow', 'Flow')}</span>
           </button>
-        ))}
-        <span className="ws-sep" aria-hidden />
-        <button className={"ws-tab plain" + (tab === "canvas" ? " active" : "")} onClick={() => setTab("canvas")} title={tr('ui.study.event-chains', 'Event chains')}>
-          <span className="num"><Icon.canvas /></span>
-          <span className="t-title">{tr('ui.study.flow', 'Flow')}</span>
-        </button>
-        <button className={"ws-tab plain" + (tab === "graph" ? " active" : "")} onClick={() => setTab("graph")} title={tr('ui.study.relationships', 'Relationships')}>
-          <span className="num"><Icon.graph /></span>
-          <span className="t-title">{tr('ui.study.graph', 'Graph')}</span>
-        </button>
-        <button className={"ws-tab plain" + (tab === "checks" ? " active" : "")} onClick={() => setTab("checks")} title={tr('ui.study.analysis-completeness-checks', 'Analysis completeness checks')}>
-          <span className="num"><Icon.check /></span>
-          <span className="t-title">{tr('ui.study.checks', 'Checks')}</span>
-        </button>
-      </div>
+          <button role="tab" aria-selected={tab === "graph"} className={"ws-tab plain" + (tab === "graph" ? " active" : "")} onClick={() => setTab("graph")} title={tr('ui.study.relationships', 'Relationships')}>
+            <span className="num"><Icon.graph /></span>
+            <span className="t-title">{tr('ui.study.graph', 'Graph')}</span>
+          </button>
+          <button role="tab" aria-selected={tab === "checks"} className={"ws-tab plain" + (tab === "checks" ? " active" : "")} onClick={() => setTab("checks")} title={tr('ui.study.analysis-completeness-checks', 'Analysis completeness checks')}>
+            <span className="num"><Icon.check /></span>
+            <span className="t-title">{tr('ui.study.checks', 'Checks')}</span>
+          </button>
+        </div>
+      </nav>
 
       <div className="content">
         {tab === "graph" ? (

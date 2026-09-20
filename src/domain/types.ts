@@ -85,6 +85,9 @@ export interface EntityTypeDef {
 export interface GroupDef {
   key: string;
   label: string;
+  /** The label where a row of all groups has no room for the full one: one word that
+   *  still says which workshop it is ("Operational" for "Operational Scenarios"). */
+  short?: string;
   description?: string;
   /** CSS color value, e.g. "var(--color-workshop-1)" or "#33aaff". */
   color: string;
